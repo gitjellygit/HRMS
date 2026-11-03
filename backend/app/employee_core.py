@@ -240,6 +240,8 @@ def validate_relationships(db: Session, employee_id: int, data: MasterIn):
             manager = employee_or_404(db, target)
             if manager.status != "active":
                 raise HTTPException(422, detail={"field": key, "message": "The selected manager is inactive."})
+            if manager.role not in ("manager", "super_admin", "admin", "hr"):
+                raise HTTPException(422, detail={"field": key, "message": "Choose a user with Manager, HR or Admin access."})
             # Follow reporting edges, preventing circular chains.
             seen = {employee_id}
             current = target
@@ -289,7 +291,12 @@ def employee_view(db: Session, employee: Employee, user: Employee, *, detailed: 
         raise HTTPException(403, "Employee record access denied")
     result = as_employee_out(db, employee).model_dump(mode="json")
     if detailed:
-        result["master"] = master_dict(core, include_sensitive=user.role in ADMIN)
+        if user.role == "manager" and user.id != employee.id:
+            result["master"] = {"manager_id": core.manager_id if core else None,
+                                "hod_id": core.hod_id if core else None,
+                                "lifecycle": core.lifecycle if core else None}
+        else:
+            result["master"] = master_dict(core, include_sensitive=user.role in ADMIN)
     return result
 
 
@@ -329,6 +336,28 @@ def create_org_unit(body: UnitIn, user: Employee = Depends(require_hr), db: Sess
         db.rollback()
         raise HTTPException(409, "An organization unit with that code already exists") from exc
     return {"id":row.id, "kind":row.kind, "name":row.name, "code":row.code}
+
+
+class UnitUpdate(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    code: str = Field(min_length=1, max_length=35)
+    active: bool = True
+
+
+@router.patch("/units/{unit_id}")
+def edit_org_unit(unit_id: int, body: UnitUpdate, user: Employee = Depends(require_hr), db: Session = Depends(db_session)):
+    unit = db.get(OrgUnit, unit_id)
+    if not unit:
+        raise HTTPException(404, "Organization unit not found")
+    unit.name = body.name.strip()
+    unit.code = body.code.strip().upper()
+    unit.active = body.active
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "Organization code already exists") from exc
+    return {"id":unit.id, "name":unit.name, "code":unit.code, "active":unit.active}
 
 
 @router.get("/employees")
@@ -434,6 +463,8 @@ def review_change(change_id: int, body: DecisionIn, user: Employee = Depends(req
         raise HTTPException(404, "Change request not found")
     if row.status != "pending":
         raise HTTPException(409, "Request already reviewed")
+    if row.employee_id == user.id:
+        raise HTTPException(403, "You cannot approve your own profile change.")
     if body.approve:
         core = db.get(EmployeeCore, row.employee_id)
         if not core:
@@ -603,7 +634,13 @@ async def import_employees(document: UploadFile = File(...), dry_run: bool = Tru
             if manager_email and not manager:
                 raise ValueError("Reporting manager email must already exist")
             password=secrets.token_urlsafe(24)
-            inp=EmployeeIn.model_validate({**row,"password":password+"Aa1!","role":row.get("role") or "employee"})
+            prepared={**row, "password": password+"Aa1!", "role": row.get("role") or "employee"}
+            if not prepared.get("joining_date"):
+                prepared.pop("joining_date", None)
+            for optional in ("phone","work_location","manager_name","emergency_contact","employment_type"):
+                if prepared.get(optional) is None:
+                    prepared.pop(optional, None)
+            inp=EmployeeIn.model_validate(prepared)
             if inp.role not in ("employee","manager"):
                 raise ValueError("Bulk import only supports Employee and Manager roles")
             parsed.append((inp, manager.id if manager else None))
