@@ -7,6 +7,7 @@ import io
 import os
 import re
 import secrets
+from decimal import Decimal
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
@@ -15,13 +16,13 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Query
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook, load_workbook
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, select, text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 from pwdlib import PasswordHash
 
 from .main import (
-    Base, Employee, EmployeeProfile, Document, db_session, current_user,
+    Base, Employee, EmployeeProfile, Document, Attendance, Leave, db_session, current_user,
     EmployeeIn, EmployeeOut, passwords, as_employee_out
 )
 
@@ -97,6 +98,23 @@ class DocumentMetadata(Base):
     category: Mapped[str] = mapped_column(String(40), default="other")
     expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("employees.id"), nullable=True)
+
+
+class LeaveEntitlement(Base):
+    __tablename__ = "employee_leave_entitlements"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    year: Mapped[int] = mapped_column(Integer)
+    leave_type: Mapped[str] = mapped_column(String(40))
+    allocated_days: Mapped[Decimal] = mapped_column(Numeric(6, 2))
+    __table_args__ = (UniqueConstraint("employee_id", "year", "leave_type", name="uq_employee_leave_entitlement"),)
+
+
+class LeaveEntitlementIn(BaseModel):
+    employee_id: int
+    year: int = Field(ge=2020, le=2100)
+    leave_type: Literal["Annual", "Sick", "Casual", "Unpaid"]
+    allocated_days: Decimal = Field(ge=0, le=365)
 
 
 class UnitIn(BaseModel):
@@ -298,6 +316,64 @@ def employee_view(db: Session, employee: Employee, user: Employee, *, detailed: 
         else:
             result["master"] = master_dict(core, include_sensitive=user.role in ADMIN)
     return result
+
+
+def approved_days(leaves: list[Leave], *, year: int, kind: str) -> float:
+    from_date, to_date = date(year, 1, 1), date(year, 12, 31)
+    total = 0
+    for leave in leaves:
+        if leave.leave_type != kind or leave.status != "approved":
+            continue
+        start, end = max(leave.start_date, from_date), min(leave.end_date, to_date)
+        if end >= start:
+            total += (end - start).days + 1
+    return float(total)
+
+
+@router.put("/leave-entitlements")
+def set_leave_entitlement(body: LeaveEntitlementIn, user: Employee = Depends(require_hr), db: Session = Depends(db_session)):
+    employee_or_404(db, body.employee_id)
+    row = db.scalar(select(LeaveEntitlement).where(
+        LeaveEntitlement.employee_id == body.employee_id, LeaveEntitlement.year == body.year,
+        LeaveEntitlement.leave_type == body.leave_type).with_for_update())
+    if row is None:
+        row = LeaveEntitlement(employee_id=body.employee_id, year=body.year, leave_type=body.leave_type, allocated_days=body.allocated_days)
+        db.add(row)
+    else:
+        row.allocated_days = body.allocated_days
+    db.commit()
+    return {"employee_id":body.employee_id, "year":body.year, "leave_type":body.leave_type, "allocated_days":float(body.allocated_days)}
+
+
+@router.get("/hr-overview")
+def hr_overview(year: int = Query(default=date.today().year, ge=2020, le=2100), user: Employee = Depends(require_hr),
+                db: Session = Depends(db_session)):
+    employees = db.scalars(select(Employee).order_by(Employee.name)).all()
+    entitlements = db.scalars(select(LeaveEntitlement).where(LeaveEntitlement.year == year)).all()
+    all_leaves = db.scalars(select(Leave).where(Leave.start_date <= date(year,12,31), Leave.end_date >= date(year,1,1))).all()
+    attendance = db.scalars(select(Attendance).where(Attendance.punch_out.is_(None))).all()
+    pending_count = sum(1 for leave in all_leaves if leave.status == "pending")
+    entitlements_by_employee: dict[int,list[LeaveEntitlement]] = {}
+    leaves_by_employee: dict[int,list[Leave]] = {}
+    for row in entitlements:
+        entitlements_by_employee.setdefault(row.employee_id, []).append(row)
+    for row in all_leaves:
+        leaves_by_employee.setdefault(row.employee_id, []).append(row)
+    open_shifts = {a.employee_id for a in attendance}
+    rows = []
+    for employee in employees:
+        balance = [
+            {"leave_type":e.leave_type, "allocated":float(e.allocated_days),
+             "used":approved_days(leaves_by_employee.get(employee.id,[]), year=year, kind=e.leave_type),
+             "remaining":float(e.allocated_days)-approved_days(leaves_by_employee.get(employee.id,[]), year=year, kind=e.leave_type)}
+            for e in entitlements_by_employee.get(employee.id,[])
+        ]
+        rows.append({"id":employee.id, "name":employee.name, "department":employee.department,
+                     "role":employee.role, "status":employee.status,
+                     "currently_checked_in":employee.id in open_shifts,
+                     "leave_balances":balance})
+    return {"year":year, "headcount":len([e for e in employees if e.status == "active"]),
+            "pending_leave_requests":pending_count, "currently_checked_in":len(open_shifts), "employees":rows}
 
 
 @router.get("/roles")
