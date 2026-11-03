@@ -126,7 +126,7 @@ class PolicyIn(BaseModel):
 
     @model_validator(mode="after")
     def valid_chain(self):
-        if len(self.approval_chain)>3 or len(set(self.approval_chain))!=len(self.approval_chain):
+        if not self.approval_chain or len(self.approval_chain)>3 or len(set(self.approval_chain))!=len(self.approval_chain):
             raise ValueError("Approval stages must be unique and limited to manager, HR and admin.")
         return self
 
@@ -469,10 +469,11 @@ def requests(scope: Literal["mine","team","approvals","all"]="mine",
                                           ApprovalDelegation.end_date>=date.today()))))
     rows=db.scalars(query.limit(500)).all()
     if scope=="approvals":
-        rows=[r for r in rows if r.status=="pending" and
-              (r.cancellation_requested and user.role in ADMIN or
-               not r.cancellation_requested and r.current_stage<len(r.chain.split(",")) and
-               can_approve(db,user,r,r.chain.split(",")[r.current_stage]))]
+        rows=[r for r in rows if
+              (r.status=="approved" and r.cancellation_requested and user.role in ADMIN and r.employee_id!=user.id)
+              or (r.status=="pending" and not r.cancellation_requested
+                  and r.current_stage<len([stage for stage in r.chain.split(",") if stage])
+                  and can_approve(db,user,r,[stage for stage in r.chain.split(",") if stage][r.current_stage]))]
     return [record_view(row) for row in rows]
 
 
@@ -550,7 +551,7 @@ def history(request_id: int,user: Employee = Depends(current_user),db: Session =
     row=db.get(LeaveRequest,request_id)
     if not row:
         raise HTTPException(404,"Leave request not found")
-    if row.employee_id!=user.id and user.role not in ADMIN and row.manager_snapshot_id!=user.id:
+    if row.employee_id!=user.id and user.role not in ADMIN and row.manager_snapshot_id!=user.id and user.id not in active_delegate(db,row.manager_snapshot_id,date.today()) if row.manager_snapshot_id else row.employee_id!=user.id and user.role not in ADMIN:
         raise HTTPException(403,"Not permitted")
     events=db.scalars(select(ApprovalEvent).where(ApprovalEvent.request_id==request_id).order_by(ApprovalEvent.id)).all()
     return [{"action":e.action,"stage":e.stage,"actor_id":e.actor_id,"at":e.at,"note":e.note} for e in events]
