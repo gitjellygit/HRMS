@@ -406,7 +406,15 @@ def org_units(kind: str | None = None, user: Employee = Depends(current_user), d
 
 @router.post("/units", status_code=201)
 def create_org_unit(body: UnitIn, user: Employee = Depends(require_hr), db: Session = Depends(db_session)):
-    row = OrgUnit(kind=body.kind, name=body.name.strip(), code=body.code.strip().upper())
+    name = " ".join(body.name.split())
+    code = body.code.strip().upper()
+    if not re.fullmatch(r"[A-Z0-9][A-Z0-9_-]{0,34}", code):
+        raise HTTPException(422, detail={"field":"code","message":"Use letters, numbers, hyphens or underscores for the unit code."})
+    existing_name = db.scalar(select(OrgUnit.id).where(
+        OrgUnit.kind == body.kind, func.lower(OrgUnit.name) == name.lower()))
+    if existing_name:
+        raise HTTPException(409, detail={"field":"name","message":"This organization unit already exists."})
+    row = OrgUnit(kind=body.kind, name=name, code=code)
     db.add(row)
     try:
         db.commit()
