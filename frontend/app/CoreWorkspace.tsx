@@ -46,7 +46,7 @@ export default function CoreWorkspace({api,mode,user,employeeId,onBack}:{api:str
  const [expiry,setExpiry]=useState("");
  const [document,setDocument]=useState<File|null>(null);
  const [selectedFile,setSelectedFile]=useState<File|null>(null);
- const [preview,setPreview]=useState<{valid:boolean;row_count:number;errors:{row:number;error:string}[];created:number;note?:string}|null>(null);
+ const [preview,setPreview]=useState<{valid:boolean;dry_run:boolean;row_count:number;errors:{row:number;error:string}[];created:number;note?:string}|null>(null);
  const [changeField,setChangeField]=useState("personal_email");
  const [changeValue,setChangeValue]=useState("");
  const [search,setSearch]=useState("");
