@@ -1,12 +1,24 @@
 name: HRMS checks
 on:
   push:
-    branches: [feature/hrms-mvp, main]
+    branches: [feature/hrms-mvp, feature/employee-core-1-10, main]
   pull_request:
-    branches: [main]
+    branches: [main, feature/hrms-mvp]
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: hrms_test
+          POSTGRES_USER: hrms
+          POSTGRES_PASSWORD: test-db-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hrms -d hrms_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -14,6 +26,31 @@ jobs:
           python-version: '3.12'
       - name: Verify Python syntax
         run: python -m compileall -q backend/app
+      - name: Install backend
+        run: pip install -r backend/requirements.txt
+      - name: Install test tools
+        run: pip install pytest httpx
+      - name: Import backend and validate OpenAPI
+        env:
+          JWT_SECRET: test-only-long-secret-1234567890-abcdefgh
+        run: |
+          PYTHONPATH=backend python - <<'PY'
+          from app.main import app
+          paths=app.openapi()['paths']
+          assert '/core/employees' in paths
+          assert '/core/employees-import' in paths
+          assert '/core/org-chart' in paths
+          print('Validated',len(paths),'API routes')
+          PY
+      - name: Employee Core integration smoke test
+        env:
+          JWT_SECRET: test-only-long-secret-1234567890-abcdefgh
+          DATABASE_URL: postgresql+psycopg://hrms:test-db-password@localhost:5432/hrms_test
+          ADMIN_EMAIL: admin@example.com
+          ADMIN_PASSWORD: test-admin-password-12345
+          CORS_ORIGINS: http://localhost:3000
+          UPLOAD_DIR: /tmp/hrms-ci-uploads
+        run: PYTHONPATH=backend pytest -q backend/tests/test_core.py
   frontend:
     runs-on: ubuntu-latest
     defaults:
