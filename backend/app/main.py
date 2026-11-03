@@ -399,8 +399,19 @@ def create_employee(body: EmployeeIn, user: Employee = Depends(require("admin", 
     db.refresh(employee)
     return as_employee_out(db, employee)
 
+@app.get("/attendance/status")
+def attendance_status(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
+    open_shift=db.scalar(select(Attendance).where(
+        Attendance.employee_id==user.id,Attendance.punch_out.is_(None)
+    ).order_by(Attendance.id.desc()))
+    return {"checked_in":open_shift is not None,
+            "punch_in":open_shift.punch_in if open_shift else None,
+            "next_action":"punch_out" if open_shift else "punch_in"}
+
 @app.post("/attendance/punch", response_model=AttendanceOut)
 def punch(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
+    # One active punch state per user, even with simultaneous clicks/browser tabs.
+    db.execute(select(func.pg_advisory_xact_lock(93001,user.id)))
     open_shift = db.scalar(select(Attendance).where(Attendance.employee_id == user.id, Attendance.punch_out.is_(None)).order_by(Attendance.id.desc()))
     if open_shift:
         open_shift.punch_out = datetime.now(timezone.utc)
