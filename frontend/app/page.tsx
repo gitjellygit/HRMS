@@ -5,6 +5,7 @@ import EmployeeManagement from "./EmployeeManagement";
 import CoreWorkspace from "./CoreWorkspace";
 import HRDesk from "./HRDesk";
 import LeaveWorkspace from "./LeaveWorkspace";
+import ProjectsManagement from "./ProjectsManagement";
 import { LayoutDashboard, Users, Clock3, CalendarDays, BriefcaseBusiness, Wallet, Award, LogOut, GitBranch, Building2, UserRound, ShieldCheck, FileDown, ClipboardList } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -64,7 +65,7 @@ export default function Home() {
     } catch(e){setError((e as Error).message);}
   }
   useEffect(()=>{request("/me").then(setUser).catch(()=>{}).finally(()=>setReady(true));},[]);
-  useEffect(()=>{if(user&&!["organization","orgchart","profile","approvals","bulk","employee-record","hrdesk","leaves"].includes(section))refresh(section);},[user,section]);
+  useEffect(()=>{if(user&&!["organization","orgchart","profile","approvals","bulk","employee-record","hrdesk","leaves","projects"].includes(section))refresh(section);},[user,section]);
   async function logout(){try{await request("/auth/logout","POST");}finally{setUser(null);setRows([]);}}
   async function submit(e:React.FormEvent<HTMLFormElement>){
     e.preventDefault();setLoading(true);setError("");
@@ -141,7 +142,7 @@ export default function Home() {
   if(!ready)return <div className="login-wrap">Loading workspace…</div>;
   if(!user)return <Login api={API} onLogin={setUser}/>;
   return <div className="shell"><aside className="sidebar"><div className="brand">Jelly<span>Git</span> HRMS</div><nav className="menu">{visible.map(({id,label,Icon})=><button key={id} onClick={()=>{setSection(id);setForm(false);setError("")}} className={section===id?"active":""}><Icon size={18}/>{label}</button>)}<button onClick={logout}><LogOut size={18}/>Sign out</button></nav></aside><main className="content"><div className="top"><div><h1 className="title">{section==="employee-record"?"Employee master record":sections.find(s=>s.id===section)?.label}</h1><div className="muted">Your team, in one place</div></div><div className="user"><b>{user.name}</b><br/><span className="muted">{user.role}</span></div></div>{error&&<div className="error">{error}</div>}
-    {section==="leaves"?<LeaveWorkspace api={API} user={user}/>:section==="hrdesk"?<HRDesk api={API}/>:section==="employees"?<EmployeeManagement api={API} canCreate={Boolean(canHR)} currentRole={user.role} onOpenEmployee={id=>{setSelectedEmployeeId(id);setSection("employee-record")}}/>:
+    {section==="projects"?<ProjectsManagement api={API} canCreate={Boolean(canHR)}/>:section==="leaves"?<LeaveWorkspace api={API} user={user}/>:section==="hrdesk"?<HRDesk api={API}/>:section==="employees"?<EmployeeManagement api={API} canCreate={Boolean(canHR)} currentRole={user.role} onOpenEmployee={id=>{setSelectedEmployeeId(id);setSection("employee-record")}}/>:
     ["employee-record","organization","orgchart","profile","approvals","bulk"].includes(section)?
       <CoreWorkspace api={API} mode={(section==="employee-record"?"profile":section==="organization"?"organization":section==="orgchart"?"orgchart":section==="profile"?"profile":section==="approvals"?"approvals":"bulk")}
         user={user as any} employeeId={section==="employee-record"?selectedEmployeeId:null}
