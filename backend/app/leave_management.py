@@ -9,7 +9,7 @@ import os
 import smtplib
 import ssl
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from email.message import EmailMessage
 from typing import Literal
 
@@ -146,8 +146,8 @@ class LeaveIn(BaseModel):
             raise ValueError("Half-day and short leave must be for a single date.")
         if (self.end_date-self.start_date).days>365:
             raise ValueError("A request must not exceed 366 calendar days.")
-        if self.start_date.year!=self.end_date.year:
-            raise ValueError("Split requests crossing a calendar year.")
+        if fy_start_year(self.start_date)!=fy_start_year(self.end_date):
+            raise ValueError("Split requests crossing an April–March financial year.")
         return self
 
 
@@ -276,40 +276,73 @@ def leave_days(db: Session, row: LeaveRequest)->Decimal:
     return Decimal(row.days)
 
 
-def balance(db: Session, employee_id: int, year: int,kind: str) -> dict:
-    config=policy(db,kind)
+def fy_start_year(value: date) -> int:
+    """Indian financial year April 1 to March 31, named by starting year."""
+    return value.year if value.month >= 4 else value.year-1
+
+
+def fy_bounds(fy: int) -> tuple[date, date]:
+    return date(fy,4,1),date(fy+1,3,31)
+
+
+def prorated_entitlement(annual: Decimal, joined: date, fy: int) -> Decimal:
+    """Calendar-day service proration, rounded to nearest half-day."""
+    start,end=fy_bounds(fy)
+    eligible_from=max(start,joined)
+    if eligible_from>end:
+        return Decimal("0")
+    days=(end-eligible_from).days+1
+    total=(end-start).days+1
+    prorated=annual*Decimal(days)/Decimal(total)
+    return ((prorated*2).quantize(Decimal("1"),rounding=ROUND_HALF_UP))/2
+
+
+def used_days(db: Session, employee_id: int, year: int, kind: str) -> Decimal:
+    start,end=fy_bounds(year)
+    value=db.scalar(select(func.coalesce(func.sum(LeaveRequest.days),0)).where(
+        LeaveRequest.employee_id==employee_id,LeaveRequest.leave_type==kind,
+        LeaveRequest.start_date.between(start,end),
+        LeaveRequest.status.in_(["approved","pending"])))
+    return Decimal(value or 0)
+
+
+def base_entitlement(db: Session,employee_id: int,year: int,kind: str, config: LeavePolicy)->Decimal:
     staff=employee(db,employee_id)
+    start,end=fy_bounds(year)
     ent=db.scalar(select(LeaveEntitlement).where(LeaveEntitlement.employee_id==employee_id,
                   LeaveEntitlement.year==year,LeaveEntitlement.leave_type==kind))
-    # No implicit entitlement for a newly created policy: HR must allocate a balance explicitly,
-    # or the annual/monthly policy grants it.
-    allocated=Decimal(ent.allocated_days) if ent else Decimal(config.annual_days)
-    if ent is None and config.monthly_accrual:
-        months=max(0,min(12,(date.today().year-year)*12+date.today().month))
-        allocated=Decimal(config.monthly_accrual)*Decimal(months)
-    # Carry-forward from prior year is capped and only recognizes configured prior entitlements.
-    previous=db.scalar(select(LeaveEntitlement).where(LeaveEntitlement.employee_id==employee_id,
-                     LeaveEntitlement.year==year-1,LeaveEntitlement.leave_type==kind))
+    if ent is not None:
+        return Decimal(ent.allocated_days)
+    if config.monthly_accrual:
+        # Monthly accrual is proportional to employment months elapsed in this FY.
+        today=date.today()
+        through=min(end,today)
+        if through<max(start,staff.joining_date):
+            return Decimal("0")
+        start_month=max(start,staff.joining_date)
+        n_months=(through.year-start_month.year)*12+(through.month-start_month.month)+1
+        # No daily proration in monthly-accrual mode.
+        return Decimal(n_months)*Decimal(config.monthly_accrual)
+    return prorated_entitlement(Decimal(config.annual_days),staff.joining_date,year)
+
+
+def balance(db: Session, employee_id: int, year: int,kind: str) -> dict:
+    config=policy(db,kind)
+    allocated=base_entitlement(db,employee_id,year,kind,config)
     carry=Decimal("0")
-    if previous and config.carry_forward_limit:
+    if config.carry_forward_limit:
+        prior=base_entitlement(db,employee_id,year-1,kind,config)
         prior_used=used_days(db,employee_id,year-1,kind)
-        carry=min(max(Decimal(previous.allocated_days)-prior_used,Decimal("0")),Decimal(config.carry_forward_limit))
+        carry=min(max(prior-prior_used,Decimal("0")),Decimal(config.carry_forward_limit))
     used=used_days(db,employee_id,year,kind)
     encashed=db.scalar(select(func.coalesce(func.sum(Encashment.days),0)).where(
         Encashment.employee_id==employee_id,Encashment.year==year,
         Encashment.leave_type==kind,Encashment.status=="approved"))
-    total=allocated+carry
-    return {"leave_type":kind,"year":year,"allocated":float(allocated),"carried":float(carry),
+    return {"leave_type":kind,"year":year,"fy_label":f"FY {year}-{str(year+1)[-2:]}",
+            "allocated":float(allocated),"carried":float(carry),
             "used":float(used),"encashed":float(encashed or 0),
-            "remaining":float(total-used-Decimal(encashed or 0))}
+            "remaining":float(allocated+carry-used-Decimal(encashed or 0))}
 
-
-def used_days(db: Session, employee_id: int, year: int,kind: str)->Decimal:
-    value=db.scalar(select(func.coalesce(func.sum(LeaveRequest.days),0)).where(
-        LeaveRequest.employee_id==employee_id,LeaveRequest.leave_type==kind,
-        LeaveRequest.start_date.between(date(year,1,1),date(year,12,31)),
-        LeaveRequest.status.in_(["approved","pending"])))
-    return Decimal(value or 0)
 
 
 def record_view(row: LeaveRequest)->dict:
@@ -353,6 +386,26 @@ def upcoming_approvers(db: Session,row: LeaveRequest)->list[int]:
     return list(db.scalars(select(Employee.id).where(Employee.status=="active",Employee.role.in_(roles))).all())
 
 
+@router.get("/hr-overview")
+def financial_year_hr_overview(fy: int=Query(default=fy_start_year(date.today()),ge=2020,le=2100),
+                               user: Employee=Depends(hr_only),db: Session=Depends(db_session)):
+    from .main import Attendance
+    staff=db.scalars(select(Employee).order_by(Employee.name)).all()
+    kinds=db.scalars(select(LeavePolicy.leave_type).where(LeavePolicy.active.is_(True))).all()
+    ongoing=set(db.scalars(select(Attendance.employee_id).where(Attendance.punch_out.is_(None))).all())
+    pending=db.scalar(select(func.count()).select_from(LeaveRequest).where(LeaveRequest.status=="pending"))
+    result=[]
+    for person in staff:
+        result.append({"id":person.id,"name":person.name,"department":person.department,
+                       "role":person.role,"status":person.status,"joining_date":person.joining_date,
+                       "currently_checked_in":person.id in ongoing,
+                       "leave_balances":[balance(db,person.id,fy,kind) for kind in kinds]})
+    return {"fy":fy,"fy_label":f"FY {fy}-{str(fy+1)[-2:]}",
+            "headcount":sum(1 for x in staff if x.status=="active"),
+            "currently_checked_in":len(ongoing),
+            "pending_leave_requests":pending or 0,"employees":result}
+
+
 @router.get("/policies")
 def policies(user: Employee = Depends(current_user),db: Session = Depends(db_session)):
     rows=db.scalars(select(LeavePolicy).order_by(LeavePolicy.leave_type)).all()
@@ -392,7 +445,7 @@ def allocate(body: EntitlementIn,user: Employee = Depends(hr_only),db: Session =
 
 
 @router.get("/balances")
-def balances(employee_id: int | None = None,year: int=Query(default=date.today().year,ge=2020,le=2100),
+def balances(employee_id: int | None = None,year: int=Query(default=fy_start_year(date.today()),ge=2020,le=2100),
              user: Employee = Depends(current_user),db: Session = Depends(db_session)):
     target=employee_id or user.id
     if target!=user.id and user.role not in ADMIN:
@@ -414,14 +467,14 @@ def request_leave(body: LeaveIn,user: Employee = Depends(current_user),db: Sessi
     if days<=0:
         raise HTTPException(422,"Selected dates contain no working leave days")
     # Serialize submission for each employee/year before both overlap and balance checks.
-    db.execute(select(func.pg_advisory_xact_lock(user.id,body.start_date.year)))
+    db.execute(select(func.pg_advisory_xact_lock(user.id,fy_start_year(body.start_date))))
     overlap=db.scalar(select(LeaveRequest.id).where(
         LeaveRequest.employee_id==user.id,LeaveRequest.status.in_(["pending","approved"]),
         LeaveRequest.start_date<=body.end_date,LeaveRequest.end_date>=body.start_date))
     if overlap:
         raise HTTPException(409,"An existing leave request overlaps these dates")
     if body.leave_type!="loss_of_pay":
-        available=balance(db,user.id,body.start_date.year,body.leave_type)
+        available=balance(db,user.id,fy_start_year(body.start_date),body.leave_type)
         if available["remaining"]<float(days):
             raise HTTPException(422,"Insufficient leave balance for this request")
     row=LeaveRequest(employee_id=user.id,leave_type=body.leave_type,start_date=body.start_date,
@@ -704,8 +757,9 @@ def reports(year: int=Query(default=date.today().year,ge=2020,le=2100),
             department: str | None=None,month: int | None=Query(default=None,ge=1,le=12),
             format: Literal["json","csv"]="json",
             user: Employee = Depends(hr_only),db: Session = Depends(db_session)):
+    fy_first,fy_last=fy_bounds(year)
     stmt=select(LeaveRequest,Employee).join(Employee,LeaveRequest.employee_id==Employee.id).where(
-        LeaveRequest.start_date.between(date(year,1,1),date(year,12,31)))
+        LeaveRequest.start_date.between(fy_first,fy_last))
     if department:
         stmt=stmt.where(Employee.department==department)
     if month:

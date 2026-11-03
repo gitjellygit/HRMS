@@ -1,9 +1,9 @@
 name: HRMS checks
 on:
   push:
-    branches: [feature/hrms-mvp, feature/employee-core-1-10, feature/leave-management-11-22, feature/projects-redesign, main]
+    branches: [feature/hrms-mvp, feature/employee-core-1-10, feature/leave-management-11-22, feature/projects-redesign, feature/project-bonus-attendance-fy, main]
   pull_request:
-    branches: [main, feature/hrms-mvp, feature/employee-core-1-10, feature/leave-management-11-22]
+    branches: [main, feature/hrms-mvp, feature/employee-core-1-10, feature/leave-management-11-22, feature/projects-redesign]
 jobs:
   backend:
     runs-on: ubuntu-latest

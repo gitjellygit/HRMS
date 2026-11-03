@@ -318,6 +318,14 @@ def initialize():
         last, called = connection.execute(text("SELECT last_value, is_called FROM hrms_project_number_seq")).one()
         if highest > (last if called else last-1):
             connection.execute(text("SELECT setval('hrms_project_number_seq', :number, true)"), {"number":highest})
+    # Additive local schema upgrade for existing project_details installations.
+    # A proper Alembic migration is required before production release.
+    with engine.begin() as connection:
+        for field,ddl in [
+            ("sourced_by_id","INTEGER REFERENCES employees(id)"),
+            ("start_date","DATE"),
+            ("bonus_amount_inr","NUMERIC(12,2) NOT NULL DEFAULT 0")]:
+            connection.execute(text(f"ALTER TABLE project_details ADD COLUMN IF NOT EXISTS {field} {ddl}"))
     email = os.environ.get("ADMIN_EMAIL")
     passwd = os.environ.get("ADMIN_PASSWORD")
     if email and passwd and len(passwd) >= 12:
@@ -391,8 +399,19 @@ def create_employee(body: EmployeeIn, user: Employee = Depends(require("admin", 
     db.refresh(employee)
     return as_employee_out(db, employee)
 
+@app.get("/attendance/status")
+def attendance_status(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
+    open_shift=db.scalar(select(Attendance).where(
+        Attendance.employee_id==user.id,Attendance.punch_out.is_(None)
+    ).order_by(Attendance.id.desc()))
+    return {"checked_in":open_shift is not None,
+            "punch_in":open_shift.punch_in if open_shift else None,
+            "next_action":"punch_out" if open_shift else "punch_in"}
+
 @app.post("/attendance/punch", response_model=AttendanceOut)
 def punch(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
+    # One active punch state per user, even with simultaneous clicks/browser tabs.
+    db.execute(select(func.pg_advisory_xact_lock(93001,user.id)))
     open_shift = db.scalar(select(Attendance).where(Attendance.employee_id == user.id, Attendance.punch_out.is_(None)).order_by(Attendance.id.desc()))
     if open_shift:
         open_shift.punch_out = datetime.now(timezone.utc)
@@ -649,3 +668,42 @@ app.include_router(leave_management_router)
 # Keep the richer project API separate from the original /projects endpoints.
 from .project_management import router as project_management_router  # noqa: E402
 app.include_router(project_management_router)
+
+
+# Milestone reconciliation runs on startup and hourly while the API is running.
+# Unique project award records and database advisory locks prevent duplicate awards
+# across multiple API instances. Move this to a dedicated worker before production.
+import asyncio
+import logging
+
+_bonus_sync_task = None
+
+async def _bonus_reconciler():
+    from .project_management import sync_matured_bonuses
+    while True:
+        try:
+            await asyncio.to_thread(_bonus_sync_once, sync_matured_bonuses)
+        except Exception:
+            logging.getLogger(__name__).exception("Project bonus reconciliation failed")
+        await asyncio.sleep(3600)
+
+def _bonus_sync_once(sync_function):
+    with SessionLocal() as session:
+        return sync_function(session)
+
+@app.on_event("startup")
+async def start_bonus_reconciler():
+    global _bonus_sync_task
+    if os.getenv("PROJECT_BONUS_AUTO_SYNC", "true").lower()=="true":
+        _bonus_sync_task=asyncio.create_task(_bonus_reconciler())
+
+@app.on_event("shutdown")
+async def stop_bonus_reconciler():
+    global _bonus_sync_task
+    if _bonus_sync_task:
+        _bonus_sync_task.cancel()
+        try:
+            await _bonus_sync_task
+        except asyncio.CancelledError:
+            pass
+        _bonus_sync_task=None
