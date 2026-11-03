@@ -244,6 +244,8 @@ def current_user(request: Request, credentials: HTTPAuthorizationCredentials | N
     user = db.get(Employee, user_id)
     if not user or user.status != "active":
         raise HTTPException(status_code=401, detail="Account unavailable")
+    if payload.get("pv") != hashlib.sha256((SECRET + user.password_hash).encode()).hexdigest():
+        raise HTTPException(status_code=401, detail="Session expired")
     return user
 
 def require(*roles):
@@ -292,7 +294,7 @@ def login(body: LoginIn, response: Response, db: Session = Depends(db_session)):
     if not user or user.status != "active" or not passwords.verify(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     lifetime = timedelta(days=30) if body.remember else timedelta(hours=8)
-    token = jwt.encode({"sub": str(user.id), "exp": datetime.now(timezone.utc) + lifetime}, SECRET, algorithm="HS256")
+    token = jwt.encode({"sub": str(user.id), "pv": hashlib.sha256((SECRET + user.password_hash).encode()).hexdigest(), "exp": datetime.now(timezone.utc) + lifetime}, SECRET, algorithm="HS256")
     response.set_cookie(COOKIE_NAME, token, httponly=True, secure=COOKIE_SECURE, samesite='lax', max_age=int(lifetime.total_seconds()) if body.remember else None, path='/')
     return {"user": EmployeeOut.model_validate(user)}
 
@@ -483,6 +485,9 @@ def forgot_password(body: ResetRequestIn, db: Session = Depends(db_session)):
     # Same response for registered and unregistered email addresses.
     user = db.scalar(select(Employee).where(Employee.email == str(body.email), Employee.status == 'active'))
     if user:
+        recent = db.scalar(select(PasswordReset).where(PasswordReset.employee_id == user.id).order_by(PasswordReset.id.desc()))
+        if recent and recent.expires_at > datetime.now(timezone.utc) + timedelta(minutes=25):
+            return {"message": "If the email is registered, a password reset link has been sent."}
         token = secrets.token_urlsafe(32)
         record = PasswordReset(employee_id=user.id, token_hash=hashlib.sha256(token.encode()).hexdigest(),
                                expires_at=datetime.now(timezone.utc) + timedelta(minutes=30))
@@ -534,10 +539,10 @@ async def upload_document(employee_id: int, document: UploadFile = File(...),
     raw = await document.read(5 * 1024 * 1024 + 1)
     if len(raw) > 5 * 1024 * 1024:
         raise HTTPException(413, 'Maximum file size is 5 MB')
-    allowed = raw.startswith(b'%PDF-') or raw.startswith(b'\\x89PNG\\r\\n\\x1a\\n') or raw.startswith(b'\\xff\\xd8\\xff')
+    allowed = raw.startswith(b'%PDF-') or raw.startswith(b'\x89PNG\r\n\x1a\n') or raw.startswith(b'\xff\xd8\xff')
     if not allowed:
         raise HTTPException(415, 'Only PDF, PNG and JPEG files are supported')
-    suffix = '.pdf' if raw.startswith(b'%PDF-') else '.png' if raw.startswith(b'\\x89PNG') else '.jpg'
+    suffix = '.pdf' if raw.startswith(b'%PDF-') else '.png' if raw.startswith(b'\x89PNG') else '.jpg'
     key = uuid4().hex + suffix
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     path = UPLOAD_DIR / key

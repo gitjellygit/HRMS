@@ -20,6 +20,8 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hrms}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-hrms}
     ports:
       - "127.0.0.1:8000:8000"
+    volumes:
+      - hrms_uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -35,3 +37,4 @@ services:
       - api
 volumes:
   pgdata:
+  hrms_uploads:
