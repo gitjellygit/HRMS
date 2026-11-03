@@ -2,10 +2,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, BriefcaseBusiness, BadgeCheck, CircleDollarSign, FileText, Plus, RefreshCw, Search, Users, X } from "lucide-react";
 
-type Project={id:number;project_number:string|null;name:string;client:string;candidate_name:string;vendor_name:string;prime_vendor_name:string;engagement_type:string|null;rate:number|null;currency:string|null;rate_unit:string|null;description:string;status:string};
-type Draft={name:string;client:string;candidate_name:string;vendor_name:string;prime_vendor_name:string;engagement_type:string;rate:string;currency:string;rate_unit:string;description:string};
+type Project={sourced_by_id:number|null;start_date:string|null;bonus_amount_inr:number|null;bonus_eligible_on:string|null;bonus_status:string;id:number;project_number:string|null;name:string;client:string;candidate_name:string;vendor_name:string;prime_vendor_name:string;engagement_type:string|null;rate:number|null;currency:string|null;rate_unit:string|null;description:string;status:string};
+type Draft={sourced_by_id:string;start_date:string;bonus_amount_inr:string;name:string;client:string;candidate_name:string;vendor_name:string;prime_vendor_name:string;engagement_type:string;rate:string;currency:string;rate_unit:string;description:string};
 type Field=keyof Draft;
-const blank:Draft={name:"",client:"",candidate_name:"",vendor_name:"",prime_vendor_name:"",engagement_type:"c2c",rate:"",currency:"USD",rate_unit:"hour",description:""};
+const blank:Draft={sourced_by_id:"",start_date:"",bonus_amount_inr:"",name:"",client:"",candidate_name:"",vendor_name:"",prime_vendor_name:"",engagement_type:"c2c",rate:"",currency:"USD",rate_unit:"hour",description:""};
 const types=[["c2c","C2C Contract"],["w2","W2 Contract"],["full_time","Full-time Employment"],["contract_1099","1099 Contract"],["fixed_price","Fixed-price Project"]];
 const currencies=["USD","INR","CAD","GBP","EUR","AED","SAR"];
 function validate(d:Draft):Partial<Record<Field,string>>{
@@ -15,6 +15,9 @@ function validate(d:Draft):Partial<Record<Field,string>>{
  if(!types.some(t=>t[0]===d.engagement_type))errors.engagement_type="Choose a valid engagement type.";
  if(!d.rate||!Number.isFinite(Number(d.rate))||Number(d.rate)<=0||Number(d.rate)>100000000)errors.rate="Enter a positive project rate.";
  if(!currencies.includes(d.currency))errors.currency="Choose a valid currency.";
+ if(!d.sourced_by_id||Number(d.sourced_by_id)<=0)errors.sourced_by_id="Select the employee who sourced the project.";
+ if(!d.start_date)errors.start_date="Select the project start date.";
+ if(!d.bonus_amount_inr||!Number.isFinite(Number(d.bonus_amount_inr))||Number(d.bonus_amount_inr)<=0)errors.bonus_amount_inr="Enter a bonus greater than zero (INR).";
  if(d.description.length>3000)errors.description="Description must be under 3000 characters.";
  return errors;
 }
@@ -39,6 +42,7 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
  const [filter,setFilter]=useState("all");
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
+ const [employees,setEmployees]=useState<{id:number;name:string;employee_code:string;status:string}[]>([]);
  const [team,setTeam]=useState<{project:Project;people:{name:string}[]}|null>(null);
  const load=useCallback(async()=>{
   setLoading(true);
@@ -48,7 +52,7 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
    setProjects(await res.json());
   }catch(e){setError((e as Error).message)}finally{setLoading(false)}
  },[api]);
- useEffect(()=>{void load()},[load]);
+ useEffect(()=>{void load();fetch(api+"/core/employees",{credentials:"include"}).then(r=>r.ok?r.json():[]).then(setEmployees).catch(()=>{});},[load,api]);
  const shown=useMemo(()=>projects.filter(p=>(filter==="all"||p.engagement_type===filter)&&(!search||[p.project_number,p.name,p.client,p.candidate_name,p.vendor_name,p.prime_vendor_name].some(v=>(v||"").toLowerCase().includes(search.toLowerCase())))),[projects,filter,search]);
  async function refreshNumber(){
   try{
@@ -66,7 +70,7 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
   if(Object.keys(found).length){setError("Please fix the highlighted fields.");return}
   setBusy(true);
   try{
-   const res=await fetch(api+"/project-management/projects",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({...draft,name:draft.name.trim(),client:draft.client.trim(),rate:Number(draft.rate)})});
+   const res=await fetch(api+"/project-management/projects",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({...draft,name:draft.name.trim(),client:draft.client.trim(),rate:Number(draft.rate),sourced_by_id:Number(draft.sourced_by_id),bonus_amount_inr:Number(draft.bonus_amount_inr)})});
    const data=await res.json().catch(()=>({}));
    if(!res.ok){const detail=serverError(data.detail);if(detail.field)setErrors({[detail.field]:detail.message});throw Error(detail.message)}
    setOpen(false);setNotice("Project "+data.project_number+" created successfully.");await load();
@@ -79,6 +83,17 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
    <input id={id} type={options?.type||"text"} value={draft[key]} placeholder={options?.placeholder} required={options?.required} aria-invalid={!!errors[key]} onChange={e=>edit(key,e.target.value)}/>
    {errors[key]&&<span className="field-error">{errors[key]}</span>}
   </div>;
+ }
+ async function awardBonus(project:Project){
+  if(!window.confirm("Create a planned 30-day milestone bonus of ₹"+Number(project.bonus_amount_inr||0).toLocaleString("en-IN")+" for the sourcing employee?"))return;
+  setBusy(true);setError("");
+  try{
+   const res=await fetch(api+"/project-management/projects/"+project.id+"/award-bonus",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"}});
+   const body=await res.json().catch(()=>({}));
+   if(!res.ok)throw Error(typeof body.detail==="string"?body.detail:"Unable to award bonus");
+   setNotice("Bonus of ₹"+Number(body.amount_inr).toLocaleString("en-IN")+" created. Awaiting approval/payment.");
+   await load();
+  }catch(e){setError((e as Error).message)}finally{setBusy(false)}
  }
  async function showTeam(project:Project){
   try{
@@ -97,7 +112,7 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
   </div><section className="employee-surface">
    <div className="employee-title-row"><div><h2>Project directory</h2><p>Client engagements, placement details and commercial terms.</p></div>{canCreate&&<button className="employee-primary" onClick={start}><Plus size={16}/> Add project</button>}</div>
    <div className="employee-filters"><div className="employee-search"><Search size={17}/><input aria-label="Search projects" value={search} onChange={e=>setSearch(e.target.value.toLowerCase())} placeholder="Search project, number, client or vendor…"/></div><select aria-label="Filter projects by type" value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All engagement types</option>{types.map(([value,label])=><option value={value} key={value}>{label}</option>)}</select><button className="employee-icon-button" aria-label="Refresh" onClick={load}><RefreshCw size={17}/></button></div>
-   <div className="table-wrap"><table className="project-table"><thead><tr><th>Project</th><th>Client / Candidate</th><th>Engagement</th><th>Rate</th><th>Vendor / Prime vendor</th><th>Status</th><th>Team</th></tr></thead><tbody>{shown.map(p=><tr key={p.id}><td><div className="project-main"><strong>{p.name}</strong><small>{p.project_number||"Legacy project"}</small></div></td><td><strong>{p.client||"—"}</strong><small>{p.candidate_name||"No candidate assigned"}</small></td><td>{types.find(x=>x[0]===p.engagement_type)?.[1]||"—"}</td><td className="project-rate">{money(p)}</td><td><strong>{p.vendor_name||"—"}</strong><small>{p.prime_vendor_name?"Prime: "+p.prime_vendor_name:"No prime vendor"}</small></td><td><span className={"pill "+p.status}>{p.status}</span></td><td><button className="employee-link" onClick={()=>showTeam(p)}>View team</button></td></tr>)}</tbody></table>{loading?<div className="empty">Loading projects…</div>:!shown.length?<div className="empty">No matching projects found.</div>:null}</div><div className="employee-count">Showing {shown.length} of {projects.length} projects</div>
+   <div className="table-wrap"><table className="project-table"><thead><tr><th>Project</th><th>Client / Candidate</th><th>Engagement</th><th>Rate</th><th>Vendor / Prime vendor</th><th>Sourced by</th><th>30-day bonus</th><th>Status</th><th>Team</th></tr></thead><tbody>{shown.map(p=><tr key={p.id}><td><div className="project-main"><strong>{p.name}</strong><small>{p.project_number||"Legacy project"}</small></div></td><td><strong>{p.client||"—"}</strong><small>{p.candidate_name||"No candidate assigned"}</small></td><td>{types.find(x=>x[0]===p.engagement_type)?.[1]||"—"}</td><td className="project-rate">{money(p)}</td><td><strong>{p.vendor_name||"—"}</strong><small>{p.prime_vendor_name?"Prime: "+p.prime_vendor_name:"No prime vendor"}</small></td><td>{employees.find(e=>e.id===p.sourced_by_id)?.name||"Not assigned"}</td><td><div className="project-bonus"><strong>{p.bonus_amount_inr?"₹"+Number(p.bonus_amount_inr).toLocaleString("en-IN"):"—"}</strong><small>{p.bonus_eligible_on?"Eligible "+p.bonus_eligible_on:"Not configured"} · {p.bonus_status.replace("_"," ")}</small>{canCreate&&p.bonus_status==="eligible"&&<button className="employee-link" disabled={busy} onClick={()=>awardBonus(p)}>Award bonus</button>}</div></td><td><span className={"pill "+p.status}>{p.status}</span></td><td><button className="employee-link" onClick={()=>showTeam(p)}>View team</button></td></tr>)}</tbody></table>{loading?<div className="empty">Loading projects…</div>:!shown.length?<div className="empty">No matching projects found.</div>:null}</div><div className="employee-count">Showing {shown.length} of {projects.length} projects</div>
   </section></>:<section className="employee-surface employee-editor">
    <div className="employee-editor-top"><div><button className="employee-back" onClick={()=>setOpen(false)}><ArrowLeft size={16}/> Project directory</button><h2>Create a project</h2><p>Complete the client and engagement details. Fields marked * are required.</p></div><button className="employee-icon-button" onClick={()=>setOpen(false)} aria-label="Close"><X size={18}/></button></div>
    <form onSubmit={save} noValidate>
@@ -106,6 +121,10 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
       {field("name","Project name",{required:true,placeholder:"e.g. Java Modernization"})}
       {field("client","Client name",{required:true,placeholder:"e.g. Acme Corporation"})}
       {field("candidate_name","Candidate name",{placeholder:"e.g. Employee or consultant name"})}
+      <div className="employee-field"><label htmlFor="proj-sourced">Sourced by employee <span className="required">*</span></label><select id="proj-sourced" value={draft.sourced_by_id} aria-invalid={!!errors.sourced_by_id} onChange={e=>edit("sourced_by_id",e.target.value)}><option value="">Select employee</option>{employees.filter(e=>e.status==="active").map(e=><option key={e.id} value={e.id}>{e.name} · {e.employee_code||e.id}</option>)}</select>{errors.sourced_by_id&&<span className="field-error">{errors.sourced_by_id}</span>}</div>
+      {field("start_date","Project start date",{type:"date",required:true})}
+      {field("bonus_amount_inr","30-day employee bonus (INR)",{type:"number",required:true,placeholder:"e.g. 10000"})}
+      <div className="employee-field"><label>Bonus milestone</label><p className="field-help">Eligible after 30 calendar days from the start date. HR awards it once eligible; payout follows bonus approval.</p></div>
     </div></div>
     <div className="employee-group"><div className="employee-group-head"><Users size={18}/><div><h3>Vendor information</h3><p>Commercial relationships for this engagement</p></div></div><div className="employee-form-grid">
       {field("vendor_name","Vendor name",{placeholder:"Vendor company"})}
