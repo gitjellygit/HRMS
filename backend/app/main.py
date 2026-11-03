@@ -310,6 +310,14 @@ def initialize():
         last, called = connection.execute(text("SELECT last_value, is_called FROM hrms_employee_code_seq")).one()
         if existing > (last if called else last - 1):
             connection.execute(text("SELECT setval('hrms_employee_code_seq', :number, true)"), {"number": existing})
+    with engine.begin() as connection:
+        connection.execute(text("CREATE SEQUENCE IF NOT EXISTS hrms_project_number_seq START WITH 1"))
+        used_numbers = connection.execute(text("SELECT project_number FROM project_details")).scalars().all()
+        highest = max((int(code[5:]) for code in used_numbers
+                       if code.startswith("JG-P-") and code[5:].isdigit()), default=0)
+        last, called = connection.execute(text("SELECT last_value, is_called FROM hrms_project_number_seq")).one()
+        if highest > (last if called else last-1):
+            connection.execute(text("SELECT setval('hrms_project_number_seq', :number, true)"), {"number":highest})
     email = os.environ.get("ADMIN_EMAIL")
     passwd = os.environ.get("ADMIN_PASSWORD")
     if email and passwd and len(passwd) >= 12:
@@ -637,3 +645,7 @@ app.include_router(employee_core_router)
 # New leave workflows are separate from the legacy /leaves endpoints.
 from .leave_management import router as leave_management_router  # noqa: E402
 app.include_router(leave_management_router)
+
+# Keep the richer project API separate from the original /projects endpoints.
+from .project_management import router as project_management_router  # noqa: E402
+app.include_router(project_management_router)
