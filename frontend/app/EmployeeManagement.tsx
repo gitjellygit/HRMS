@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, BadgeCheck, BriefcaseBusiness, FileUp, IdCard, Plus, RefreshCw, Search, ShieldCheck, Users, X } from "lucide-react";
 
+type OrgUnit={id:number;kind:string;name:string;code:string};
 type Employee = {
  id:number; employee_code:string; name:string; email:string; designation:string; department:string;
  role:string; status:string; joining_date:string; phone:string;
@@ -57,7 +58,12 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
  const [showPassword,setShowPassword]=useState(false);
  const [document,setDocument]=useState<File|null>(null);
  const [master,setMaster]=useState<Record<string,string>>({});
- const [units,setUnits]=useState<{id:number;kind:string;name:string;code:string}[]>([]);
+ const [units,setUnits]=useState<OrgUnit[]>([]);
+ const [addingDept,setAddingDept]=useState(false);
+ const [deptName,setDeptName]=useState("");
+ const [deptCode,setDeptCode]=useState("");
+ const [deptBusy,setDeptBusy]=useState(false);
+ const [deptError,setDeptError]=useState("");
  const [docsFor,setDocsFor]=useState<Employee|null>(null);
  const [documents,setDocuments]=useState<{id:number;name:string;type:string}[]>([]);
  const [docError,setDocError]=useState("");
@@ -69,7 +75,12 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
    setEmployees(await response.json());
   }catch(err){setFailure((err as Error).message)}finally{setLoading(false)}
  },[api]);
- useEffect(()=>{void load();fetch(api+"/core/units",{credentials:"include"}).then(r=>r.ok?r.json():[]).then(setUnits).catch(()=>{});},[load,api]);
+ const loadUnits=useCallback(async()=>{
+  const response=await fetch(api+"/core/units",{credentials:"include"});
+  if(!response.ok)throw Error("Unable to retrieve organization units.");
+  setUnits(await response.json());
+ },[api]);
+ useEffect(()=>{void load();void loadUnits().catch(e=>setFailure((e as Error).message));},[load,loadUnits]);
  const departments=useMemo(()=>[...new Set(employees.map(e=>e.department).filter(Boolean))].sort(),[employees]);
  const shown=useMemo(()=>employees.filter(e=>{
   const term=search.toLowerCase().trim();
@@ -81,11 +92,37 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
  }
  async function openForm(){
   setDraft({...blank,joining_date:new Date().toLocaleDateString("en-CA")});
-  setErrors({});setFailure("");setMessage("");setDocument(null);setMaster({});setOpen(true);
+  setErrors({});setFailure("");setMessage("");setDocument(null);setMaster({});
+  setAddingDept(false);setDeptName("");setDeptCode("");setDeptError("");
+  setOpen(true);
+  void loadUnits().catch(e=>setFailure((e as Error).message));
   try{
    const response=await fetch(api+"/employees/next-code",{credentials:"include"});
    if(response.ok){const data=await response.json();setDraft(d=>({...d,employee_code:data.employee_code}))}
   }catch{/* Preview is optional: the backend allocates the authoritative ID on save. */}
+ }
+ function departmentCode(name:string){
+  return name.trim().toUpperCase().replace(/[^A-Z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,35);
+ }
+ async function createDepartment(){setDeptError("");
+  const name=deptName.trim().replace(/\\s+/g," ");
+  const code=deptCode.trim().toUpperCase();
+  if(name.length<2){setDeptError("Enter a department name with at least 2 characters.");return}
+  if(!/^[A-Z0-9][A-Z0-9_-]{0,34}$/.test(code)){setDeptError("Department code must use letters, numbers, hyphens or underscores.");return}
+  setDeptBusy(true);
+  try{
+   const response=await fetch(api+"/core/units",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({kind:"department",name,code})});
+   const result=await response.json().catch(()=>({}));
+   if(!response.ok){
+    const detail=result.detail;
+    throw Error(typeof detail==="string"?detail:detail?.message||"Could not create the department.");
+   }
+   await loadUnits();
+   edit("department",result.name);
+   setMaster(previous=>({...previous,department_id:String(result.id)}));
+   setAddingDept(false);setDeptName("");setDeptCode("");
+  }catch(err){setDeptError((err as Error).message)}finally{setDeptBusy(false)}
  }
  async function generateCode(){
   try{
@@ -97,7 +134,9 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
  }
  async function submit(event:React.FormEvent<HTMLFormElement>){
   event.preventDefault();
-  const found=validate(draft);setErrors(found);setFailure("");setMessage("");
+  const found=validate(draft);
+  if(!master.department_id||!units.some(u=>u.kind==="department"&&String(u.id)===master.department_id))found.department="Select a department from the list.";
+  setErrors(found);setFailure("");setMessage("");
   if(Object.keys(found).length){setFailure("Please correct the highlighted fields before saving.");return;}
   setSaving(true);
   try{
@@ -181,13 +220,43 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
       <div className="employee-field"><label htmlFor="employee-code">Employee ID</label><div className="employee-code-row"><input id="employee-code" readOnly value={draft.employee_code||"Generating…"} aria-label="Generated employee ID"/><button type="button" onClick={generateCode}><RefreshCw size={15}/> Generate ID</button></div><span className="field-help">Preview only. The final unique ID is assigned when saved.</span></div>
       {field("joining_date","Date of joining",{required:true,type:"date"})}
       {field("designation","Designation",{required:true,placeholder:"e.g. Software Engineer"})}
-      {field("department","Department",{required:true,placeholder:"e.g. Engineering"})}
+      <div className="employee-field employee-department-picker">
+        <label htmlFor="emp-department">Department <span className="required">*</span></label>
+        <div className="employee-department-row">
+         <select id="emp-department" required value={master.department_id||""} aria-invalid={!!errors.department}
+          onChange={e=>{
+           const selected=units.find(u=>u.kind==="department"&&String(u.id)===e.target.value);
+           setMaster(previous=>({...previous,department_id:e.target.value}));
+           edit("department",selected?.name||"");
+          }}>
+          <option value="">Select department</option>
+          {units.filter(u=>u.kind==="department").map(u=><option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}
+         </select>
+         <button type="button" className="employee-cancel" onClick={()=>{setAddingDept(v=>!v);setDeptError("")}}>
+          <Plus size={15}/> {addingDept?"Close":"Add department"}
+         </button>
+        </div>
+        {errors.department&&<span className="field-error">{errors.department}</span>}
+        {!units.some(u=>u.kind==="department")&&<span className="field-help">No departments available. Add your first department.</span>}
+        {addingDept&&<div className="employee-add-dept-form">
+          <strong>Create department</strong>
+          <label htmlFor="new-dept-name">Department name</label>
+          <input id="new-dept-name" value={deptName} onChange={e=>{setDeptName(e.target.value);setDeptCode(departmentCode(e.target.value))}}
+           placeholder="e.g. Engineering" minLength={2} maxLength={120} required/>
+          <label htmlFor="new-dept-code">Department code</label>
+          <input id="new-dept-code" value={deptCode} onChange={e=>setDeptCode(e.target.value.toUpperCase())}
+           placeholder="e.g. ENGINEERING" maxLength={35} required/>
+          {deptError&&<span className="field-error" role="alert">{deptError}</span>}
+          <div className="employee-add-dept-actions"><button type="button" className="employee-cancel" onClick={()=>setAddingDept(false)}>Cancel</button>
+           <button type="button" onClick={()=>void createDepartment()} className="employee-primary" disabled={deptBusy}>{deptBusy?"Creating…":"Create department"}</button></div>
+        </div>}
+      </div>
       {field("employment_type","Employment type",{choices:["Full time","Part time","Contract","Intern"]})}
       {field("role","System access",{choices:currentRole==="admin"||currentRole==="super_admin"?["employee","manager","hr","accountant","super_admin"]:["employee","manager","hr","accountant"]})}
       {field("work_location","Work location",{placeholder:"e.g. Noida · Hybrid"})}
       <div className="employee-field"><label htmlFor="core-manager">Reporting manager</label><select id="core-manager" value={master.manager_id||""} onChange={e=>setMaster(v=>({...v,manager_id:e.target.value}))}><option value="">No reporting manager</option>{employees.filter(e=>e.status==="active").map(e=><option key={e.id} value={e.id}>{e.name} · {e.employee_code||e.id}</option>)}</select><span className="field-help">Used for future approval routing</span></div>
       <div className="employee-field"><label htmlFor="core-hod">Second-level manager / HOD</label><select id="core-hod" value={master.hod_id||""} onChange={e=>setMaster(v=>({...v,hod_id:e.target.value}))}><option value="">Optional HOD</option>{employees.filter(e=>e.status==="active").map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
-      {(["department","designation","grade","branch","cost_center"] as const).map(kind=><div key={kind} className="employee-field"><label htmlFor={"org-"+kind}>{kind.replace("_"," ").replace(/^./,c=>c.toUpperCase())} unit</label><select id={"org-"+kind} value={master[kind+"_id"]||""} onChange={e=>{const selected=units.find(u=>String(u.id)===e.target.value);setMaster(v=>({...v,[kind+"_id"]:e.target.value}));if(selected&&(kind==="department"||kind==="designation"))edit(kind,selected.name)}}><option value="">Not assigned</option>{units.filter(u=>u.kind===kind).map(u=><option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}</select></div>)}
+      {(["designation","grade","branch","cost_center"] as const).map(kind=><div key={kind} className="employee-field"><label htmlFor={"org-"+kind}>{kind.replace("_"," ").replace(/^./,c=>c.toUpperCase())} unit</label><select id={"org-"+kind} value={master[kind+"_id"]||""} onChange={e=>{const selected=units.find(u=>String(u.id)===e.target.value);setMaster(v=>({...v,[kind+"_id"]:e.target.value}));if(selected&&(kind==="department"||kind==="designation"))edit(kind,selected.name)}}><option value="">Not assigned</option>{units.filter(u=>u.kind===kind).map(u=><option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}</select></div>)}
      </div>
     </div>
     <div className="employee-group"><div className="employee-group-head"><BriefcaseBusiness size={18}/><div><h3>Project incentive policy</h3><p>Leave blank to inherit the company default on every sourced project</p></div></div><div className="employee-form-grid"><div className="employee-field"><label htmlFor="emp-project-bonus">Bonus per sourced project (INR)</label><input id="emp-project-bonus" type="number" min="0" max="100000000" step="0.01" value={master.project_bonus_inr||""} onChange={e=>setMaster(m=>({...m,project_bonus_inr:e.target.value}))} placeholder="Company policy default (₹10,000)"/><span className="field-help">HR-managed, per-project milestone bonus. Optional employee-specific amount; blank inherits Policies.</span></div></div></div>
