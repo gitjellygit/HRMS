@@ -633,3 +633,7 @@ def download_document(document_id: int, user: Employee = Depends(current_user), 
 # Register additive employee-core tables and routes before application startup.
 from .employee_core import router as employee_core_router  # noqa: E402
 app.include_router(employee_core_router)
+
+# New leave workflows are separate from the legacy /leaves endpoints.
+from .leave_management import router as leave_management_router  # noqa: E402
+app.include_router(leave_management_router)
