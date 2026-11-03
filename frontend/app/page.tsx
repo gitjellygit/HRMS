@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import Login from "./Login";
 import EmployeeManagement from "./EmployeeManagement";
 import CoreWorkspace from "./CoreWorkspace";
-import { LayoutDashboard, Users, Clock3, CalendarDays, BriefcaseBusiness, Wallet, Award, LogOut, GitBranch, Building2, UserRound, ShieldCheck, FileDown } from "lucide-react";
+import HRDesk from "./HRDesk";
+import { LayoutDashboard, Users, Clock3, CalendarDays, BriefcaseBusiness, Wallet, Award, LogOut, GitBranch, Building2, UserRound, ShieldCheck, FileDown, ClipboardList } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 type Employee = { id:number; name:string; email:string; role:string; designation:string; department:string; joining_date:string; status:string };
@@ -17,6 +18,7 @@ const sections = [
   { id:"projects",label:"Projects",Icon:BriefcaseBusiness },
   { id:"bonuses",label:"Bonuses",Icon:Wallet },
   { id:"appraisals",label:"Appraisals",Icon:Award },
+  { id:"hrdesk",label:"HR overview",Icon:ClipboardList },
   { id:"organization",label:"Organization",Icon:Building2 },
   { id:"orgchart",label:"Org chart",Icon:GitBranch },
   { id:"profile",label:"My profile",Icon:UserRound },
@@ -40,7 +42,7 @@ export default function Home() {
   const canSeeEmployees = canFinance;
   const visible = sections.filter(s=>{
     if(["employees","bonuses"].includes(s.id)&&!canSeeEmployees)return false;
-    if(["organization","bulk"].includes(s.id)&&!canHR)return false;
+    if(["organization","bulk","hrdesk"].includes(s.id)&&!canHR)return false;
     if(s.id==="approvals"&&!(canHR||user?.role==="employee"||user?.role==="manager"))return false;
     return true;
   });
@@ -61,7 +63,7 @@ export default function Home() {
     } catch(e){setError((e as Error).message);}
   }
   useEffect(()=>{request("/me").then(setUser).catch(()=>{}).finally(()=>setReady(true));},[]);
-  useEffect(()=>{if(user&&!["organization","orgchart","profile","approvals","bulk","employee-record"].includes(section))refresh(section);},[user,section]);
+  useEffect(()=>{if(user&&!["organization","orgchart","profile","approvals","bulk","employee-record","hrdesk"].includes(section))refresh(section);},[user,section]);
   async function logout(){try{await request("/auth/logout","POST");}finally{setUser(null);setRows([]);}}
   async function submit(e:React.FormEvent<HTMLFormElement>){
     e.preventDefault();setLoading(true);setError("");
@@ -138,7 +140,7 @@ export default function Home() {
   if(!ready)return <div className="login-wrap">Loading workspace…</div>;
   if(!user)return <Login api={API} onLogin={setUser}/>;
   return <div className="shell"><aside className="sidebar"><div className="brand">Jelly<span>Git</span> HRMS</div><nav className="menu">{visible.map(({id,label,Icon})=><button key={id} onClick={()=>{setSection(id);setForm(false);setError("")}} className={section===id?"active":""}><Icon size={18}/>{label}</button>)}<button onClick={logout}><LogOut size={18}/>Sign out</button></nav></aside><main className="content"><div className="top"><div><h1 className="title">{section==="employee-record"?"Employee master record":sections.find(s=>s.id===section)?.label}</h1><div className="muted">Your team, in one place</div></div><div className="user"><b>{user.name}</b><br/><span className="muted">{user.role}</span></div></div>{error&&<div className="error">{error}</div>}
-    {section==="employees"?<EmployeeManagement api={API} canCreate={Boolean(canHR)} currentRole={user.role} onOpenEmployee={id=>{setSelectedEmployeeId(id);setSection("employee-record")}}/>:
+    {section==="hrdesk"?<HRDesk api={API}/>:section==="employees"?<EmployeeManagement api={API} canCreate={Boolean(canHR)} currentRole={user.role} onOpenEmployee={id=>{setSelectedEmployeeId(id);setSection("employee-record")}}/>:
     ["employee-record","organization","orgchart","profile","approvals","bulk"].includes(section)?
       <CoreWorkspace api={API} mode={(section==="employee-record"?"profile":section==="organization"?"organization":section==="orgchart"?"orgchart":section==="profile"?"profile":section==="approvals"?"approvals":"bulk")}
         user={user as any} employeeId={section==="employee-record"?selectedEmployeeId:null}
