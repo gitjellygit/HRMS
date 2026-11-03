@@ -35,7 +35,7 @@ class ProjectBonusAward(Base):
     __tablename__ = "project_bonus_awards"
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"),primary_key=True)
     bonus_id: Mapped[int] = mapped_column(ForeignKey("bonuses.id"),unique=True)
-    awarded_by_id: Mapped[int] = mapped_column(ForeignKey("employees.id"))
+    awarded_by_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"), nullable=True)
 
 
 class ProjectCreate(BaseModel):
@@ -141,6 +141,44 @@ def get_project(project_id: int,user: Employee = Depends(current_user),db: Sessi
         raise HTTPException(404,"Project not found")
     awarded=db.get(ProjectBonusAward,project_id) is not None
     return serialize(project,db.get(ProjectDetail,project_id),{project_id} if awarded else set())
+
+
+def sync_matured_bonuses(db: Session) -> int:
+    """Idempotently create planned bonus entries when a project reaches 30 days.
+
+    Called by the running API's hourly scheduler and on startup.
+    Payment/approval remains a separate, controlled workflow.
+    """
+    due=db.scalars(select(ProjectDetail).where(
+        ProjectDetail.start_date.is_not(None),
+        ProjectDetail.sourced_by_id.is_not(None),
+        ProjectDetail.bonus_amount_inr>0,
+        ProjectDetail.start_date<=date.today()-timedelta(days=30))).all()
+    created=0
+    for detail in due:
+        try:
+            db.execute(select(func.pg_advisory_xact_lock(83001,detail.project_id)))
+            if db.get(ProjectBonusAward,detail.project_id):
+                db.commit()
+                continue
+            project=db.get(Project,detail.project_id)
+            owner=db.get(Employee,detail.sourced_by_id)
+            if not project or project.status!="active" or not owner or owner.status!="active":
+                db.commit()
+                continue
+            eligible_on=detail.start_date+timedelta(days=30)
+            bonus=Bonus(employee_id=owner.id,amount=detail.bonus_amount_inr,
+                        period=eligible_on.strftime("%Y-%m"),
+                        reason=f"30-day project milestone: {project.name} (#{project.id})",status="planned")
+            db.add(bonus)
+            db.flush()
+            db.add(ProjectBonusAward(project_id=project.id,bonus_id=bonus.id,awarded_by_id=None))
+            db.commit()
+            created+=1
+        except Exception:
+            db.rollback()
+            raise
+    return created
 
 
 @router.post("/projects/{project_id}/award-bonus",status_code=201)

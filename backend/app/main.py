@@ -668,3 +668,42 @@ app.include_router(leave_management_router)
 # Keep the richer project API separate from the original /projects endpoints.
 from .project_management import router as project_management_router  # noqa: E402
 app.include_router(project_management_router)
+
+
+# Milestone reconciliation runs on startup and hourly while the API is running.
+# Unique project award records and database advisory locks prevent duplicate awards
+# across multiple API instances. Move this to a dedicated worker before production.
+import asyncio
+import logging
+
+_bonus_sync_task = None
+
+async def _bonus_reconciler():
+    from .project_management import sync_matured_bonuses
+    while True:
+        try:
+            await asyncio.to_thread(_bonus_sync_once, sync_matured_bonuses)
+        except Exception:
+            logging.getLogger(__name__).exception("Project bonus reconciliation failed")
+        await asyncio.sleep(3600)
+
+def _bonus_sync_once(sync_function):
+    with SessionLocal() as session:
+        return sync_function(session)
+
+@app.on_event("startup")
+async def start_bonus_reconciler():
+    global _bonus_sync_task
+    if os.getenv("PROJECT_BONUS_AUTO_SYNC", "true").lower()=="true":
+        _bonus_sync_task=asyncio.create_task(_bonus_reconciler())
+
+@app.on_event("shutdown")
+async def stop_bonus_reconciler():
+    global _bonus_sync_task
+    if _bonus_sync_task:
+        _bonus_sync_task.cancel()
+        try:
+            await _bonus_sync_task
+        except asyncio.CancelledError:
+            pass
+        _bonus_sync_task=None
