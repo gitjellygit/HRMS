@@ -1,9 +1,9 @@
 name: HRMS checks
 on:
   push:
-    branches: [feature/hrms-mvp, main]
+    branches: [feature/hrms-mvp, feature/employee-core-1-10, main]
   pull_request:
-    branches: [main]
+    branches: [main, feature/hrms-mvp]
 jobs:
   backend:
     runs-on: ubuntu-latest
@@ -14,6 +14,20 @@ jobs:
           python-version: '3.12'
       - name: Verify Python syntax
         run: python -m compileall -q backend/app
+      - name: Install backend
+        run: pip install -r backend/requirements.txt
+      - name: Import backend and validate OpenAPI
+        env:
+          JWT_SECRET: test-only-long-secret-1234567890-abcdefgh
+        run: |
+          PYTHONPATH=backend python - <<'PY'
+          from app.main import app
+          paths=app.openapi()['paths']
+          assert '/core/employees' in paths
+          assert '/core/employees-import' in paths
+          assert '/core/org-chart' in paths
+          print('Validated',len(paths),'API routes')
+          PY
   frontend:
     runs-on: ubuntu-latest
     defaults:
