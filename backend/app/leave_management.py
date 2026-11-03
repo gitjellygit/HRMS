@@ -445,7 +445,7 @@ def allocate(body: EntitlementIn,user: Employee = Depends(hr_only),db: Session =
 
 
 @router.get("/balances")
-def balances(employee_id: int | None = None,year: int=Query(default=date.today().year,ge=2020,le=2100),
+def balances(employee_id: int | None = None,year: int=Query(default=fy_start_year(date.today()),ge=2020,le=2100),
              user: Employee = Depends(current_user),db: Session = Depends(db_session)):
     target=employee_id or user.id
     if target!=user.id and user.role not in ADMIN:
