@@ -1,13 +1,24 @@
 """Leave management integration coverage against disposable PostgreSQL."""
 from datetime import date, timedelta
+from decimal import Decimal
 from fastapi.testclient import TestClient
 from app.main import app
+from app.leave_management import prorated_entitlement, fy_start_year
 
 ORIGIN={"Origin":"http://localhost:3000"}
 def account(name,email,role):
     return {"name":name,"email":email,"password":"TestingPassword123!",
             "role":role,"designation":"Team Member","department":"Engineering",
             "joining_date":"2026-11-03"}
+
+def test_financial_year_proration():
+    from decimal import Decimal
+    assert fy_start_year(date(2027, 3, 31))==2026
+    assert fy_start_year(date(2027, 4, 1))==2027
+    assert prorated_entitlement(Decimal("12"),date(2026,12,1),2026)==Decimal("4")
+    assert prorated_entitlement(Decimal("12"),date(2026,4,1),2026)==Decimal("12")
+    assert prorated_entitlement(Decimal("12"),date(2027,4,1),2026)==Decimal("0")
+
 
 def test_leave_workflow():
     with TestClient(app) as c:
@@ -27,7 +38,11 @@ def test_leave_workflow():
             "probation_allowed":True,"active":True})
         assert policy.status_code==200,policy.text
         assert c.get("/leave/policies").status_code==200
-        assert c.get("/leave/balances?employee_id="+str(employee_id)).json()[0]["remaining"]==12
+        expected=float(prorated_entitlement(Decimal("12"),date(2026,11,3),2026))
+        assert c.get("/leave/balances?employee_id="+str(employee_id)+"&year=2026").json()[0]["remaining"]==expected
+        desk=c.get("/leave/hr-overview?fy=2026")
+        assert desk.status_code==200,desk.text
+        assert next(e for e in desk.json()["employees"] if e["id"]==employee_id)["leave_balances"][0]["remaining"]==expected
         c.post("/auth/logout",headers=ORIGIN)
         assert c.post("/auth/login",json={"email":"leave.employee@example.org","password":"TestingPassword123!"}).status_code==200
         assert c.get("/leave/balances?employee_id="+str(manager_id)).status_code==403
@@ -38,7 +53,7 @@ def test_leave_workflow():
         assert requested.status_code==201,requested.text
         assert requested.json()["days"]==0.5
         request_id=requested.json()["id"]
-        assert c.get("/leave/balances").json()[0]["remaining"]==11.5
+        assert c.get("/leave/balances?year=2026").json()[0]["remaining"]==expected-0.5
         assert c.get("/leave/requests?scope=approvals").json()==[]
         assert c.post("/leave/requests/"+str(request_id)+"/review",headers=ORIGIN,json={"action":"approve"}).status_code==403
         c.post("/auth/logout",headers=ORIGIN)
@@ -63,7 +78,7 @@ def test_leave_workflow():
         assert any(row["id"]==request_id and row["cancellation_requested"] for row in cancellation_queue)
         cancelled=c.post("/leave/requests/"+str(request_id)+"/review",headers=ORIGIN,json={"action":"cancel_approve"})
         assert cancelled.status_code==200 and cancelled.json()["status"]=="cancelled",cancelled.text
-        assert c.get("/leave/balances?employee_id="+str(employee_id)).json()[0]["remaining"]==12
+        assert c.get("/leave/balances?employee_id="+str(employee_id)+"&year=2026").json()[0]["remaining"]==expected
         holiday=c.post("/leave/holidays",headers=ORIGIN,json={"name":"Office Holiday","holiday_date":"2026-11-10","location":"all","optional":False})
         assert holiday.status_code==201,holiday.text
         assert len(c.get("/leave/holidays?year=2026").json())>=1
