@@ -88,6 +88,7 @@ export default function Home() {
   };
   function humanDate(value?:string){return value?new Date(value).toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"}):"—"}
   function cell(row:Entry,key:string){
+    if(key==="Documents"&&!canHR)return "—";
     if(key==="Documents")return <button className="secondary" onClick={async()=>{
       try {
         const docs=await request("/employees/"+row.id+"/documents");

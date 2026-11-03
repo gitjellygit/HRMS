@@ -508,7 +508,8 @@ def reset_password(body: ResetConfirmIn, db: Session = Depends(db_session)):
     if user.status != 'active':
         raise HTTPException(400, 'Invalid or expired reset link')
     user.password_hash = passwords.hash(body.password)
-    item.used_at = now
+    for reset in db.scalars(select(PasswordReset).where(PasswordReset.employee_id == user.id, PasswordReset.used_at.is_(None))).all():
+        reset.used_at = now
     db.commit()
     return {"ok": True}
 
