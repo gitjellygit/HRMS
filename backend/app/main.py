@@ -318,6 +318,14 @@ def initialize():
         last, called = connection.execute(text("SELECT last_value, is_called FROM hrms_project_number_seq")).one()
         if highest > (last if called else last-1):
             connection.execute(text("SELECT setval('hrms_project_number_seq', :number, true)"), {"number":highest})
+    # Additive local schema upgrade for existing project_details installations.
+    # A proper Alembic migration is required before production release.
+    with engine.begin() as connection:
+        for field,ddl in [
+            ("sourced_by_id","INTEGER REFERENCES employees(id)"),
+            ("start_date","DATE"),
+            ("bonus_amount_inr","NUMERIC(12,2) NOT NULL DEFAULT 0")]:
+            connection.execute(text(f"ALTER TABLE project_details ADD COLUMN IF NOT EXISTS {field} {ddl}"))
     email = os.environ.get("ADMIN_EMAIL")
     passwd = os.environ.get("ADMIN_PASSWORD")
     if email and passwd and len(passwd) >= 12:
