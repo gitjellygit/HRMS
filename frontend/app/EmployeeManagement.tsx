@@ -105,7 +105,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
   return name.trim().toUpperCase().replace(/[^A-Z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,35);
  }
  async function createDepartment(){setDeptError("");
-  const name=deptName.trim().replace(/\\s+/g," ");
+  const name=deptName.trim().replace(/\s+/g," ");
   const code=deptCode.trim().toUpperCase();
   if(name.length<2){setDeptError("Enter a department name with at least 2 characters.");return}
   if(!/^[A-Z0-9][A-Z0-9_-]{0,34}$/.test(code)){setDeptError("Department code must use letters, numbers, hyphens or underscores.");return}
