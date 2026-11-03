@@ -59,6 +59,8 @@ def test_leave_workflow():
         assert withdrawn.status_code==200 and withdrawn.json()["cancellation_requested"]
         c.post("/auth/logout",headers=ORIGIN)
         assert c.post("/auth/login",json={"email":"admin@example.com","password":"test-admin-password-12345"}).status_code==200
+        cancellation_queue=c.get("/leave/requests?scope=approvals").json()
+        assert any(row["id"]==request_id and row["cancellation_requested"] for row in cancellation_queue)
         cancelled=c.post("/leave/requests/"+str(request_id)+"/review",headers=ORIGIN,json={"action":"cancel_approve"})
         assert cancelled.status_code==200 and cancelled.json()["status"]=="cancelled",cancelled.text
         assert c.get("/leave/balances?employee_id="+str(employee_id)).json()[0]["remaining"]==12

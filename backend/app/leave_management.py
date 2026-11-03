@@ -418,6 +418,8 @@ def request_leave(body: LeaveIn,user: Employee = Depends(current_user),db: Sessi
         LeaveRequest.start_date<=body.end_date,LeaveRequest.end_date>=body.start_date))
     if overlap:
         raise HTTPException(409,"An existing leave request overlaps these dates")
+    # Serialize overlapping submissions and balance deductions per employee/year.
+    db.execute(select(func.pg_advisory_xact_lock(user.id,body.start_date.year)))
     if body.leave_type!="loss_of_pay":
         available=balance(db,user.id,body.start_date.year,body.leave_type)
         if available["remaining"]<float(days):
@@ -551,7 +553,10 @@ def history(request_id: int,user: Employee = Depends(current_user),db: Session =
     row=db.get(LeaveRequest,request_id)
     if not row:
         raise HTTPException(404,"Leave request not found")
-    if row.employee_id!=user.id and user.role not in ADMIN and row.manager_snapshot_id!=user.id and user.id not in active_delegate(db,row.manager_snapshot_id,date.today()) if row.manager_snapshot_id else row.employee_id!=user.id and user.role not in ADMIN:
+    allowed = row.employee_id==user.id or user.role in ADMIN or row.manager_snapshot_id==user.id
+    if not allowed and row.manager_snapshot_id is not None:
+        allowed = user.id in active_delegate(db,row.manager_snapshot_id,date.today())
+    if not allowed:
         raise HTTPException(403,"Not permitted")
     events=db.scalars(select(ApprovalEvent).where(ApprovalEvent.request_id==request_id).order_by(ApprovalEvent.id)).all()
     return [{"action":e.action,"stage":e.stage,"actor_id":e.actor_id,"at":e.at,"note":e.note} for e in events]
