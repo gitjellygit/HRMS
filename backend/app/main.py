@@ -1,12 +1,19 @@
 """Small-team HRMS API. Keep all HR/admin checks server-side."""
 import enum
 import os
+import secrets
+import hashlib
+import smtplib
+import ssl
+from email.message import EmailMessage
+from pathlib import Path
+from uuid import uuid4
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status, Request, Response, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -21,7 +28,10 @@ if len(SECRET) < 32:
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(engine)
 passwords = PasswordHash.recommended()
-bearer = HTTPBearer()
+bearer = HTTPBearer(auto_error=False)
+COOKIE_NAME = 'hrms_session'
+COOKIE_SECURE = os.getenv('COOKIE_SECURE', 'false').lower() == 'true'
+UPLOAD_DIR = Path(os.getenv('UPLOAD_DIR', '/app/uploads'))
 
 class Base(DeclarativeBase):
     pass
@@ -96,9 +106,43 @@ class Document(Base):
     storage_key: Mapped[str] = mapped_column(String(255))
     # Metadata only for MVP. File upload/download requires protected object storage.
 
+
+class PasswordReset(Base):
+    __tablename__ = "password_resets"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+class EmployeeProfile(Base):
+    __tablename__ = "employee_profiles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), unique=True, index=True)
+    employee_code: Mapped[str] = mapped_column(String(40), default="")
+    work_location: Mapped[str] = mapped_column(String(100), default="")
+    employment_type: Mapped[str] = mapped_column(String(40), default="Full time")
+    manager_name: Mapped[str] = mapped_column(String(120), default="")
+    emergency_contact: Mapped[str] = mapped_column(String(100), default="")
+
 class LoginIn(BaseModel):
     email: EmailStr
     password: str
+    remember: bool = False
+
+class ResetRequestIn(BaseModel):
+    email: EmailStr
+
+class ResetConfirmIn(BaseModel):
+    token: str
+    password: str = Field(min_length=12, max_length=256)
+
+class ProfileIn(BaseModel):
+    employee_code: str = Field(default='', max_length=40)
+    work_location: str = Field(default='', max_length=100)
+    employment_type: str = Field(default='Full time', max_length=40)
+    manager_name: str = Field(default='', max_length=120)
+    emergency_contact: str = Field(default='', max_length=100)
 
 class EmployeeIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
@@ -108,6 +152,11 @@ class EmployeeIn(BaseModel):
     designation: str = ""
     department: str = ""
     phone: str = ""
+    employee_code: str = ''
+    work_location: str = ''
+    employment_type: str = 'Full time'
+    manager_name: str = ''
+    emergency_contact: str = ''
     joining_date: date = Field(default_factory=date.today)
 
 class EmployeeOut(BaseModel):
@@ -183,9 +232,12 @@ def db_session():
     with SessionLocal() as session:
         yield session
 
-def current_user(credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer)], db: Session = Depends(db_session)):
+def current_user(request: Request, credentials: HTTPAuthorizationCredentials | None = Depends(bearer), db: Session = Depends(db_session)):
     try:
-        payload = jwt.decode(credentials.credentials, SECRET, algorithms=["HS256"])
+        token = credentials.credentials if credentials else request.cookies.get(COOKIE_NAME)
+        if not token:
+            raise HTTPException(status_code=401, detail='Not signed in')
+        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
         user_id = int(payload["sub"])
     except (jwt.InvalidTokenError, KeyError, ValueError):
         raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -209,7 +261,15 @@ def employee_exists(db: Session, employee_id: int):
 
 app = FastAPI(title="JellyGit HRMS", version="0.1.0")
 origins = [x.strip() for x in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",") if x.strip()]
-app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=False, allow_methods=["GET", "POST", "PATCH"], allow_headers=["Authorization", "Content-Type"])
+app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=['GET', 'POST', 'PATCH', 'DELETE'], allow_headers=['Authorization', 'Content-Type'])
+
+@app.middleware('http')
+async def same_origin_writes(request: Request, call_next):
+    if request.method in ('POST','PATCH','PUT','DELETE') and request.cookies.get(COOKIE_NAME):
+        origin = request.headers.get('origin')
+        if origin not in origins:
+            return Response(status_code=403, content='Forbidden origin')
+    return await call_next(request)
 
 @app.on_event("startup")
 def initialize():
@@ -227,12 +287,14 @@ def health():
     return {"status": "ok"}
 
 @app.post("/auth/login")
-def login(body: LoginIn, db: Session = Depends(db_session)):
+def login(body: LoginIn, response: Response, db: Session = Depends(db_session)):
     user = db.scalar(select(Employee).where(Employee.email == str(body.email)))
     if not user or user.status != "active" or not passwords.verify(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = jwt.encode({"sub": str(user.id), "exp": datetime.now(timezone.utc) + timedelta(hours=8)}, SECRET, algorithm="HS256")
-    return {"access_token": token, "token_type": "bearer", "user": EmployeeOut.model_validate(user)}
+    lifetime = timedelta(days=30) if body.remember else timedelta(hours=8)
+    token = jwt.encode({"sub": str(user.id), "exp": datetime.now(timezone.utc) + lifetime}, SECRET, algorithm="HS256")
+    response.set_cookie(COOKIE_NAME, token, httponly=True, secure=COOKIE_SECURE, samesite='lax', max_age=int(lifetime.total_seconds()) if body.remember else None, path='/')
+    return {"user": EmployeeOut.model_validate(user)}
 
 @app.get("/me", response_model=EmployeeOut)
 def me(user: Employee = Depends(current_user)):
@@ -256,8 +318,11 @@ def create_employee(body: EmployeeIn, user: Employee = Depends(require("admin", 
         raise HTTPException(422, "Invalid role")
     if db.scalar(select(Employee).where(Employee.email == str(body.email))):
         raise HTTPException(409, "Email already exists")
-    employee = Employee(**body.model_dump(exclude={"password"}), password_hash=passwords.hash(body.password))
+    profile_fields = {'employee_code','work_location','employment_type','manager_name','emergency_contact'}
+    employee = Employee(**body.model_dump(exclude={"password"} | profile_fields), password_hash=passwords.hash(body.password))
     db.add(employee)
+    db.flush()
+    db.add(EmployeeProfile(employee_id=employee.id, **body.model_dump(include=profile_fields)))
     db.commit()
     db.refresh(employee)
     return employee
@@ -385,3 +450,122 @@ def add_appraisal(body: AppraisalIn, user: Employee = Depends(require("admin", "
     db.commit()
     db.refresh(row)
     return row
+
+
+@app.post("/auth/logout")
+def logout(response: Response):
+    response.delete_cookie(COOKIE_NAME, path='/', secure=COOKIE_SECURE, httponly=True, samesite='lax')
+    return {"ok": True}
+
+def send_reset_mail(destination: str, link: str):
+    host = os.getenv('SMTP_HOST')
+    username = os.getenv('SMTP_USER')
+    sender = os.getenv('SMTP_FROM')
+    if not host or not sender:
+        raise HTTPException(503, "Password reset email is not configured")
+    message = EmailMessage()
+    message['Subject'] = 'Reset your JellyGit HRMS password'
+    message['From'] = sender
+    message['To'] = destination
+    message.set_content(f"Someone requested a password reset for your JellyGit HRMS account.\n\nOpen this link within 30 minutes:\n{link}\n\nIf this wasn't you, ignore this email.")
+    try:
+        port = int(os.getenv('SMTP_PORT', '587'))
+        with smtplib.SMTP(host, port, timeout=10) as smtp:
+            smtp.starttls(context=ssl.create_default_context())
+            if username:
+                smtp.login(username, os.getenv('SMTP_PASSWORD', ''))
+            smtp.send_message(message)
+    except (OSError, smtplib.SMTPException) as exc:
+        raise HTTPException(503, 'Unable to send reset email; check SMTP configuration') from exc
+
+@app.post("/auth/forgot-password")
+def forgot_password(body: ResetRequestIn, db: Session = Depends(db_session)):
+    # Same response for registered and unregistered email addresses.
+    user = db.scalar(select(Employee).where(Employee.email == str(body.email), Employee.status == 'active'))
+    if user:
+        token = secrets.token_urlsafe(32)
+        record = PasswordReset(employee_id=user.id, token_hash=hashlib.sha256(token.encode()).hexdigest(),
+                               expires_at=datetime.now(timezone.utc) + timedelta(minutes=30))
+        db.add(record)
+        base_url = os.getenv('FRONTEND_URL', 'http://localhost:3000').rstrip('/')
+        send_reset_mail(user.email, base_url + '/?reset=' + token)
+        db.commit()
+    return {"message": "If the email is registered, a password reset link has been sent."}
+
+@app.post("/auth/reset-password")
+def reset_password(body: ResetConfirmIn, db: Session = Depends(db_session)):
+    digest = hashlib.sha256(body.token.encode()).hexdigest()
+    item = db.scalar(select(PasswordReset).where(PasswordReset.token_hash == digest).with_for_update())
+    now = datetime.now(timezone.utc)
+    if not item or item.used_at is not None or item.expires_at < now:
+        raise HTTPException(400, 'Invalid or expired reset link')
+    user = employee_exists(db, item.employee_id)
+    if user.status != 'active':
+        raise HTTPException(400, 'Invalid or expired reset link')
+    user.password_hash = passwords.hash(body.password)
+    item.used_at = now
+    db.commit()
+    return {"ok": True}
+
+@app.get("/employees/{employee_id}/profile", response_model=ProfileIn)
+def employee_profile(employee_id: int, user: Employee = Depends(current_user), db: Session = Depends(db_session)):
+    if employee_id != user.id and user.role not in ('admin','hr'):
+        raise HTTPException(403, 'Insufficient permissions')
+    employee_exists(db, employee_id)
+    row = db.scalar(select(EmployeeProfile).where(EmployeeProfile.employee_id == employee_id))
+    return ProfileIn.model_validate(row, from_attributes=True) if row else ProfileIn()
+
+@app.patch("/employees/{employee_id}/profile", response_model=ProfileIn)
+def edit_employee_profile(employee_id: int, body: ProfileIn, user: Employee = Depends(require('admin','hr')), db: Session = Depends(db_session)):
+    employee_exists(db, employee_id)
+    row = db.scalar(select(EmployeeProfile).where(EmployeeProfile.employee_id == employee_id))
+    if not row:
+        row = EmployeeProfile(employee_id=employee_id)
+        db.add(row)
+    for key, value in body.model_dump().items():
+        setattr(row, key, value)
+    db.commit()
+    return body
+
+@app.post("/employees/{employee_id}/documents", status_code=201)
+async def upload_document(employee_id: int, document: UploadFile = File(...),
+                          user: Employee = Depends(require('admin','hr')), db: Session = Depends(db_session)):
+    employee_exists(db, employee_id)
+    raw = await document.read(5 * 1024 * 1024 + 1)
+    if len(raw) > 5 * 1024 * 1024:
+        raise HTTPException(413, 'Maximum file size is 5 MB')
+    allowed = raw.startswith(b'%PDF-') or raw.startswith(b'\\x89PNG\\r\\n\\x1a\\n') or raw.startswith(b'\\xff\\xd8\\xff')
+    if not allowed:
+        raise HTTPException(415, 'Only PDF, PNG and JPEG files are supported')
+    suffix = '.pdf' if raw.startswith(b'%PDF-') else '.png' if raw.startswith(b'\\x89PNG') else '.jpg'
+    key = uuid4().hex + suffix
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path = UPLOAD_DIR / key
+    with path.open('xb') as fp:
+        fp.write(raw)
+    path.chmod(0o600)
+    row = Document(employee_id=employee_id, name=(document.filename or 'Document')[:150], document_type=suffix[1:], storage_key=key)
+    db.add(row)
+    db.commit()
+    return {"id":row.id, "name":row.name}
+
+@app.get("/employees/{employee_id}/documents")
+def list_documents(employee_id: int, user: Employee = Depends(current_user), db: Session = Depends(db_session)):
+    if employee_id != user.id and user.role not in ('admin','hr'):
+        raise HTTPException(403, 'Insufficient permissions')
+    employee_exists(db, employee_id)
+    return [{"id":d.id,"name":d.name,"type":d.document_type} for d in db.scalars(select(Document).where(Document.employee_id == employee_id)).all()]
+
+@app.get("/documents/{document_id}")
+def download_document(document_id: int, user: Employee = Depends(current_user), db: Session = Depends(db_session)):
+    from fastapi.responses import FileResponse
+    doc = db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(404, 'Document not found')
+    if doc.employee_id != user.id and user.role not in ('admin','hr'):
+        raise HTTPException(403, 'Insufficient permissions')
+    path = UPLOAD_DIR / doc.storage_key
+    if not path.is_file():
+        raise HTTPException(404, 'Stored document not found')
+    return FileResponse(path, media_type={'pdf':'application/pdf','png':'image/png','jpg':'image/jpeg'}.get(doc.document_type,'application/octet-stream'),
+                        filename=doc.name, content_disposition_type='attachment')
