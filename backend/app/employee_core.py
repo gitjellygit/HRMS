@@ -67,6 +67,7 @@ class EmployeeCore(Base):
     aadhaar: Mapped[str] = mapped_column(Text, default="")
     uan: Mapped[str] = mapped_column(Text, default="")
     lifecycle: Mapped[str] = mapped_column(String(30), default="probation")
+    project_bonus_inr: Mapped[Decimal | None] = mapped_column(Numeric(12,2), nullable=True)
 
 
 class ChangeRequest(Base):
@@ -124,6 +125,7 @@ class UnitIn(BaseModel):
 
 
 class MasterIn(BaseModel):
+    project_bonus_inr: Decimal | None = Field(default=None, ge=0, le=100000000, decimal_places=2)
     manager_id: int | None = None
     hod_id: int | None = None
     department_id: int | None = None
@@ -295,8 +297,9 @@ def apply_master(db: Session, employee_id: int, data: MasterIn):
 def master_dict(row: EmployeeCore | None, *, include_sensitive: bool):
     if not row:
         return {}
-    fields = ("manager_id","hod_id","department_id","designation_id","grade_id","branch_id","cost_center_id","date_of_birth","personal_email","address","emergency_name","emergency_phone","lifecycle")
+    fields = ("manager_id","hod_id","department_id","designation_id","grade_id","branch_id","cost_center_id","date_of_birth","personal_email","address","emergency_name","emergency_phone","lifecycle","project_bonus_inr")
     result = {field: getattr(row, field) for field in fields}
+    result["project_bonus_inr"] = float(row.project_bonus_inr) if row.project_bonus_inr is not None else None
     for field in SENSITIVE:
         value = getattr(row, field)
         result[field] = unseal(value) if include_sensitive else ("••••" if value else "")
