@@ -223,3 +223,13 @@ def project_bonuses(user: Employee = Depends(manage),db: Session = Depends(db_se
     return [{"project_id":award.project_id,"project":project.name,"employee_id":bonus.employee_id,
              "amount_inr":float(bonus.amount),"bonus_id":bonus.id,"status":bonus.status}
             for award,bonus,project in rows]
+
+
+@router.get("/my-bonuses")
+def my_project_bonuses(user: Employee = Depends(current_user),db: Session = Depends(db_session)):
+    rows=db.execute(select(ProjectBonusAward,Bonus,Project).join(
+        Bonus,Bonus.id==ProjectBonusAward.bonus_id).join(
+        Project,Project.id==ProjectBonusAward.project_id).where(
+        Bonus.employee_id==user.id).order_by(ProjectBonusAward.project_id.desc())).all()
+    return [{"project":project.name,"bonus_id":bonus.id,"amount_inr":float(bonus.amount),
+             "status":bonus.status,"period":bonus.period} for award,bonus,project in rows]
