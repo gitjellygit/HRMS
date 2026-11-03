@@ -96,7 +96,7 @@ export default function EmployeeManagement({api,canCreate}:{api:string;canCreate
  async function submit(event:React.FormEvent<HTMLFormElement>){
   event.preventDefault();
   const found=validate(draft);setErrors(found);setFailure("");setMessage("");
-  if(Object.keys(found).length){document.getElementById("employee-first-error")?.scrollIntoView({behavior:"smooth",block:"center"});return;}
+  if(Object.keys(found).length){setFailure("Please correct the highlighted fields before saving.");return;}
   setSaving(true);
   try{
    const {employee_code,...payload}=draft;

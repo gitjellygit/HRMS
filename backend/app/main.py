@@ -305,7 +305,11 @@ def initialize():
     with engine.begin() as connection:
         connection.execute(text("CREATE SEQUENCE IF NOT EXISTS hrms_employee_code_seq START WITH 1"))
         connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_hrms_employee_code ON employee_profiles (employee_code) WHERE employee_code <> ''"))
-        existing = connection.execute(text("SELECT COALESCE(MAX(CAST(SUBSTRING(employee_code FROM 4) AS BIGINT)), 0) FROM employee_profiles WHERE employee_code ~ '^JG-[0-9]+
+        existing_codes = connection.execute(text("SELECT employee_code FROM employee_profiles WHERE employee_code LIKE 'JG-%'")).scalars().all()
+        existing = max((int(code[3:]) for code in existing_codes if code[3:].isdigit()), default=0)
+        last, called = connection.execute(text("SELECT last_value, is_called FROM hrms_employee_code_seq")).one()
+        if existing > (last if called else last - 1):
+            connection.execute(text("SELECT setval('hrms_employee_code_seq', :number, true)"), {"number": existing})
     email = os.environ.get("ADMIN_EMAIL")
     passwd = os.environ.get("ADMIN_PASSWORD")
     if email and passwd and len(passwd) >= 12:
