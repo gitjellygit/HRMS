@@ -477,6 +477,10 @@ def create_full_employee(body: EmployeeCreateIn, user: Employee = Depends(requir
     if db.scalar(select(Employee.id).where(func.lower(Employee.email) == str(account.email).lower())):
         raise HTTPException(409, detail={"field":"email","message":"This email is already registered."})
     validate_relationships(db, -1, body.master)
+    # A selected department ID is the source of truth for the employee's department.
+    if body.master.department_id is not None:
+        department = db.get(OrgUnit, body.master.department_id)
+        account = account.model_copy(update={"department": department.name})
     profile_fields = {"work_location","employment_type","manager_name","emergency_contact"}
     employee = Employee(**account.model_dump(exclude={"password","employee_code"} | profile_fields), password_hash=passwords.hash(account.password))
     db.add(employee)
