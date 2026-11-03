@@ -17,7 +17,7 @@ function validate(d:Draft):Partial<Record<Field,string>>{
  if(!currencies.includes(d.currency))errors.currency="Choose a valid currency.";
  if(!d.sourced_by_id||Number(d.sourced_by_id)<=0)errors.sourced_by_id="Select the employee who sourced the project.";
  if(!d.start_date)errors.start_date="Select the project start date.";
- if(!d.bonus_amount_inr||!Number.isFinite(Number(d.bonus_amount_inr))||Number(d.bonus_amount_inr)<=0)errors.bonus_amount_inr="Enter a bonus greater than zero (INR).";
+ if(d.bonus_amount_inr!==""&&(!Number.isFinite(Number(d.bonus_amount_inr))||Number(d.bonus_amount_inr)<0))errors.bonus_amount_inr="Enter a valid non-negative INR bonus.";
  if(d.description.length>3000)errors.description="Description must be under 3000 characters.";
  return errors;
 }
@@ -42,6 +42,8 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
  const [filter,setFilter]=useState("all");
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
+ const [bonusPreview,setBonusPreview]=useState<{bonus_amount_inr:number;source:string}|null>(null);
+ const [overrideBonus,setOverrideBonus]=useState(false);
  const [employees,setEmployees]=useState<{id:number;name:string;employee_code:string;status:string}[]>([]);
  const [team,setTeam]=useState<{project:Project;people:{name:string}[]}|null>(null);
  const load=useCallback(async()=>{
@@ -61,16 +63,18 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
   }catch{/* Project number is allocated on save regardless of preview. */}
  }
  function start(){
-  setOpen(true);setError("");setNotice("");setDraft({...blank});setErrors({});setNumber("Generating…");void refreshNumber();
+  setBonusPreview(null);setOverrideBonus(false);setOpen(true);setError("");setNotice("");setDraft({...blank});setErrors({});setNumber("Generating…");void refreshNumber();
  }
  function edit(field:Field,value:string){setDraft(d=>({...d,[field]:value}));setErrors(e=>({...e,[field]:undefined}))}
  async function save(event:React.FormEvent){
   event.preventDefault();
-  const found=validate(draft);setErrors(found);setError("");
+  const found=validate(draft);
+  if(overrideBonus&&draft.bonus_amount_inr==="")found.bonus_amount_inr="Enter a bonus or disable the override.";
+  setErrors(found);setError("");
   if(Object.keys(found).length){setError("Please fix the highlighted fields.");return}
   setBusy(true);
   try{
-   const res=await fetch(api+"/project-management/projects",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({...draft,name:draft.name.trim(),client:draft.client.trim(),rate:Number(draft.rate),sourced_by_id:Number(draft.sourced_by_id),bonus_amount_inr:Number(draft.bonus_amount_inr)})});
+   const res=await fetch(api+"/project-management/projects",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({...draft,name:draft.name.trim(),client:draft.client.trim(),rate:Number(draft.rate),sourced_by_id:Number(draft.sourced_by_id),bonus_amount_inr:overrideBonus?Number(draft.bonus_amount_inr):null})});
    const data=await res.json().catch(()=>({}));
    if(!res.ok){const detail=serverError(data.detail);if(detail.field)setErrors({[detail.field]:detail.message});throw Error(detail.message)}
    setOpen(false);setNotice("Project "+data.project_number+" created successfully.");await load();
@@ -83,6 +87,18 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
    <input id={id} type={options?.type||"text"} value={draft[key]} placeholder={options?.placeholder} required={options?.required} aria-invalid={!!errors[key]} onChange={e=>edit(key,e.target.value)}/>
    {errors[key]&&<span className="field-error">{errors[key]}</span>}
   </div>;
+ }
+ async function selectSourcer(value:string){
+  edit("sourced_by_id",value);
+  setBonusPreview(null);
+  setOverrideBonus(false);
+  edit("bonus_amount_inr","");
+  if(!value)return;
+  try{
+   const response=await fetch(api+"/project-management/employees/"+value+"/bonus-default",{credentials:"include"});
+   if(!response.ok)throw Error("Could not load the employee bonus policy.");
+   setBonusPreview(await response.json());
+  }catch(e){setError((e as Error).message)}
  }
  async function awardBonus(project:Project){
   if(!window.confirm("Create a planned 30-day milestone bonus of ₹"+Number(project.bonus_amount_inr||0).toLocaleString("en-IN")+" for the sourcing employee?"))return;
@@ -121,9 +137,16 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
       {field("name","Project name",{required:true,placeholder:"e.g. Java Modernization"})}
       {field("client","Client name",{required:true,placeholder:"e.g. Acme Corporation"})}
       {field("candidate_name","Candidate name",{placeholder:"e.g. Employee or consultant name"})}
-      <div className="employee-field"><label htmlFor="proj-sourced">Sourced by employee <span className="required">*</span></label><select id="proj-sourced" value={draft.sourced_by_id} aria-invalid={!!errors.sourced_by_id} onChange={e=>edit("sourced_by_id",e.target.value)}><option value="">Select employee</option>{employees.filter(e=>e.status==="active").map(e=><option key={e.id} value={e.id}>{e.name} · {e.employee_code||e.id}</option>)}</select>{errors.sourced_by_id&&<span className="field-error">{errors.sourced_by_id}</span>}</div>
+      <div className="employee-field"><label htmlFor="proj-sourced">Sourced by employee <span className="required">*</span></label><select id="proj-sourced" value={draft.sourced_by_id} aria-invalid={!!errors.sourced_by_id} onChange={e=>void selectSourcer(e.target.value)}><option value="">Select employee</option>{employees.filter(e=>e.status==="active").map(e=><option key={e.id} value={e.id}>{e.name} · {e.employee_code||e.id}</option>)}</select>{errors.sourced_by_id&&<span className="field-error">{errors.sourced_by_id}</span>}</div>
       {field("start_date","Project start date",{type:"date",required:true})}
-      {field("bonus_amount_inr","30-day employee bonus (INR)",{type:"number",required:true,placeholder:"e.g. 10000"})}
+      <div className="employee-field">
+       <label>30-day sourcing bonus (INR)</label>
+       <div className="project-auto-bonus"><strong>{bonusPreview?"₹"+bonusPreview.bonus_amount_inr.toLocaleString("en-IN"):"Select a sourcing employee"}</strong><span>{bonusPreview?.source==="employee"?"Employee-specific default":"Company policy default"}</span></div>
+       <label className="project-override-check"><input type="checkbox" checked={overrideBonus} onChange={e=>{setOverrideBonus(e.target.checked);edit("bonus_amount_inr","")}}/> Override bonus for this project</label>
+       {overrideBonus&&<input aria-label="Override amount in INR" type="number" min="0" step="0.01" value={draft.bonus_amount_inr} onChange={e=>edit("bonus_amount_inr",e.target.value)} placeholder="Override bonus amount in INR"/>}
+       {errors.bonus_amount_inr&&<span className="field-error">{errors.bonus_amount_inr}</span>}
+       <span className="field-help">Without an override, the API uses the employee default, then company policy.</span>
+      </div>
       <div className="employee-field"><label>Bonus milestone</label><p className="field-help">Eligible after 30 calendar days from the start date. HR awards it once eligible; payout follows bonus approval.</p></div>
     </div></div>
     <div className="employee-group"><div className="employee-group-head"><Users size={18}/><div><h3>Vendor information</h3><p>Commercial relationships for this engagement</p></div></div><div className="employee-form-grid">
