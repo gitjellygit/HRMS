@@ -413,13 +413,13 @@ def request_leave(body: LeaveIn,user: Employee = Depends(current_user),db: Sessi
     days=working_days(db,body.start_date,body.end_date,location,body.day_part)
     if days<=0:
         raise HTTPException(422,"Selected dates contain no working leave days")
+    # Serialize submission for each employee/year before both overlap and balance checks.
+    db.execute(select(func.pg_advisory_xact_lock(user.id,body.start_date.year)))
     overlap=db.scalar(select(LeaveRequest.id).where(
         LeaveRequest.employee_id==user.id,LeaveRequest.status.in_(["pending","approved"]),
         LeaveRequest.start_date<=body.end_date,LeaveRequest.end_date>=body.start_date))
     if overlap:
         raise HTTPException(409,"An existing leave request overlaps these dates")
-    # Serialize overlapping submissions and balance deductions per employee/year.
-    db.execute(select(func.pg_advisory_xact_lock(user.id,body.start_date.year)))
     if body.leave_type!="loss_of_pay":
         available=balance(db,user.id,body.start_date.year,body.leave_type)
         if available["remaining"]<float(days):
@@ -670,6 +670,16 @@ def request_encashment(body: EncashmentIn,user: Employee = Depends(current_user)
     db.add(row)
     db.commit()
     return {"id":row.id,"status":row.status}
+
+
+@router.get("/encashment")
+def list_encashments(user: Employee = Depends(current_user),db: Session = Depends(db_session)):
+    query=select(Encashment).order_by(Encashment.id.desc())
+    if user.role not in ADMIN:
+        query=query.where(Encashment.employee_id==user.id)
+    rows=db.scalars(query.limit(200)).all()
+    return [{"id":r.id,"employee_id":r.employee_id,"year":r.year,"leave_type":r.leave_type,
+             "days":float(r.days),"status":r.status} for r in rows]
 
 
 @router.post("/encashment/{encashment_id}/review")
