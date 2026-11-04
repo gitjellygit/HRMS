@@ -28,7 +28,8 @@ const validate=(data:EmployeeDraft):Errors=>{
  if(data.designation.trim().length<2)errors.designation="Designation must contain at least 2 characters.";
  if(data.department.trim().length<2)errors.department="Select or enter a department.";
  if(!data.joining_date)errors.joining_date="Choose the date of joining.";
- if(data.phone&&!/^\+?[0-9 ()-]{7,30}$/.test(data.phone))errors.phone="Enter a valid contact number.";
+ if(data.phone&&!/^(?:\+91|91)?[6-9][0-9]{9}$/.test(data.phone.replace(/[\s()-]/g,"")))errors.phone="Enter a valid 10-digit Indian mobile (starting 6–9).";
+ if(data.employee_code&&!/^JG-[0-9]{3,9}$/i.test(data.employee_code.trim()))errors.employee_code="Employee ID must be JG-001 format.";
  return errors;
 };
 const initials=(name:string)=>name.trim().split(/\s+/).map(n=>n[0]).slice(0,2).join("").toUpperCase();
@@ -67,6 +68,12 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
  const [docsFor,setDocsFor]=useState<Employee|null>(null);
  const [documents,setDocuments]=useState<{id:number;name:string;type:string}[]>([]);
  const [docError,setDocError]=useState("");
+ const [idBusy,setIdBusy]=useState(false);
+ const [selectedAction,setSelectedAction]=useState<Employee|null>(null);
+ const [actionKind,setActionKind]=useState<"deactivate"|"reset"|null>(null);
+ const [actionReason,setActionReason]=useState("");
+ const [tempPassword,setTempPassword]=useState("");
+ const [actionBusy,setActionBusy]=useState(false);
  const load=useCallback(async()=>{
   setLoading(true);
   try{
@@ -125,12 +132,12 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
   }catch(err){setDeptError((err as Error).message)}finally{setDeptBusy(false)}
  }
  async function generateCode(){
+  setIdBusy(true);setFailure("");
   try{
-   const response=await fetch(api+"/employees/next-code",{credentials:"include"});
-   if(!response.ok)throw Error("Unable to preview the next ID");
-   const data=await response.json();
-   edit("employee_code",data.employee_code);
-  }catch(err){setFailure((err as Error).message)}
+   const response=await fetch(api+"/employees/generate-code",{method:"POST",credentials:"include"});
+   if(!response.ok)throw Error("Unable to generate a new employee ID");
+   const data=await response.json();edit("employee_code",data.employee_code);
+  }catch(err){setFailure((err as Error).message)}finally{setIdBusy(false)}
  }
  async function submit(event:React.FormEvent<HTMLFormElement>){
   event.preventDefault();
@@ -140,10 +147,10 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
   if(Object.keys(found).length){setFailure("Please correct the highlighted fields before saving.");return;}
   setSaving(true);
   try{
-   const {employee_code,...payload}=draft;
+   const payload=draft;
    const chosen:Record<string,unknown>={};
    for(const [key,value] of Object.entries(master)){if(!value)continue;chosen[key]=key.endsWith("_id")?Number(value):value}
-   const response=await fetch(api+"/core/employees",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({account:{...payload,name:draft.name.trim(),email:draft.email.trim().toLowerCase(),designation:draft.designation.trim(),department:draft.department.trim()},master:chosen})});
+   const response=await fetch(api+"/core/employees",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({account:{...payload,employee_code:draft.employee_code,name:draft.name.trim(),email:draft.email.trim().toLowerCase(),designation:draft.designation.trim(),department:draft.department.trim()},master:chosen})});
    const result=await response.json().catch(()=>({}));
    if(!response.ok){
     const detail=ApiError(result.detail);
@@ -158,6 +165,24 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
    }
    setOpen(false);setMessage(note);await load();
   }catch(err){setFailure((err as Error).message)}finally{setSaving(false)}
+ }
+ function beginAction(employee:Employee,kind:"deactivate"|"reset"){
+  setSelectedAction(employee);setActionKind(kind);setActionReason("");setTempPassword("");setFailure("");
+ }
+ async function commitAction(){
+  if(!selectedAction||!actionKind)return;
+  if(actionReason.trim().length<10){setFailure("Please provide a specific reason (at least 10 characters).");return}
+  setActionBusy(true);setFailure("");
+  try{
+   const url="/core/employees/"+selectedAction.id+"/"+(actionKind==="deactivate"?"deactivate":"reset-password");
+   const response=await fetch(api+url,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({reason:actionReason.trim()})});
+   const data=await response.json().catch(()=>({}));
+   if(!response.ok)throw Error(typeof data.detail==="string"?data.detail:"Action failed.");
+   if(actionKind==="reset"){
+    setTempPassword(data.temporary_password);
+    setMessage("Temporary password issued. Share securely; old login sessions are invalid.");
+   }else{setSelectedAction(null);setActionKind(null);setMessage("Employee deactivated with a recorded reason.");await load()}
+  }catch(e){setFailure((e as Error).message)}finally{setActionBusy(false)}
  }
  async function viewDocuments(employee:Employee){
   setDocsFor(employee);setDocuments([]);setDocError("");
@@ -199,8 +224,8 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
   <section className="employee-surface">
    <div className="employee-title-row"><div><h2>Employee directory</h2><p>All employee records, in one organized place.</p></div>{canCreate&&<button className="employee-primary" onClick={openForm}><Plus size={17}/> Add employee</button>}</div>
    <div className="employee-filters"><div className="employee-search"><Search size={17}/><input aria-label="Search employees" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by name, ID, email or role…"/></div><select aria-label="Filter by department" value={department} onChange={e=>setDepartment(e.target.value)}><option value="all">All departments</option>{departments.map(d=><option key={d}>{d}</option>)}</select><button className="employee-icon-button" onClick={load} title="Refresh employees" aria-label="Refresh"><RefreshCw size={17}/></button></div>
-   <div className="table-wrap"><table className="employee-table"><thead><tr><th>Employee</th><th>Employee ID</th><th>Designation / Department</th><th>Access</th><th>Joined</th><th>Status</th>{canCreate&&<th>Documents</th>}</tr></thead><tbody>
-    {shown.map(e=><tr key={e.id}><td><div className="employee-person"><div className="employee-avatar">{initials(e.name)}</div><div><button type="button" className="employee-name-link" onClick={()=>onOpenEmployee?.(e.id)}>{e.name}</button><small>{e.email}</small></div></div></td><td><span className="employee-id">{e.employee_code||"Legacy"}</span></td><td><strong className="employee-detail">{e.designation||"—"}</strong><small className="employee-secondary">{e.department||"—"}</small></td><td><span className="employee-role">{e.role==="hr"?"HR Admin":e.role}</span></td><td>{e.joining_date||"—"}</td><td><span className={"pill "+e.status}>{e.status}</span></td>{canCreate&&<td><button className="employee-link" onClick={()=>viewDocuments(e)}>View files</button></td>}</tr>)}
+   <div className="table-wrap"><table className="employee-table"><thead><tr><th>Employee</th><th>Employee ID</th><th>Designation / Department</th><th>Access</th><th>Joined</th><th>Status</th>{canCreate&&<><th>Documents</th><th>HR actions</th></>}</tr></thead><tbody>
+    {shown.map(e=><tr key={e.id}><td><div className="employee-person"><div className="employee-avatar">{initials(e.name)}</div><div><button type="button" className="employee-name-link" onClick={()=>onOpenEmployee?.(e.id)}>{e.name}</button><small>{e.email}</small></div></div></td><td><span className="employee-id">{e.employee_code||"Legacy"}</span></td><td><strong className="employee-detail">{e.designation||"—"}</strong><small className="employee-secondary">{e.department||"—"}</small></td><td><span className="employee-role">{e.role==="hr"?"HR Admin":e.role}</span></td><td>{e.joining_date||"—"}</td><td><span className={"pill "+e.status}>{e.status}</span></td>{canCreate&&<><td><button className="employee-link" onClick={()=>viewDocuments(e)}>View files</button></td><td><div className="employee-row-actions">{e.status==="active"&&<button className="employee-link" onClick={()=>beginAction(e,"deactivate")}>Deactivate</button>}<button className="employee-link" onClick={()=>beginAction(e,"reset")}>Reset password</button></div></td></>}</tr>)}
    </tbody></table>{loading?<div className="empty">Loading employee directory…</div>:!shown.length?<div className="employee-empty">No employees match your search.</div>:null}</div>
    <div className="employee-count">Showing {shown.length} of {employees.length} employees</div>
   </section></>:<section className="employee-surface employee-editor">
@@ -211,13 +236,13 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
      <div className="employee-form-grid">
       {field("name","Full name",{required:true,placeholder:"e.g. Aarav Sharma"})}
       {field("email","Work email",{required:true,type:"email",placeholder:"aarav@jellygit.com"})}
-      {field("phone","Phone number",{placeholder:"+91 98765 43210"})}
+      {field("phone","Indian mobile number",{placeholder:"+91 98765 43210"})}
       {field("emergency_contact","Emergency contact",{placeholder:"Name and contact number"})}
      </div>
     </div>
     <div className="employee-group"><div className="employee-group-head"><BriefcaseBusiness size={18}/><div><h3>Employment details</h3><p>Assign employee information, reporting hierarchy and access</p></div></div>
      <div className="employee-form-grid">
-      <div className="employee-field"><label htmlFor="employee-code">Employee ID</label><div className="employee-code-row"><input id="employee-code" readOnly value={draft.employee_code||"Generating…"} aria-label="Generated employee ID"/><button type="button" onClick={generateCode}><RefreshCw size={15}/> Generate ID</button></div><span className="field-help">Preview only. The final unique ID is assigned when saved.</span></div>
+      <div className="employee-field"><label htmlFor="employee-code">Employee ID</label><div className="employee-code-row"><input id="employee-code" value={draft.employee_code} onChange={e=>edit("employee_code",e.target.value.toUpperCase())} placeholder="JG-001" aria-label="Employee ID (editable)"/><button type="button" disabled={idBusy} onClick={generateCode}><RefreshCw size={15}/> {idBusy?"Generating…":"Generate ID"}</button></div><span className="field-help">Click Generate for a fresh sequential ID, or enter JG-001 style manually. Duplicates are rejected.</span></div>
       {field("joining_date","Date of joining",{required:true,type:"date"})}
       {field("designation","Designation",{required:true,placeholder:"e.g. Software Engineer"})}
       <div className="employee-field employee-department-picker">
@@ -272,6 +297,14 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
     <div className="employee-form-footer"><button type="button" className="employee-cancel" onClick={()=>{setOpen(false);setFailure("")}}>Cancel</button><button className="employee-primary" disabled={saving}>{saving?"Creating employee…":"Save employee"}</button></div>
    </form>
   </section>}
+  {selectedAction&&actionKind&&<div className="employee-modal-backdrop"><div className="employee-modal" role="dialog" aria-modal="true" aria-label={actionKind==="reset"?"Reset employee password":"Deactivate employee"}>
+   <div className="employee-title-row"><div><h2>{actionKind==="reset"?"Reset password":"Deactivate employee"}</h2><p>{selectedAction.name} · {selectedAction.employee_code||"Employee"}</p></div><button className="employee-icon-button" onClick={()=>{setSelectedAction(null);setActionKind(null);setTempPassword("")}} aria-label="Close"><X size={18}/></button></div>
+   {failure&&<p className="field-error" role="alert">{failure}</p>}
+   {tempPassword?<div className="employee-temporary-password"><p>Temporary password (shown once):</p><code>{tempPassword}</code><button className="employee-cancel" onClick={()=>navigator.clipboard.writeText(tempPassword)}>Copy securely</button><p>Existing sessions are invalidated. Ask the employee to change this password immediately.</p></div>:<>
+    <label className="employee-field">Reason (required, 10+ characters)<textarea value={actionReason} maxLength={500} rows={3} onChange={e=>setActionReason(e.target.value)} placeholder={actionKind==="deactivate"?"Explain why access is being deactivated":"Reason for credential reset"}/></label>
+    <div className="employee-form-footer"><button className="employee-cancel" onClick={()=>setSelectedAction(null)}>Cancel</button><button className="employee-primary" disabled={actionBusy||actionReason.trim().length<10} onClick={commitAction}>{actionBusy?"Saving…":actionKind==="deactivate"?"Confirm deactivation":"Issue temporary password"}</button></div>
+   </>}
+  </div></div>}
   {docsFor&&<div className="employee-modal-backdrop" role="presentation"><div className="employee-modal" role="dialog" aria-modal="true" aria-label={"Documents for "+docsFor.name}><div className="employee-title-row"><div><h2>{docsFor.name}</h2><p>Employee documents</p></div><button className="employee-icon-button" onClick={()=>setDocsFor(null)} aria-label="Close"><X size={20}/></button></div>{docError&&<div className="error">{docError}</div>}{!documents.length?<p className="muted">No documents on file.</p>:documents.map(doc=><div key={doc.id} className="employee-doc"><span>{doc.name}</span><button className="employee-link" onClick={()=>downloadFile(doc.id,doc.name)}>Download</button></div>)}</div></div>}
  </div>;
 }
