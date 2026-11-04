@@ -62,6 +62,7 @@ test.describe('employee management & UI validation', () => {
     await page.locator('input[placeholder="e.g. Software Engineer"]').fill('QA Associate');
     const departmentValue=await page.locator('#emp-department option').nth(1).getAttribute('value');
     await page.locator('#emp-department').selectOption(departmentValue!);
+    await page.locator('#core-manager').selectOption(String(persona('manager').id));
     await page.locator('input[placeholder="Create a strong password"]').fill('DemoOnly!Pass1234');
     await page.getByRole('button',{name:'Save employee'}).click();
     await expect(page.getByRole('status')).toContainText('added successfully');

@@ -17,7 +17,7 @@ export async function login(page: Page, user: Persona) {
   await page.locator('input[name="password"]').fill(TEST_PASSWORD);
   await page.getByRole('button', { name: /sign in/i }).click();
   await expect(page.locator('.sidebar .brand')).toBeVisible();
-  await expect(page.locator('.top .user')).toContainText(user.name);
+  await expect(page.locator('.hrms-user-meta')).toContainText(user.name);
 }
 export async function navigate(page: Page, label: string) {
   await page.locator('.sidebar nav').getByRole('button', { name: label, exact: true }).click();

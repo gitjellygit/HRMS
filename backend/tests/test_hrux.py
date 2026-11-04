@@ -6,6 +6,16 @@ from app.employee_core import sync_probation_periods
 
 ORIGIN={"Origin":"http://localhost:3000"}
 
+def make_manager(c,label):
+    admin_id=c.get("/me").json()["id"]
+    response=c.post("/core/employees",headers=ORIGIN,json={
+        "account":{"name":label+" Manager","email":label.lower()+".manager.hrux@example.org",
+          "password":"SecureTempPass!1234","role":"manager","designation":"Team Manager",
+          "department":"Engineering"},
+        "master":{"manager_id":admin_id}})
+    assert response.status_code==201,response.text
+    return response.json()["id"]
+
 def employee(name,email,code="",phone="9876543210",joined=None):
     return {"name":name,"email":email,"password":"SecureTempPass!1234","role":"employee",
             "designation":"Software Developer","department":"Engineering",
@@ -15,6 +25,7 @@ def employee(name,email,code="",phone="9876543210",joined=None):
 def test_employee_ids_phone_password_and_deactivation():
     with TestClient(app) as c:
         assert c.post("/auth/login",json={"email":"admin@example.com","password":"test-admin-password-12345"}).status_code==200
+        manager_id=make_manager(c,"Lifecycle")
         generated=c.post("/employees/generate-code",headers=ORIGIN)
         assert generated.status_code==200,generated.text
         code=generated.json()["employee_code"]
@@ -22,7 +33,7 @@ def test_employee_ids_phone_password_and_deactivation():
         another=c.post("/employees/generate-code",headers=ORIGIN)
         assert int(another.json()["employee_code"][3:])==number+1
         invalid_phone=c.post("/core/employees",headers=ORIGIN,json={
-            "account":employee("Test Invalid","invalid.phone.hrux@example.org",phone="1234567890"),"master":{}})
+            "account":employee("Test Invalid","invalid.phone.hrux@example.org",phone="1234567890"),"master":{"manager_id":manager_id}})
         assert invalid_phone.status_code==422,invalid_phone.text
         created=c.post("/core/employees",headers=ORIGIN,json={
             "account":employee("Ravi Tester","ravi.hrux@example.org",code,"+91 98765 43210"),"master":{}})
@@ -53,6 +64,13 @@ def test_employee_ids_phone_password_and_deactivation():
                                          "password":"SecureTempPass!1234"}).status_code==401
         assert c.post("/auth/login",json={"email":"ravi.hrux@example.org","password":temp}).status_code==200
         assert c.get(f"/core/employees/{employee_id}").status_code==200
+        assert c.get("/dashboard").status_code==403
+        changed=c.post("/auth/change-password",headers=ORIGIN,
+                       json={"new_password":"BrandNewPass!98765"})
+        assert changed.status_code==200,changed.text
+        assert c.get("/dashboard").status_code==401
+        assert c.post("/auth/login",json={"email":"ravi.hrux@example.org",
+                                         "password":"BrandNewPass!98765"}).status_code==200
         assert c.post(f"/core/employees/{employee_id}/deactivate",
                       headers=ORIGIN,json={"reason":"Employment ended by HR request"}).status_code==403
         c.post("/auth/logout",headers=ORIGIN)
@@ -75,6 +93,7 @@ def test_policy_records_and_90_day_confirmation():
     with TestClient(app) as c:
         assert c.post("/auth/login",json={"email":"admin@example.com",
                                          "password":"test-admin-password-12345"}).status_code==200
+        manager_id=make_manager(c,"Policy")
         policy=c.post("/policies/records",headers=ORIGIN,json={
             "title":"Bench Sales Attendance Policy","category":"attendance",
             "description":"Team members should submit attendance daily, including approved field visits.",

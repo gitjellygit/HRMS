@@ -21,6 +21,7 @@ def test_employee_core_end_to_end():
     with TestClient(app) as client:
         response=client.post("/auth/login",json={"email":"admin@example.com","password":"test-admin-password-12345"})
         assert response.status_code==200,response.text
+        admin_id=client.get("/me").json()["id"]
         unit=client.post("/core/units",headers=ORIGIN,json={"kind":"department","name":"Engineering","code":"ENG"})
         assert unit.status_code==201,unit.text
         assert client.get("/core/units").status_code==200
@@ -37,7 +38,7 @@ def test_employee_core_end_to_end():
         assert any(row["id"]==new_dept.json()["id"] for row in department_choices)
 
         manager=client.post("/core/employees",headers=ORIGIN,
-            json={"account":account("Morgan Manager","morgan.manager@example.org","manager"),"master":{"department_id":unit.json()["id"]}})
+            json={"account":account("Morgan Manager","morgan.manager@example.org","manager"),"master":{"department_id":unit.json()["id"],"manager_id":admin_id}})
         assert manager.status_code==201,manager.text
         manager_id=manager.json()["id"]
         person=client.post("/core/employees",headers=ORIGIN,
@@ -50,7 +51,7 @@ def test_employee_core_end_to_end():
         # API uses the selected department ID, even if a client sends stale text.
         hr_employee=client.post("/core/employees",headers=ORIGIN,json={
             "account":account("Tara Kapoor","tara.kapoor@example.org"),
-            "master":{"department_id":new_dept.json()["id"]}})
+            "master":{"department_id":new_dept.json()["id"],"manager_id":manager_id}})
         assert hr_employee.status_code==201,hr_employee.text
         assert hr_employee.json()["department"]=="Talent Acquisition"
 
