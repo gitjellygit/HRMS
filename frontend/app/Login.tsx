@@ -9,6 +9,8 @@ export default function Login({api,onLogin,initialNotice=""}:{api:string;onLogin
  const [token,setToken]=useState("");
  const [email,setEmail]=useState("");
  const [remember,setRemember]=useState(false);
+ const [otpRequired,setOtpRequired]=useState(false);
+ const [otpCode,setOtpCode]=useState("");
  const [show,setShow]=useState(false);
  const [error,setError]=useState("");
  const [message,setMessage]=useState(initialNotice);
@@ -23,7 +25,7 @@ export default function Login({api,onLogin,initialNotice=""}:{api:string;onLogin
    const fd=new FormData(e.currentTarget);
    try{
      const path=mode==="login"?"/auth/login":mode==="forgot"?"/auth/forgot-password":"/auth/reset-password";
-     const payload=mode==="login"?{email:fd.get("email"),password:fd.get("password"),remember}:mode==="forgot"?{email:fd.get("email")}:{token,password:fd.get("password")};
+     const payload=mode==="login"?{email:fd.get("email"),password:fd.get("password"),otp_code:otpCode||null,remember}:mode==="forgot"?{email:fd.get("email")}:{token,password:fd.get("password")};
      if(mode==="reset"&&fd.get("password")!==fd.get("confirm"))throw Error("Passwords do not match");
      const response=await fetch(api+path,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
      const data=await response.json().catch(()=>({}));
@@ -33,7 +35,11 @@ export default function Login({api,onLogin,initialNotice=""}:{api:string;onLogin
        onLogin(data.user);
      }else if(mode==="forgot"){setMessage(data.message||"If your email is registered, you will receive a reset link.");}
      else{setMode("login");setMessage("Password updated. Sign in with your new password.");}
-   }catch(err){setError((err as Error).message)}finally{setLoading(false)}
+   }catch(err){
+     const msg=(err as Error).message;
+     if(msg.includes("Authenticator code required")||msg.includes("authenticator code"))setOtpRequired(true);
+     setError(msg);
+   }finally{setLoading(false)}
  }
  function go(mode:"login"|"forgot"){setMode(mode);setError("");setMessage("");}
  return <main className="auth-layout">
@@ -53,6 +59,7 @@ export default function Login({api,onLogin,initialNotice=""}:{api:string;onLogin
     {message&&<FeedbackMotion type="success" compact message={message}/>}
     <form className="auth-form" onSubmit={submit}>
      {mode!=="reset"&&<label>Work email<input name="email" type="email" placeholder="you@jellygit.com" defaultValue={email} autoComplete="username" required/></label>}
+     {mode==="login"&&otpRequired&&<label>6-digit authenticator code<input name="otp_code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={otpCode} onChange={e=>setOtpCode(e.target.value)} placeholder="123456" required/></label>}
      {mode!=="forgot"&&<label>{mode==="login"?"Password":"New password"}<div className="password-field"><input name="password" type={show?"text":"password"} placeholder="Enter password" autoComplete={mode==="login"?"current-password":"new-password"} minLength={mode==="reset"?12:undefined} required/><button type="button" aria-label={show?"Hide password":"Show password"} onClick={()=>setShow(!show)}>{show?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></label>}
      {mode==="reset"&&<label>Confirm new password<input name="confirm" type="password" placeholder="Repeat password" autoComplete="new-password" minLength={12} required/></label>}
      {mode==="login"&&<div className="auth-options"><label className="auth-check"><input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}/> Remember me for 30 days</label><button type="button" className="text-link" onClick={()=>go("forgot")}>Forgot password?</button></div>}
