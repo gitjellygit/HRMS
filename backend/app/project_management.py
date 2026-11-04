@@ -1,6 +1,7 @@
 """Enterprise project records, rate details and generated project numbers."""
 from decimal import Decimal
 from datetime import date, timedelta
+import re
 from sqlalchemy.exc import IntegrityError
 from typing import Literal
 
@@ -41,6 +42,7 @@ class ProjectBonusAward(Base):
 
 
 class ProjectCreate(BaseModel):
+    project_number: str = Field(default="", max_length=40)
     name: str = Field(min_length=3, max_length=150)
     client: str = Field(min_length=2, max_length=120)
     candidate_name: str = Field(default="", max_length=150)
@@ -115,6 +117,30 @@ def preview_employee_bonus(employee_id: int,user: Employee=Depends(manage),db:Se
             "source":source,"can_override":True}
 
 
+def project_number_value(db: Session, supplied: str="") -> str:
+    db.execute(select(func.pg_advisory_xact_lock(74001, 2)))
+    code=supplied.strip().upper()
+    if code:
+        if not re.fullmatch(r"JG-P-[0-9]{4,9}",code):
+            raise HTTPException(422,detail={"field":"project_number","message":"Use JG-P-0001 format (4–9 digits)."})
+        if db.scalar(select(ProjectDetail.project_id).where(ProjectDetail.project_number==code)):
+            raise HTTPException(409,detail={"field":"project_number","message":"Project number already exists."})
+        number=int(code[5:])
+        last,called=db.execute(text("SELECT last_value, is_called FROM hrms_project_number_seq")).one()
+        if number>(last if called else last-1):
+            db.execute(text("SELECT setval('hrms_project_number_seq', :n, true)"),{"n":number})
+        return code
+    number=db.execute(text("SELECT nextval('hrms_project_number_seq')")).scalar_one()
+    return f"JG-P-{number:04d}"
+
+
+@router.post("/generate-number")
+def allocate_project_number(user: Employee=Depends(manage),db: Session=Depends(db_session)):
+    code=project_number_value(db)
+    db.commit()
+    return {"project_number":code,"provisional":True}
+
+
 @router.get("/next-number")
 def preview_number(user: Employee = Depends(manage), db: Session = Depends(db_session)):
     number, called = db.execute(text("SELECT last_value, is_called FROM hrms_project_number_seq")).one()
@@ -141,9 +167,9 @@ def create_project(body: ProjectCreate,user: Employee = Depends(manage),db: Sess
     db.add(project)
     db.flush()
     # Database nextval guarantees uniqueness even if two users saw the same preview.
-    number=db.execute(text("SELECT nextval('hrms_project_number_seq')")).scalar_one()
+    code=project_number_value(db,body.project_number)
     detail=ProjectDetail(
-        project_id=project.id,project_number=f"JG-P-{number:04d}",
+        project_id=project.id,project_number=code,
         candidate_name=body.candidate_name.strip(),vendor_name=body.vendor_name.strip(),
         prime_vendor_name=body.prime_vendor_name.strip(),engagement_type=body.engagement_type,
         rate=body.rate,currency=body.currency,rate_unit=body.rate_unit,
