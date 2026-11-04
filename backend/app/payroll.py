@@ -303,6 +303,22 @@ def run_details(run_id:int,user:Employee=Depends(require_finance),db:Session=Dep
             "lines":[line_view(x) for x in lines],
             "has_review_flags":any(bool(x.review_note) for x in lines)}
 
+@router.post("/runs/{run_id}/lines/{line_id}/resolve")
+def resolve_payroll_flag(run_id:int,line_id:int,body:ApproveIn,
+                         user:Employee=Depends(require_hr),db:Session=Depends(db_session)):
+    run=db.get(PayrollRun,run_id)
+    if not run or run.status!="draft":raise HTTPException(409,"Only draft payroll flags may be reviewed.")
+    line=db.get(PayrollLine,line_id)
+    if not line or line.run_id!=run_id:raise HTTPException(404,"Payroll line not found")
+    if not line.review_note:raise HTTPException(409,"No review flags remain.")
+    previous=line.review_note
+    line.review_note=""
+    record(db,user.id,line.employee_id,"payroll_review_flags_acknowledged",
+           f"Flags: {previous[:250]}; HR justification: {body.reason[:500]}")
+    db.commit()
+    return {"resolved":True,"line_id":line.id}
+
+
 @router.post("/runs/{run_id}/approve")
 def approve_run(run_id:int,body:ApproveIn,user:Employee=Depends(require_hr),db:Session=Depends(db_session)):
     run=db.execute(select(PayrollRun).where(PayrollRun.id==run_id).with_for_update()).scalar_one_or_none()
