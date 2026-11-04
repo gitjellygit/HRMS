@@ -149,8 +149,11 @@ def preview_number(user: Employee = Depends(manage), db: Session = Depends(db_se
 
 @router.get("/projects")
 def list_projects(user: Employee = Depends(current_user),db: Session = Depends(db_session)):
-    projects=db.scalars(select(Project).order_by(Project.id.desc())).all()
-    details={d.project_id:d for d in db.scalars(select(ProjectDetail))}
+    query=select(Project).order_by(Project.id.desc())
+    if user.role not in ("super_admin","admin","hr"):
+        query=query.join(ProjectDetail,ProjectDetail.project_id==Project.id).where(ProjectDetail.sourced_by_id==user.id)
+    projects=db.scalars(query).all()
+    details={d.project_id:d for d in db.scalars(select(ProjectDetail).where(ProjectDetail.project_id.in_([p.id for p in projects])))}
     awards=set(db.scalars(select(ProjectBonusAward.project_id)).all())
     # Legacy project rows are retained and can be viewed without falsely generated IDs.
     return [serialize(p,details.get(p.id),awards) for p in projects]
@@ -188,8 +191,11 @@ def get_project(project_id: int,user: Employee = Depends(current_user),db: Sessi
     project=db.get(Project,project_id)
     if not project:
         raise HTTPException(404,"Project not found")
+    detail=db.get(ProjectDetail,project_id)
+    if user.role not in ("super_admin","admin","hr") and (not detail or detail.sourced_by_id!=user.id):
+        raise HTTPException(404,"Project not found")
     awarded=db.get(ProjectBonusAward,project_id) is not None
-    return serialize(project,db.get(ProjectDetail,project_id),{project_id} if awarded else set())
+    return serialize(project,detail,{project_id} if awarded else set())
 
 
 def sync_matured_bonuses(db: Session) -> int:
