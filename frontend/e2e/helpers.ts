@@ -12,7 +12,15 @@ export function users(): Persona[] {
 }
 export async function login(page: Page, user: Persona) {
   await page.goto('/');
-  await expect(page.locator('input[name="email"]')).toBeVisible();
+  // Cross-role workflows can navigate while a previous logout request is still
+  // settling. Always ensure the prior session has ended before signing in.
+  const email=page.locator('input[name="email"]');
+  if(!(await email.isVisible())){
+    const signOut=page.locator('.sidebar nav').getByRole('button',{name:'Sign out'});
+    await expect(signOut).toBeVisible();
+    await signOut.click();
+  }
+  await expect(email).toBeVisible();
   await page.locator('input[name="email"]').fill(user.email);
   await page.locator('input[name="password"]').fill(TEST_PASSWORD);
   await page.getByRole('button', { name: /sign in/i }).click();
