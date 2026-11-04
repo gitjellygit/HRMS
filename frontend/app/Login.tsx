@@ -2,15 +2,15 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 
-type User={id:number;name:string;email:string;role:string;designation:string;department:string;joining_date:string;status:string};
-export default function Login({api,onLogin}:{api:string;onLogin:(user:User)=>void}){
+type User={id:number;name:string;email:string;role:string;designation:string;department:string;joining_date:string;status:string;must_change_password?:boolean};
+export default function Login({api,onLogin,initialNotice=""}:{api:string;onLogin:(user:User)=>void;initialNotice?:string}){
  const [mode,setMode]=useState<"login"|"forgot"|"reset">("login");
  const [token,setToken]=useState("");
  const [email,setEmail]=useState("");
  const [remember,setRemember]=useState(false);
  const [show,setShow]=useState(false);
  const [error,setError]=useState("");
- const [message,setMessage]=useState("");
+ const [message,setMessage]=useState(initialNotice);
  const [loading,setLoading]=useState(false);
  useEffect(()=>{
    setEmail(localStorage.getItem("hrms_email")||"");
