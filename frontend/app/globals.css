@@ -188,3 +188,5 @@ select:disabled{opacity:.65;cursor:not-allowed;background-color:#f3f5f8}
 @media(max-width:700px){.hrms-user-widget{max-width:180px}.hrms-user-meta strong{max-width:115px}.hrms-user-meta select{width:130px}.overview-recent-attendance{padding:13px}}
 
 .core-readonly-fieldset{border:0;padding:0;margin:0;min-width:0}.core-readonly-fieldset:disabled input,.core-readonly-fieldset:disabled select,.core-readonly-fieldset:disabled textarea{cursor:default;color:#6a778b;background:#f8f9fc;opacity:1}.core-readonly-fieldset:disabled button{display:none}
+
+.hr-manager-warning{background:#fff9ec;border:1px solid #f0dfb6;color:#795b23;border-radius:10px;padding:13px 16px;margin:12px 0 18px}.hr-manager-warning strong{font-size:13px}.hr-manager-warning p{font-size:12px;margin:7px 0}.hr-manager-warning div{display:flex;flex-wrap:wrap;gap:6px}.hr-manager-warning span{font-size:11px;padding:4px 8px;border-radius:20px;background:#f7edcf}
