@@ -897,3 +897,7 @@ async def stop_probation_sync():
         except asyncio.CancelledError:
             pass
         _probation_task = None
+
+# New salary/expense tables are registered before application startup.
+from .payroll import router as payroll_router  # noqa: E402
+app.include_router(payroll_router)
