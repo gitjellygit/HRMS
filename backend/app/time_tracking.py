@@ -3,6 +3,7 @@ import os
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from math import asin, cos, radians, sin, sqrt
+from zoneinfo import ZoneInfo
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -281,22 +282,24 @@ def daily(employee_id:int|None=None,month:int=0,user:Employee=Depends(current_us
     threshold=float(policy.half_day_under_hours) if policy else 4
     overtime_threshold=float(policy.overtime_after_hours) if policy else 9
     grace=policy.grace_minutes if policy else 15
+    tz=ZoneInfo("Asia/Kolkata")  # Indian office shifts use IST; location-specific zones are future work.
     entries={}
     for punch in punches:
-        if month and punch.punch_in.month!=month:continue
-        key=punch.punch_in.date().isoformat()
-        if key not in entries:entries[key]={"date":key,"sessions":0,"hours":0.0,"open":False,"first_punch":punch.punch_in}
+        local_punch=punch.punch_in.astimezone(tz)
+        if month and local_punch.month!=month:continue
+        key=local_punch.date().isoformat()
+        if key not in entries:entries[key]={"date":key,"sessions":0,"hours":0.0,"open":False,"first_punch":local_punch}
         entries[key]["sessions"]+=1
         if punch.punch_out:entries[key]["hours"]+=max(0,(punch.punch_out-punch.punch_in).total_seconds()/3600)
         else:entries[key]["open"]=True
-        if punch.punch_in<entries[key]["first_punch"]:entries[key]["first_punch"]=punch.punch_in
+        if local_punch<entries[key]["first_punch"]:entries[key]["first_punch"]=local_punch
     roster_map={r.work_date.isoformat():db.get(Shift,r.shift_id) for r in
       db.scalars(select(Roster).where(Roster.employee_id==owner)).all()}
     for key,v in entries.items():
         shift=roster_map.get(key)
         v["late"]=False
         if shift:
-            start=datetime.combine(date.fromisoformat(key),time.fromisoformat(shift.start_time),tzinfo=timezone.utc)
+            start=datetime.combine(date.fromisoformat(key),time.fromisoformat(shift.start_time),tzinfo=tz)
             v["late"]=v["first_punch"]>start+timedelta(minutes=grace)
         v["half_day"]=not v["open"] and v["hours"]<threshold
         v["overtime_hours"]=round(max(0,v["hours"]-overtime_threshold),2) if not v["open"] else 0
@@ -359,6 +362,8 @@ def review_request(request_id:int,approve:bool,user:Employee=Depends(current_use
         if collision:
             raise HTTPException(409,"Correction overlaps an existing attendance session. Ask HR to review the original punch.")
         db.add(Attendance(employee_id=row.employee_id,punch_in=proposed_in,punch_out=proposed_out))
+        db.add(TimeAudit(request_id=row.id,employee_id=row.employee_id,actor_id=user.id,
+                         event="corrected_session_created"))
     row.status="approved" if approve else "rejected"
     row.reviewed_by=user.id;row.reviewed_at=NOW()
     db.add(TimeAudit(request_id=row.id,employee_id=row.employee_id,actor_id=user.id,event=row.status))
