@@ -311,6 +311,7 @@ def create_request(body:TimeRequestIn,user:Employee=Depends(current_user),db:Ses
     if body.kind=="shift_swap" and body.target_employee_id==user.id:raise HTTPException(422,"Choose another employee.")
     if body.kind=="shift_swap" and not db.get(Employee,body.target_employee_id):raise HTTPException(422,"Choose an existing colleague.")
     row=TimeRequest(employee_id=user.id,**body.model_dump())
+    if body.kind=="shift_swap":row.status="pending_colleague"
     db.add(row);db.flush()
     db.add(TimeAudit(request_id=row.id,employee_id=user.id,actor_id=user.id,event="submitted"))
     db.commit();db.refresh(row)
@@ -321,7 +322,9 @@ def list_requests(scope:Literal["mine","approvals","all"]="mine",
                   user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     if scope=="all" and user.role not in HR:raise HTTPException(403,"HR access required")
     query=select(TimeRequest).order_by(TimeRequest.id.desc())
-    if scope=="mine":query=query.where(TimeRequest.employee_id==user.id)
+    if scope=="mine":
+        query=query.where((TimeRequest.employee_id==user.id)|
+                          ((TimeRequest.target_employee_id==user.id)&(TimeRequest.kind=="shift_swap")))
     elif scope=="approvals":
         if user.role not in HR:
             team=db.scalars(select(EmployeeCore.employee_id).where(EmployeeCore.manager_id==user.id)).all()
@@ -337,15 +340,41 @@ def review_request(request_id:int,approve:bool,user:Employee=Depends(current_use
         raise HTTPException(403,"Not an authorized approver")
     if row.status!="pending":raise HTTPException(409,"Request already reviewed.")
     if row.kind=="shift_swap" and approve:
+        # The colleague first agrees explicitly; a manager cannot swap shifts unilaterally.
         first=db.scalar(select(Roster).where(Roster.employee_id==row.employee_id,Roster.work_date==row.work_date))
         second=db.scalar(select(Roster).where(Roster.employee_id==row.target_employee_id,Roster.work_date==row.work_date))
         if not first or not second:raise HTTPException(422,"Both colleagues must have shifts on the same day.")
         first.shift_id,second.shift_id=second.shift_id,first.shift_id
+    if row.kind=="regularization" and approve:
+        proposed_in=row.proposed_in
+        proposed_out=row.proposed_out
+        assert proposed_in and proposed_out
+        if (proposed_out-proposed_in).total_seconds()>24*3600:
+            raise HTTPException(422,"Corrected shift cannot exceed 24 hours.")
+        collision=db.scalar(select(Attendance.id).where(Attendance.employee_id==row.employee_id,
+                  Attendance.punch_in<proposed_out,
+                  (Attendance.punch_out>proposed_in)|(Attendance.punch_out.is_(None))))
+        if collision:
+            raise HTTPException(409,"Correction overlaps an existing attendance session. Ask HR to review the original punch.")
+        db.add(Attendance(employee_id=row.employee_id,punch_in=proposed_in,punch_out=proposed_out))
     row.status="approved" if approve else "rejected"
     row.reviewed_by=user.id;row.reviewed_at=NOW()
     db.add(TimeAudit(request_id=row.id,employee_id=row.employee_id,actor_id=user.id,event=row.status))
     # Approved regularizations are recorded as corrections, not silently inserted into existing punches.
     db.commit();return request_dict(row)
+
+@router.post("/requests/{request_id}/colleague-response")
+def respond_to_swap(request_id:int,accept:bool,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    row=db.get(TimeRequest,request_id)
+    if not row:raise HTTPException(404,"Swap request not found")
+    if row.kind!="shift_swap" or row.target_employee_id!=user.id:
+        raise HTTPException(403,"Only the selected colleague can respond to this swap.")
+    if row.status!="pending_colleague":raise HTTPException(409,"This request can no longer be answered.")
+    row.status="pending" if accept else "rejected"
+    db.add(TimeAudit(request_id=row.id,employee_id=row.employee_id,actor_id=user.id,
+                     event="colleague_accepted" if accept else "colleague_declined"))
+    db.commit();return request_dict(row)
+
 
 @router.get("/audits/{request_id}")
 def audits(request_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
