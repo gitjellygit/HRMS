@@ -26,7 +26,7 @@ export async function navigate(page: Page, label: string) {
 export const NAV = [
   'Overview', 'Employees', 'Attendance', 'Leave requests', 'Projects',
   'Bonuses', 'Appraisals', 'HR overview', 'Policies', 'Organization',
-  'Org chart', 'My profile', 'Profile approvals', 'Bulk data & expiries',
+  'Org chart', 'My profile', 'Profile requests', 'Bulk data & expiries',
 ] as const;
 export function permitted(role: string): Set<string> {
   const hiddenHR = ['HR overview', 'Policies', 'Organization', 'Bulk data & expiries'];

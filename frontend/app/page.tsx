@@ -30,7 +30,7 @@ const sections = [
   { id:"organization",label:"Organization",Icon:Building2 },
   { id:"orgchart",label:"Org chart",Icon:GitBranch },
   { id:"profile",label:"My profile",Icon:UserRound },
-  { id:"approvals",label:"Profile approvals",Icon:ShieldCheck },
+  { id:"approvals",label:"Profile requests",Icon:ShieldCheck },
   { id:"bulk",label:"Bulk data & expiries",Icon:FileDown },
 ];
 export default function Home() {
@@ -56,7 +56,7 @@ export default function Home() {
   const visible = sections.filter(s=>{
     if(["employees","bonuses"].includes(s.id)&&!canSeeEmployees)return false;
     if(["organization","bulk","hrdesk","policies"].includes(s.id)&&!canHR)return false;
-    if(s.id==="approvals")return false;
+    if(s.id==="approvals"&&!canHR)return false;
     return true;
   });
   async function request(path:string,method="GET",body?:Entry) {
@@ -67,10 +67,9 @@ export default function Home() {
   async function refresh(id=section) {
     try {
       setError("");
-      const [data,people] = await Promise.all([
-        request(id==="dashboard"?"/dashboard":"/"+id),
-        user && ["super_admin","admin","hr","accountant"].includes(user.role)?request("/employees"):Promise.resolve([])
-      ]);
+      const data=await request(id==="dashboard"?"/dashboard":"/"+id);
+      const people=user && ["super_admin","admin","hr","accountant"].includes(user.role)
+        ?await request("/employees").catch(()=>[]) : [];
       if(id==="dashboard")setStats(data);else setRows(data);
       setEmployees(people);
     } catch(e){setError((e as Error).message);}
