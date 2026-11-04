@@ -10,11 +10,12 @@ import PunchControl from "./PunchControl";
 import BonusSummary from "./BonusSummary";
 import CompanyPolicies from "./CompanyPolicies";
 import AttendanceByDay from "./AttendanceByDay";
+import ChangePassword from "./ChangePassword";
 import { LayoutDashboard, Users, Clock3, CalendarDays, BriefcaseBusiness, Wallet, Award, LogOut, GitBranch, Building2, UserRound, ShieldCheck, FileDown, ClipboardList, Settings2 } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 type Employee = { id:number; name:string; email:string; role:string; designation:string; department:string; joining_date:string; status:string };
-type User = Employee;
+type User = Employee & {must_change_password?:boolean};
 type Entry = Record<string, any>;
 const sections = [
   { id:"dashboard",label:"Overview",Icon:LayoutDashboard },
@@ -44,13 +45,18 @@ export default function Home() {
   const [fields,setFields] = useState<Entry>({});
   const [error,setError] = useState("");
   const [loading,setLoading] = useState(false);
+  const [passwordNotice,setPasswordNotice]=useState("");
+  const [presence,setPresence]=useState("available");
+  const [hasPhoto,setHasPhoto]=useState(false);
+  const [avatarVersion,setAvatarVersion]=useState(0);
+  const [copyStatus,setCopyStatus]=useState("");
   const canHR = user?.role === "super_admin" || user?.role === "admin" || user?.role === "hr";
   const canFinance = canHR || user?.role === "accountant";
   const canSeeEmployees = canFinance;
   const visible = sections.filter(s=>{
     if(["employees","bonuses"].includes(s.id)&&!canSeeEmployees)return false;
     if(["organization","bulk","hrdesk","policies"].includes(s.id)&&!canHR)return false;
-    if(s.id==="approvals"&&!(canHR||user?.role==="employee"||user?.role==="manager"))return false;
+    if(s.id==="approvals")return false;
     return true;
   });
   async function request(path:string,method="GET",body?:Entry) {
@@ -70,8 +76,29 @@ export default function Home() {
     } catch(e){setError((e as Error).message);}
   }
   useEffect(()=>{request("/me").then(setUser).catch(()=>{}).finally(()=>setReady(true));},[]);
-  useEffect(()=>{if(user&&!["organization","orgchart","profile","approvals","bulk","employee-record","hrdesk","leaves","projects","policies"].includes(section))refresh(section);},[user,section]);
-  async function logout(){try{await request("/auth/logout","POST");}finally{setUser(null);setRows([]);}}
+  useEffect(()=>{
+    if(!user||user.must_change_password)return;
+    fetch(API+"/me/presence",{credentials:"include"}).then(r=>r.ok?r.json():null).then(v=>{if(v){setPresence(v.status);setHasPhoto(v.has_photo)}}).catch(()=>{});
+  },[user]);
+  useEffect(()=>{if(user&&!user.must_change_password&&!["organization","orgchart","profile","approvals","bulk","employee-record","hrdesk","leaves","projects","policies"].includes(section))refresh(section);},[user,section]);
+  async function logout(){try{await request("/auth/logout","POST");}finally{setUser(null);setRows([]);setSection("dashboard");}}
+  async function changePresence(status:string){
+   try{await request("/me/presence","PUT",{status});setPresence(status)}catch(e){setError((e as Error).message)}
+  }
+  async function uploadAvatar(file:File|undefined){
+   if(!file)return;
+   if(file.size>2*1024*1024){setError("Choose a PNG/JPEG image under 2 MB.");return}
+   const body=new FormData();body.append("photo",file);
+   try{
+    const response=await fetch(API+"/me/photo",{method:"POST",credentials:"include",body});
+    if(!response.ok)throw Error("Could not upload profile photo.");
+    setHasPhoto(true);setAvatarVersion(v=>v+1);
+   }catch(e){setError((e as Error).message)}
+  }
+  function completePasswordChange(){
+   setPasswordNotice("Password successfully changed. Please sign in again using your new password.");
+   setUser(null);setRows([]);setSection("dashboard");
+  }
   async function submit(e:React.FormEvent<HTMLFormElement>){
     e.preventDefault();setLoading(true);setError("");
     const fd=new FormData(e.currentTarget);const data=Object.fromEntries(fd.entries());
@@ -145,8 +172,15 @@ export default function Home() {
     return "—";
   }
   if(!ready)return <div className="login-wrap">Loading workspace…</div>;
-  if(!user)return <Login api={API} onLogin={setUser}/>;
-  return <div className="shell"><aside className="sidebar"><div className="brand">Jelly<span>Git</span> HRMS</div><nav className="menu">{visible.map(({id,label,Icon})=><button key={id} onClick={()=>{setSection(id);setForm(false);setError("")}} className={section===id?"active":""}><Icon size={18}/>{label}</button>)}<button onClick={logout}><LogOut size={18}/>Sign out</button></nav></aside><main className="content"><div className="top"><div><h1 className="title">{section==="employee-record"?"Employee master record":sections.find(s=>s.id===section)?.label}</h1><div className="muted">Your team, in one place</div></div><div className="user"><b>{user.name}</b><br/><span className="muted">{user.role}</span></div></div>{error&&<div className="error">{error}</div>}
+  if(!user)return <Login api={API} onLogin={u=>{setPasswordNotice("");setUser(u)}} initialNotice={passwordNotice}/>;
+  if(user.must_change_password)return <ChangePassword api={API} required onComplete={completePasswordChange}/>;
+  return <div className="shell"><aside className="sidebar"><div className="brand">Jelly<span>Git</span> HRMS</div><nav className="menu">{visible.map(({id,label,Icon})=><button key={id} onClick={()=>{setSection(id);setForm(false);setError("")}} className={section===id?"active":""}><Icon size={18}/>{label}</button>)}<button onClick={logout}><LogOut size={18}/>Sign out</button></nav></aside><main className="content"><div className="top"><div><h1 className="title">{section==="employee-record"?"Employee master record":sections.find(s=>s.id===section)?.label}</h1><div className="muted">Your team, in one place</div></div><div className="hrms-user-widget">
+    <label className="hrms-avatar-button" title="Upload profile photo" aria-label="Upload profile photo">
+      {hasPhoto?<img src={API+"/me/photo?v="+avatarVersion} alt={user.name+" profile"}/>:<span>{user.name.trim().split(/\\s+/).map(x=>x[0]).slice(0,2).join("").toUpperCase()}</span>}
+      <input type="file" accept="image/png,image/jpeg" onChange={e=>void uploadAvatar(e.target.files?.[0])}/>
+    </label>
+    <div className="hrms-user-meta"><strong>{user.name}</strong><small>{user.role}</small><select aria-label="My availability" value={presence} onChange={e=>void changePresence(e.target.value)}>{[["available","Available"],["busy","Busy"],["away","Away"],["do_not_disturb","Do not disturb"]].map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></div>
+  </div></div>{error&&<div className="error">{error}</div>}
     {section==="policies"?<CompanyPolicies api={API}/>:section==="projects"?<ProjectsManagement api={API} canCreate={Boolean(canHR)}/>:section==="leaves"?<LeaveWorkspace api={API} user={user}/>:section==="hrdesk"?<HRDesk api={API}/>:section==="employees"?<EmployeeManagement api={API} canCreate={Boolean(canHR)} currentRole={user.role} onOpenEmployee={id=>{setSelectedEmployeeId(id);setSection("employee-record")}}/>:
     ["employee-record","organization","orgchart","profile","approvals","bulk"].includes(section)?
       <CoreWorkspace api={API} mode={(section==="employee-record"?"profile":section==="organization"?"organization":section==="orgchart"?"orgchart":section==="profile"?"profile":section==="approvals"?"approvals":"bulk")}
