@@ -897,3 +897,8 @@ async def stop_probation_sync():
         except asyncio.CancelledError:
             pass
         _probation_task = None
+
+
+# Payroll and claim workflows use independent additive records.
+from .payroll import router as payroll_router  # noqa: E402
+app.include_router(payroll_router)
