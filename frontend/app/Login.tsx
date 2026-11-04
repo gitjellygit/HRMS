@@ -23,7 +23,7 @@ export default function Login({api,onLogin,initialNotice=""}:{api:string;onLogin
    const fd=new FormData(e.currentTarget);
    try{
      const path=mode==="login"?"/auth/login":mode==="forgot"?"/auth/forgot-password":"/auth/reset-password";
-     const payload=mode==="login"?{email:fd.get("email"),password:fd.get("password"),remember}:mode==="forgot"?{email:fd.get("email")}:{token,password:fd.get("password")};
+     const payload=mode==="login"?{email:fd.get("email"),password:fd.get("password"),remember,otp:fd.get("otp")||null}:mode==="forgot"?{email:fd.get("email")}:{token,password:fd.get("password")};
      if(mode==="reset"&&fd.get("password")!==fd.get("confirm"))throw Error("Passwords do not match");
      const response=await fetch(api+path,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
      const data=await response.json().catch(()=>({}));
@@ -54,6 +54,7 @@ export default function Login({api,onLogin,initialNotice=""}:{api:string;onLogin
     <form className="auth-form" onSubmit={submit}>
      {mode!=="reset"&&<label>Work email<input name="email" type="email" placeholder="you@jellygit.com" defaultValue={email} autoComplete="username" required/></label>}
      {mode!=="forgot"&&<label>{mode==="login"?"Password":"New password"}<div className="password-field"><input name="password" type={show?"text":"password"} placeholder="Enter password" autoComplete={mode==="login"?"current-password":"new-password"} minLength={mode==="reset"?12:undefined} required/><button type="button" aria-label={show?"Hide password":"Show password"} onClick={()=>setShow(!show)}>{show?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></label>}
+     {mode==="login"&&<label>Authenticator code (if enabled)<input name="otp" type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" placeholder="6-digit code"/></label>}
      {mode==="reset"&&<label>Confirm new password<input name="confirm" type="password" placeholder="Repeat password" autoComplete="new-password" minLength={12} required/></label>}
      {mode==="login"&&<div className="auth-options"><label className="auth-check"><input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}/> Remember me for 30 days</label><button type="button" className="text-link" onClick={()=>go("forgot")}>Forgot password?</button></div>}
      <button className="auth-submit" disabled={loading}>{loading?"Please wait…":mode==="login"?"Sign in to HRMS":mode==="forgot"?"Send reset link":"Update password"}</button>
