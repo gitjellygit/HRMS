@@ -288,7 +288,7 @@ def employee_exists(db: Session, employee_id: int):
 
 app = FastAPI(title="JellyGit HRMS", version="0.1.0")
 origins = [x.strip() for x in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",") if x.strip()]
-app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=['GET', 'POST', 'PATCH', 'DELETE'], allow_headers=['Authorization', 'Content-Type'])
+app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], allow_headers=['Authorization', 'Content-Type'])
 
 @app.middleware('http')
 async def same_origin_writes(request: Request, call_next):

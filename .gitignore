@@ -10,3 +10,7 @@ dist/
 *.sqlite3
 .DS_Store
 uploads/
+
+frontend/e2e/.auth/
+frontend/playwright-report/
+frontend/test-results/
