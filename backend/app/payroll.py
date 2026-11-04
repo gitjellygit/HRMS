@@ -273,7 +273,7 @@ def publish_run(run_id:int,user:Employee=Depends(current_user),db:Session=Depend
 def my_payslips(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     q=select(PayrollLine,PayrollRun).join(PayrollRun,PayrollRun.id==PayrollLine.run_id).where(
         PayrollLine.employee_id==user.id,PayrollRun.status=="published").order_by(PayrollRun.period.desc())
-    return [{"run_id":run.id,"period":run.period,"net":line.net,"gross":line.gross} for line,run in db.execute(q).all()]
+    return [{"run_id":run.id,"line_id":line.id,"period":run.period,"net":line.net,"gross":line.gross} for line,run in db.execute(q).all()]
 
 @router.get("/payslips/{line_id}.pdf")
 def pdf_payslip(line_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
