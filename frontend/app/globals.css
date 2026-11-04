@@ -224,3 +224,38 @@ select:disabled{opacity:.65;cursor:not-allowed;background-color:#f3f5f8}
 /* Accessible field errors across legacy and new forms */
 .employee-page :is(input,select,textarea)[aria-invalid=true],.project-page :is(input,select,textarea)[aria-invalid=true],.policy-page :is(input,select,textarea)[aria-invalid=true],.password-change-form :is(input,select,textarea)[aria-invalid=true]{border:2px solid #d64a4a!important;background:#fff7f7!important;box-shadow:0 0 0 3px #f4b3b333!important;scroll-margin:90px}
 .time-swap-consent{border:1px solid #dcd4f0;border-radius:10px;padding:14px;background:#faf8ff;margin:12px 0}.time-swap-consent p{font-size:12px;color:#6f7592;margin:7px 0 13px}
+
+/* Finance, people operations and security workspaces */
+.ops-workspace{display:grid;gap:16px;min-width:0}
+.ops-heading{display:flex;align-items:center;gap:12px;color:#6651a4;justify-content:flex-start}
+.ops-heading h2{font-size:19px;color:#354261;margin:0}.ops-heading p{font-size:12px;margin:4px 0 0;color:#8b95a8}
+.ops-heading label{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:#68738b}
+.ops-heading input{width:90px;padding:7px;border:1px solid #d8e0ee;border-radius:8px}
+.ops-tabs{display:flex;gap:5px;padding:5px;background:#f1f3f9;border-radius:11px;overflow:auto;max-width:100%}
+.ops-tabs button{display:flex;align-items:center;gap:7px;white-space:nowrap;background:transparent;border:0;border-radius:8px;padding:10px 13px;font-size:12px;font-weight:650;color:#67738b;cursor:pointer}
+.ops-tabs button.active{background:white;color:#55418e;box-shadow:0 2px 8px #30385e12}
+.ops-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start;min-width:0}
+.ops-workspace .employee-surface{padding:20px;min-width:0}.ops-workspace h3{font-size:15px;color:#39445f;margin:0 0 10px}.ops-workspace h4{font-size:13px;color:#495473;margin:10px 0}
+.ops-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0 19px}
+.ops-form label:not(.ops-check),.ops-field{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:#69758c;min-width:0}
+.ops-form label.wide,.ops-form button.employee-primary{grid-column:1/-1}
+.ops-form input:not([type=checkbox]),.ops-form select,.ops-form textarea,.ops-field input{width:100%;min-height:39px;min-width:0;padding:9px 11px;background:white;border:1px solid #d7deeb;border-radius:9px;font-size:12px;box-sizing:border-box}
+.ops-form textarea{resize:vertical}.ops-form small{font-size:11px;color:#929caf;line-height:1.5}
+.ops-check{display:flex;align-items:center;gap:9px;font-size:12px;color:#62708a}
+.ops-check input{width:15px;height:15px}.ops-form button.employee-primary{width:fit-content}
+.ops-list{display:grid;gap:9px;margin:14px 0;max-height:480px;overflow:auto;min-width:0}
+.ops-list>div{display:grid;gap:6px;border:1px solid #eaedf5;background:#fbfbfe;padding:12px;border-radius:9px;min-width:0}
+.ops-list strong{font-size:12px;color:#3a4864;overflow-wrap:anywhere}
+.ops-list span{font-size:12px;color:#69758c;line-height:1.55;white-space:pre-line;overflow-wrap:anywhere}
+.ops-list small{font-size:11px;color:#858fa2}.ops-list button{font-size:12px;justify-self:start}
+.ops-actions{display:flex;gap:9px;flex-wrap:wrap}.ops-warning{color:#a2671f;font-size:12px;line-height:1.55;padding:8px 11px;background:#fff7e9;border-radius:8px;border:1px solid #f4dfb7}
+.ops-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0}
+.ops-metrics>div{padding:16px;border:1px solid #e5eaf3;background:#f9fafc;border-radius:12px;display:grid;gap:9px}
+.ops-metrics span{font-size:12px;color:#8190a3}.ops-metrics strong{font-size:24px;color:#374462}
+.ops-mfa-secret{padding:15px;display:grid;gap:12px;border:1px solid #e4d8f5;background:#faf8ff;margin:15px 0;border-radius:10px}
+.ops-mfa-secret code{overflow-wrap:anywhere;padding:12px;background:#ebe5f8;border-radius:8px;font-size:13px;letter-spacing:1px}
+.ops-mfa-secret strong,.ops-mfa-secret p{font-size:12px;color:#695486}
+.ops-mfa-secret label{display:grid;gap:7px;font-size:12px;color:#576780}
+.ops-mfa-secret input{width:170px;padding:9px 12px;border:1px solid #d4dbe8;border-radius:9px}
+.ops-workspace :is(input,select,textarea)[aria-invalid=true]{border:2px solid #d74747!important;box-shadow:0 0 0 3px #ef9e9e33!important;background:#fff7f7!important}
+@media(max-width:1100px){.ops-columns{grid-template-columns:1fr}}@media(max-width:760px){.ops-metrics{grid-template-columns:repeat(2,1fr)}.ops-form{grid-template-columns:1fr}.ops-form label.wide,.ops-form button.employee-primary{grid-column:1}.ops-workspace .employee-surface{padding:15px}}
