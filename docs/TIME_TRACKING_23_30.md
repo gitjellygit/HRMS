@@ -35,11 +35,12 @@ The database stores new time_* records and approval audits. Existing employee, l
 git fetch origin
 git switch --track origin/feature/attendance-time-23-30-and-motion
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec web npm install
 ```
 
 Go to **http://localhost:3000 → Time & shifts**.
 
-If the package dependency was added after your development container's original build, do **one rebuild** for `frontend/package.json` and the named `node_modules` volume. Ordinary source changes then hot reload.
+Existing development Docker volumes can retain outdated node_modules after an image rebuild. The explicit `exec web npm install` installs the animation package inside that persistent volume. Source changes hot reload normally afterward.
 
 If the database schema is being initialized for the first time, the FastAPI startup automatically creates the additive `time_*` tables. Before production, use formal Alembic migration scripts and database backups rather than runtime `create_all`.
 
