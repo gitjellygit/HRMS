@@ -103,10 +103,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
   setAddingDept(false);setDeptName("");setDeptCode("");setDeptError("");
   setOpen(true);
   void loadUnits().catch(e=>setFailure((e as Error).message));
-  try{
-   const response=await fetch(api+"/employees/next-code",{credentials:"include"});
-   if(response.ok){const data=await response.json();setDraft(d=>({...d,employee_code:data.employee_code}))}
-  }catch{/* Preview is optional: the backend allocates the authoritative ID on save. */}
+  void generateCode();
  }
  function departmentCode(name:string){
   return name.trim().toUpperCase().replace(/[^A-Z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,35);
