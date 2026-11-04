@@ -190,3 +190,33 @@ select:disabled{opacity:.65;cursor:not-allowed;background-color:#f3f5f8}
 .core-readonly-fieldset{border:0;padding:0;margin:0;min-width:0}.core-readonly-fieldset:disabled input,.core-readonly-fieldset:disabled select,.core-readonly-fieldset:disabled textarea{cursor:default;color:#6a778b;background:#f8f9fc;opacity:1}.core-readonly-fieldset:disabled button{display:none}
 
 .hr-manager-warning{background:#fff9ec;border:1px solid #f0dfb6;color:#795b23;border-radius:10px;padding:13px 16px;margin:12px 0 18px}.hr-manager-warning strong{font-size:13px}.hr-manager-warning p{font-size:12px;margin:7px 0}.hr-manager-warning div{display:flex;flex-wrap:wrap;gap:6px}.hr-manager-warning span{font-size:11px;padding:4px 8px;border-radius:20px;background:#f7edcf}
+
+/* Time & attendance 23–30 */
+.time-workspace{display:grid;gap:18px}.time-intro h2{font-size:19px;margin:0 0 6px;color:#303950}.time-intro p{font-size:13px;color:#8490a5;margin:0}
+.time-tabs{display:flex;gap:5px;padding:5px;background:#f0f2f8;border-radius:11px;overflow:auto;max-width:100%}
+.time-tabs button{display:flex;align-items:center;gap:7px;border:0;border-radius:8px;padding:10px 13px;background:transparent;color:#667188;white-space:nowrap;font-size:12px;font-weight:650}
+.time-tabs button.active{color:#55408c;background:white;box-shadow:0 2px 9px #3d416b15}.time-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+.time-workspace .employee-surface{padding:20px}.time-workspace h3{font-size:15px;color:#374160;margin:0 0 12px}.time-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px;margin-top:16px}
+.time-form label:not(.time-check){display:flex;flex-direction:column;gap:6px;font-size:12px;color:#64708b;font-weight:650;min-width:0}
+.time-form input:not([type=checkbox]),.time-form select,.time-form textarea{width:100%;border:1px solid #d7dfeb;border-radius:9px;background:#fff;padding:10px 11px;min-height:40px;min-width:0;font-size:13px}
+.time-form textarea{resize:vertical}.time-form .wide{grid-column:1/-1}
+.time-form .employee-primary{width:fit-content;grid-column:1/-1}
+.time-list{display:grid;gap:9px;margin:15px 0 20px;max-height:450px;overflow:auto}
+.time-list>div{background:#f9faff;border:1px solid #ebedf5;border-radius:9px;padding:12px;display:grid;gap:6px;min-width:0}
+.time-list strong{font-size:12px;color:#3d485f}.time-list span{font-size:12px;color:#6f7b91;overflow-wrap:anywhere}.time-list small{font-size:11px;color:#67748b;text-transform:capitalize}
+.time-row-actions{display:flex;gap:8px;flex-wrap:wrap}.time-row-actions button{font-size:12px;padding:8px 12px}
+.time-state.approved{color:#168654}.time-state.rejected{color:#ba4a4a}.time-state.pending{color:#996814}
+.time-day-list{display:grid;gap:8px;margin-top:15px}
+.time-day-list>div{display:flex;align-items:center;gap:9px;justify-content:space-between;border-bottom:1px solid #e9edf4;padding:12px 2px;flex-wrap:wrap}
+.time-day-list strong{font-size:12px}.time-day-list span,.time-day-list small{font-size:11px;color:#69778b}
+.time-geo{display:grid;gap:10px;border:1px solid #cbdaf2;background:#f6f9ff;padding:16px;border-radius:10px}.time-geo p{font-size:12px;color:#526884;margin:0}.time-geo button{justify-self:start}
+.time-check{display:flex;align-items:center;gap:10px;font-size:12px;color:#66758c}.time-check input{width:16px;height:16px}
+.time-form-error{display:flex;gap:10px;background:#fff0ee;color:#9b3030;padding:13px 15px;border:1px solid #efbeb9;border-radius:11px;align-items:flex-start}
+.time-form-error strong{font-size:13px}.time-form-error p{font-size:12px;margin:3px 0 0}
+.time-workspace :is(input,select,textarea)[aria-invalid=true]{border:2px solid #d94545!important;background:#fff7f6!important;box-shadow:0 0 0 3px #ee87872d!important;scroll-margin-top:90px}
+.motion-feedback{display:flex;align-items:center;gap:12px;padding:10px 15px;background:#f2f9f5;border:1px solid #d5ecdf;border-radius:12px;color:#236448;font-size:13px;font-weight:650}
+.motion-feedback.compact{padding:7px 11px}.motion-feedback .motion-visual{width:62px;height:62px;flex:none;display:grid;place-items:center}.motion-feedback.compact .motion-visual{width:46px;height:46px}.motion-feedback .motion-visual canvas{max-width:100%;max-height:100%}
+.motion-feedback.motion-loading{background:#f4f7ff;color:#465b91;border-color:#e1e8f9}.motion-feedback.motion-error{background:#fff2f1;color:#a33c3c;border-color:#f5d3ce}
+@keyframes hrmsSpin{to{transform:rotate(360deg)}}.motion-fallback-spin{animation:hrmsSpin .9s linear infinite}
+@media(prefers-reduced-motion:reduce){.motion-visual{display:none!important}.motion-fallback-spin{animation:none}}
+@media(max-width:1080px){.time-columns{grid-template-columns:1fr}}@media(max-width:650px){.time-form{grid-template-columns:1fr}.time-form .wide,.time-form .employee-primary{grid-column:1}}
