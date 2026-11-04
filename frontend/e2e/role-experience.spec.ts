@@ -86,8 +86,8 @@ test('HR reset forces password change and successful re-login',async({page})=>{
  await page.getByRole('button',{name:'Sign in to HRMS'}).click();
  await expect(page.getByRole('heading',{name:'Change your temporary password'})).toBeVisible();
  await expect(page.locator('.sidebar')).toHaveCount(0);
- await page.getByRole('textbox',{name:'New password',exact:true}).fill('NewUserChoice!7890');
- await page.getByRole('textbox',{name:'Confirm new password'}).fill('NewUserChoice!7890');
+ await page.getByLabel('New password',{exact:true}).fill('NewUserChoice!7890');
+ await page.getByLabel('Confirm new password').fill('NewUserChoice!7890');
  await page.getByRole('button',{name:'Change password and sign out'}).click();
  await expect(page.getByRole('status')).toContainText('Password successfully changed');
  await page.locator('input[name="email"]').fill(email);
