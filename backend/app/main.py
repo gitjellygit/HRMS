@@ -735,3 +735,36 @@ async def stop_bonus_reconciler():
 
 from .bonus_policy import router as bonus_policy_router  # noqa: E402
 app.include_router(bonus_policy_router)
+
+# Reconcile 90-day probation on startup and hourly. Safe across app replicas:
+# rows are locked during transitions, with a single lifecycle event per change.
+_probation_task = None
+
+def _sync_probation_once():
+    from .employee_core import sync_probation_periods
+    with SessionLocal() as session:
+        return sync_probation_periods(session)
+
+async def _probation_reconciler():
+    while True:
+        try:
+            await asyncio.to_thread(_sync_probation_once)
+        except Exception:
+            logging.getLogger(__name__).exception("Probation reconciliation failed")
+        await asyncio.sleep(3600)
+
+@app.on_event("startup")
+async def start_probation_sync():
+    global _probation_task
+    _probation_task = asyncio.create_task(_probation_reconciler())
+
+@app.on_event("shutdown")
+async def stop_probation_sync():
+    global _probation_task
+    if _probation_task:
+        _probation_task.cancel()
+        try:
+            await _probation_task
+        except asyncio.CancelledError:
+            pass
+        _probation_task = None
