@@ -220,7 +220,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
  }
  return <div className="employee-page">
   {failure&&!open&&<div className="error" role="alert">{failure}</div>}
-  {message&&<FeedbackMotion type="success" compact message={message}/>}
+  {message&&<FeedbackMotion type={message.includes("added successfully")?"congrats":"success"} compact message={message}/>}
   {!open?<><div className="employee-metrics">
    <div className="employee-metric"><Users size={20}/><span>Total employees</span><strong>{employees.length}</strong></div>
    <div className="employee-metric"><BadgeCheck size={20}/><span>Active employees</span><strong>{employees.filter(e=>e.status==="active").length}</strong></div>

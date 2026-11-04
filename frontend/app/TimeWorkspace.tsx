@@ -102,7 +102,7 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
     <button role="tab" aria-selected={tab===id} className={tab===id?"active":""} key={id} onClick={()=>{setTab(id as Tab);clear()}}><Icon size={16}/>{label}</button>)}
   </div>
   {error&&<div className="time-form-error" role="alert"><AlertCircle size={17}/><div><strong>Check the highlighted field</strong><p>{error}</p></div></div>}
-  {notice&&<FeedbackMotion type="success" compact message={notice}/>}
+  {notice&&<FeedbackMotion type={notice==="Request approved."?"congrats":"success"} compact message={notice}/>}
   {busy&&<FeedbackMotion type="loading" compact message="Saving your changes…"/>}
 
   {tab==="today"&&<div className="time-columns">
