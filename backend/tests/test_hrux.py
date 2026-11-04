@@ -47,7 +47,7 @@ def test_employee_ids_phone_password_and_deactivation():
         assert duplicate.status_code==409,duplicate.text
         elevated=f"JG-{number+120:03d}"
         manual=c.post("/core/employees",headers=ORIGIN,json={
-            "account":employee("Higher Number","higher.hrux@example.org",elevated),"master":{}})
+            "account":employee("Higher Number","higher.hrux@example.org",elevated),"master":{"manager_id":manager_id}})
         assert manual.status_code==201,manual.text
         next_code=c.post("/employees/generate-code",headers=ORIGIN)
         assert int(next_code.json()["employee_code"][3:])==number+121
@@ -106,7 +106,7 @@ def test_policy_records_and_90_day_confirmation():
         joined=date.today()-timedelta(days=100)
         former=c.post("/core/employees",headers=ORIGIN,json={
             "account":employee("Older Joiner","older.joiner.hrux@example.org",joined=joined),
-            "master":{}})
+            "master":{"manager_id":manager_id}})
         assert former.status_code==201,former.text
         id=former.json()["id"]
         assert former.json()["effective_lifecycle"]=="confirmed"
