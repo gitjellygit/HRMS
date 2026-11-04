@@ -97,9 +97,14 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
  return <div className="time-workspace" ref={focusRef}>
   <div className="time-intro"><div><h2>Time & attendance</h2><p>Shifts, requests, overtime, work from home and timesheets, all in one place.</p></div></div>
   <div className="time-tabs" role="tablist" aria-label="Time and attendance sections">
-   {([["today","Attendance",Clock3],["requests","Requests",FileClock],["shifts","Shifts & roster",Users],
-      ["timesheets","Timesheets",BriefcaseBusiness],...(isHR?[["policies","Rules & GPS",Settings2]]:[])] as const).map(([id,label,Icon])=>
-    <button role="tab" aria-selected={tab===id} className={tab===id?"active":""} key={id} onClick={()=>{setTab(id as Tab);clear()}}><Icon size={16}/>{label}</button>)}
+   {([
+      {id:"today" as Tab,label:"Attendance",Icon:Clock3},
+      {id:"requests" as Tab,label:"Requests",Icon:FileClock},
+      {id:"shifts" as Tab,label:"Shifts & roster",Icon:Users},
+      {id:"timesheets" as Tab,label:"Timesheets",Icon:BriefcaseBusiness},
+      ...(isHR?[{id:"policies" as Tab,label:"Rules & GPS",Icon:Settings2}]:[])
+     ]).map(({id,label,Icon})=>
+    <button role="tab" aria-selected={tab===id} className={tab===id?"active":""} key={id} onClick={()=>{setTab(id);clear()}}><Icon size={16}/>{label}</button>)}
   </div>
   {error&&<div className="time-form-error" role="alert"><AlertCircle size={17}/><div><strong>Check the highlighted field</strong><p>{error}</p></div></div>}
   {notice&&<FeedbackMotion type={notice==="Request approved."?"congrats":"success"} compact message={notice}/>}
