@@ -138,3 +138,71 @@ test.describe('employee and finance workflows',()=>{
     expect(res.status()).toBe(403);
   });
 });
+
+test.describe('business-critical cross-role workflows',()=>{
+  test('HR policy form saves company sourcing bonus through browser CORS', async ({page})=>{
+    await login(page,persona('hr'));await navigate(page,'Policies');
+    await page.locator('#default-bonus').fill('10000');
+    await page.getByRole('button',{name:'Save policy'}).click();
+    await expect(page.getByRole('status')).toContainText('Company default bonus saved');
+    const response=await page.request.get(API_URL+'/policies/project-bonus');
+    expect(response.ok()).toBeTruthy();
+    expect((await response.json()).default_project_bonus_inr).toBe(10000);
+  });
+
+  test('HR creates sourced project and inherited bonus without typing amount', async ({page})=>{
+    await login(page,persona('hr'));await navigate(page,'Projects');
+    await page.getByRole('button',{name:'Add project'}).click();
+    const unique='E2E QA Client Project '+Date.now();
+    await page.locator('input[placeholder="e.g. Java Modernization"]').fill(unique);
+    await page.locator('input[placeholder="e.g. Acme Corporation"]').fill('QA Client Company');
+    await page.locator('#proj-sourced').selectOption(String(persona('sales_b').id));
+    await expect(page.locator('.project-auto-bonus')).toContainText('₹10,000');
+    await page.locator('input[type="date"]').fill(new Date().toISOString().slice(0,10));
+    await page.locator('input[placeholder="e.g. 75.00"]').fill('75');
+    await page.getByRole('button',{name:'Save project'}).click();
+    await expect(page.getByRole('status')).toContainText('Project');
+    await page.getByRole('textbox',{name:'Search projects'}).fill(unique);
+    await expect(page.locator('.project-table')).toContainText(unique);
+    await expect(page.locator('.project-table')).toContainText('₹10,000');
+  });
+
+  test('employee leave flows through reporting manager then HR', async ({page})=>{
+    const date=new Date();
+    const weekday=date.getUTCDay();
+    const offset=((8-weekday)%7)+7;
+    date.setUTCDate(date.getUTCDate()+offset);
+    const day=date.toISOString().slice(0,10);
+    const reason='QA manager routing '+Date.now();
+    await login(page,persona('hr'));
+    const policy=await page.request.put(API_URL+'/leave/policies',{
+      headers:{Origin:WEB_URL},
+      data:{leave_type:'casual',annual_days:12,monthly_accrual:0,approval_chain:['manager','hr'],probation_allowed:true,active:true},
+    });
+    expect(policy.status()).toBe(200);
+    await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
+    await login(page,persona('sales_a'));
+    await navigate(page,'Leave requests');
+    await page.locator('.leave-form select').first().selectOption('casual');
+    await page.locator('.leave-form input[type="date"]').nth(0).fill(day);
+    await page.locator('.leave-form input[type="date"]').nth(1).fill(day);
+    await page.locator('.leave-form textarea').fill(reason);
+    await page.getByRole('button',{name:'Submit request'}).click();
+    await expect(page.getByRole('status')).toContainText('submitted for approval');
+    await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
+
+    await login(page,persona('manager'));await navigate(page,'Leave requests');
+    await page.locator('.leave-tabs').getByRole('button',{name:'Approvals',exact:true}).click();
+    const managerRow=page.locator('.leave-table tr').filter({hasText:reason});
+    await expect(managerRow).toBeVisible();
+    await managerRow.getByRole('button',{name:'Approve'}).click();
+    await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
+
+    await login(page,persona('hr'));await navigate(page,'Leave requests');
+    await page.locator('.leave-tabs').getByRole('button',{name:'Approvals',exact:true}).click();
+    const hrRow=page.locator('.leave-table tr').filter({hasText:reason});
+    await expect(hrRow).toBeVisible();
+    await hrRow.getByRole('button',{name:'Approve'}).click();
+    await expect(page.getByRole('status')).toContainText('Leave request updated');
+  });
+});
