@@ -12,11 +12,12 @@ import re
 from sqlalchemy.exc import IntegrityError
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, status, Request, Response, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from pwdlib import PasswordHash
@@ -362,6 +363,70 @@ def login(body: LoginIn, response: Response, db: Session = Depends(db_session)):
 @app.get("/me", response_model=EmployeeOut)
 def me(user: Employee = Depends(current_user)):
     return {**EmployeeOut.model_validate(user).model_dump(mode="json"),"must_change_password":user.must_change_password}
+
+class AvailabilityIn(BaseModel):
+    status: Literal["available","busy","away","do_not_disturb"]
+
+
+def own_profile(db:Session,user:Employee)->EmployeeProfile:
+    row=db.scalar(select(EmployeeProfile).where(EmployeeProfile.employee_id==user.id))
+    if not row:
+        row=EmployeeProfile(employee_id=user.id)
+        db.add(row);db.flush()
+    return row
+
+
+@app.get("/me/presence")
+def get_presence(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    row=db.scalar(select(EmployeeProfile).where(EmployeeProfile.employee_id==user.id))
+    return {"status":row.availability if row else "available","has_photo":bool(row and row.photo_key)}
+
+
+@app.put("/me/presence")
+def update_presence(body:AvailabilityIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    row=own_profile(db,user)
+    row.availability=body.status
+    db.commit()
+    return {"status":row.availability}
+
+
+@app.post("/me/photo")
+async def upload_my_photo(photo:UploadFile=File(...),user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    content=await photo.read(2*1024*1024+1)
+    if len(content)>2*1024*1024:
+        raise HTTPException(413,"Profile photo must be smaller than 2 MB.")
+    png=content.startswith(bytes.fromhex("89504e470d0a1a0a"))
+    jpeg=content.startswith(bytes.fromhex("ffd8ff"))
+    if not png and not jpeg:
+        raise HTTPException(415,"Only PNG and JPEG profile photos are supported.")
+    ext=".png" if png else ".jpg"
+    folder=UPLOAD_DIR/"avatars"
+    folder.mkdir(parents=True,exist_ok=True,mode=0o700)
+    key=uuid4().hex+ext
+    filepath=folder/key
+    with filepath.open("xb") as handle:
+        handle.write(content)
+    filepath.chmod(0o600)
+    row=own_profile(db,user)
+    old=row.photo_key
+    row.photo_key=key
+    db.commit()
+    if old:
+        (folder/Path(old).name).unlink(missing_ok=True)
+    return {"has_photo":True}
+
+
+@app.get("/me/photo")
+def my_photo(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    row=db.scalar(select(EmployeeProfile).where(EmployeeProfile.employee_id==user.id))
+    if not row or not row.photo_key:
+        raise HTTPException(404,"No profile photo")
+    path=UPLOAD_DIR/"avatars"/Path(row.photo_key).name
+    if not path.is_file():
+        raise HTTPException(404,"Profile photo is unavailable")
+    return FileResponse(path,media_type="image/png" if path.suffix==".png" else "image/jpeg",
+                        headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"})
+
 
 @app.get("/dashboard")
 def dashboard(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
