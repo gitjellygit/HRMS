@@ -142,8 +142,8 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
   event.preventDefault();
   const found=validate(draft);
   const focusFirst=(field?:string)=>window.requestAnimationFrame(()=>{
-   const target=(field?document.getElementById(field==="manager_id"?"core-manager":field==="department"?"emp-department":"emp-"+field):null)
-     ||document.querySelector<HTMLElement>(".employee-editor [aria-invalid='true']");
+   const target=(field?window.document.getElementById(field==="manager_id"?"core-manager":field==="department"?"emp-department":"emp-"+field):null)
+     ||window.document.querySelector<HTMLElement>(".employee-editor [aria-invalid='true']");
    target?.scrollIntoView({block:"center",behavior:"smooth"});target?.focus();
   });
   if(!master.department_id||!units.some(u=>u.kind==="department"&&String(u.id)===master.department_id))found.department="Select a department from the list.";
