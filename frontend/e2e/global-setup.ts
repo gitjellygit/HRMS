@@ -64,6 +64,14 @@ export default async function setup(_config: FullConfig) {
     });
     users.push({ key, name, department: department + ' QA ' + token, code, role, designation, email, id: result.id });
   }
+  // Route Bench Sales approvals to their actual reporting manager.
+  const manager = users.find(person => person.key === 'manager')!;
+  for (const sales of users.filter(person => person.key.startsWith('sales_'))) {
+    const update = await admin.put(API_URL + '/core/employees/' + sales.id, {
+      data: { manager_id: manager.id, department_id: departments['Bench Sales'] },
+    });
+    if (!update.ok()) throw Error('Could not assign sales reporting manager: ' + (await update.text()).slice(0, 350));
+  }
   await admin.dispose();
   writeFileSync(USERS_FILE, JSON.stringify({ users, token }, null, 2), { mode: 0o600 });
 
