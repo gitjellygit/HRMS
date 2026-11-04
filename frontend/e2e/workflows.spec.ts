@@ -100,7 +100,7 @@ test.describe('employee and finance workflows',()=>{
   });
   test('manager can open approvals panel', async ({page})=>{
     await login(page,persona('manager'));await navigate(page,'Leave requests');
-    await page.getByRole('button',{name:'Approvals',exact:false}).click();
+    await page.locator('.leave-tabs').getByRole('button',{name:'Approvals',exact:true}).click();
     await expect(page.getByRole('heading',{name:'Leave approvals'})).toBeVisible();
   });
   test('punch button reflects server state after check in/out', async ({page})=>{

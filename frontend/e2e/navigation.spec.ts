@@ -48,7 +48,7 @@ test.describe('login and privacy', () => {
     await page.locator('input[name="email"]').fill(person.email);
     await page.locator('input[name="password"]').fill('WrongPassword!123');
     await page.getByRole('button', { name: 'Sign in to HRMS' }).click();
-    await expect(page.getByRole('alert')).toContainText('Invalid credentials');
+    await expect(page.locator('.auth-side .error[role="alert"]')).toContainText('Invalid credentials');
     await expect(page.locator('.sidebar')).toHaveCount(0);
   });
   test('sign-out returns to login and cannot access HRMS without signing back in', async ({ page }) => {
