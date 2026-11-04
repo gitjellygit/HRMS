@@ -360,7 +360,7 @@ def login(body: LoginIn, response: Response, db: Session = Depends(db_session)):
     response.set_cookie(COOKIE_NAME, token, httponly=True, secure=COOKIE_SECURE, samesite='lax', max_age=int(lifetime.total_seconds()) if body.remember else None, path='/')
     return {"user": {**EmployeeOut.model_validate(user).model_dump(mode="json"),"must_change_password":user.must_change_password}}
 
-@app.get("/me", response_model=EmployeeOut)
+@app.get("/me")
 def me(user: Employee = Depends(current_user)):
     return {**EmployeeOut.model_validate(user).model_dump(mode="json"),"must_change_password":user.must_change_password}
 

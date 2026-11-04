@@ -1,7 +1,7 @@
 name: HRMS checks
 on:
   push:
-    branches: [feature/hrms-mvp, feature/employee-core-1-10, feature/leave-management-11-22, feature/projects-redesign, feature/project-bonus-attendance-fy, feature/bonus-policy-sidebar, feature/hrms-employee-lifecycle-ux, main]
+    branches: [feature/hrms-mvp, feature/employee-core-1-10, feature/leave-management-11-22, feature/projects-redesign, feature/project-bonus-attendance-fy, feature/bonus-policy-sidebar, feature/hrms-employee-lifecycle-ux, feature/employee-role-security-and-experience, main]
   pull_request:
     branches: [main, feature/hrms-mvp, feature/employee-core-1-10, feature/leave-management-11-22, feature/projects-redesign]
 jobs:

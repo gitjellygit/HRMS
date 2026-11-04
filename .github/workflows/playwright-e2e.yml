@@ -1,7 +1,7 @@
 name: Playwright E2E (isolated HRMS)
 on:
   push:
-    branches: [test/playwright-role-e2e, feature/hrms-employee-lifecycle-ux]
+    branches: [test/playwright-role-e2e, feature/hrms-employee-lifecycle-ux, feature/employee-role-security-and-experience]
   pull_request:
     branches: [feature/bonus-policy-sidebar, main]
   workflow_dispatch:
