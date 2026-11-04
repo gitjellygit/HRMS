@@ -60,7 +60,8 @@ test.describe('employee management & UI validation', () => {
     await page.locator('input[placeholder="e.g. Aarav Sharma"]').fill('Kiran Testemployee');
     await page.locator('input[placeholder="aarav@jellygit.com"]').fill('qa.ui.'+unique+'@example.org');
     await page.locator('input[placeholder="e.g. Software Engineer"]').fill('QA Associate');
-    await page.locator('#emp-department').selectOption({label:undefined,index:1});
+    const departmentValue=await page.locator('#emp-department option').nth(1).getAttribute('value');
+    await page.locator('#emp-department').selectOption(departmentValue!);
     await page.locator('input[placeholder="Create a strong password"]').fill('DemoOnly!Pass1234');
     await page.getByRole('button',{name:'Save employee'}).click();
     await expect(page.getByRole('status')).toContainText('added successfully');

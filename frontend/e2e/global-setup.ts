@@ -52,7 +52,7 @@ export default async function setup(_config: FullConfig) {
   }
   const users: Persona[] = [];
   for (const [key, name, department, code, role, designation] of SEEDS) {
-    const email = 'qa.' + key + '.' + token + '@example.test';
+    const email = 'qa.' + key + '.' + token + '@example.org';
     const result = await required(admin, '/core/employees', {
       data: {
         account: {

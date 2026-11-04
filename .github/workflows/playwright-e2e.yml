@@ -1,0 +1,80 @@
+name: Playwright E2E (isolated HRMS)
+on:
+  push:
+    branches: [test/playwright-role-e2e]
+  pull_request:
+    branches: [feature/bonus-policy-sidebar, main]
+  workflow_dispatch:
+jobs:
+  browser-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: hrms_e2e
+          POSTGRES_USER: hrms_e2e
+          POSTGRES_PASSWORD: e2e-only-postgres-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hrms_e2e -d hrms_e2e"
+          --health-interval 3s --health-timeout 3s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install API dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Install Playwright dependencies
+        working-directory: frontend
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Start isolated API and frontend
+        env:
+          DATABASE_URL: postgresql+psycopg://hrms_e2e:e2e-only-postgres-password@127.0.0.1:5432/hrms_e2e
+          JWT_SECRET: test-only-jwt-secret-1234567890-abcdefgh
+          ADMIN_EMAIL: qa.admin@example.org
+          ADMIN_PASSWORD: TestAdminOnly!Pass1234
+          HRMS_PII_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          CORS_ORIGINS: http://127.0.0.1:3000
+          COOKIE_SECURE: 'false'
+          PROJECT_BONUS_AUTO_SYNC: 'false'
+          PYTHONPATH: backend
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
+        run: |
+          mkdir -p /tmp/hrms-e2e
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/hrms-e2e/api.log 2>&1 &
+          (cd frontend && npm run dev -- --hostname 127.0.0.1 > /tmp/hrms-e2e/web.log 2>&1) &
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8000/health > /dev/null && curl -fsS http://127.0.0.1:3000 > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/hrms-e2e/api.log /tmp/hrms-e2e/web.log
+          exit 1
+      - name: Run Playwright role and workflow suites
+        working-directory: frontend
+        env:
+          E2E_ALLOW_SEED: isolated
+          E2E_WEB_URL: http://127.0.0.1:3000
+          E2E_API_URL: http://127.0.0.1:8000
+          E2E_ADMIN_EMAIL: qa.admin@example.org
+          E2E_ADMIN_PASSWORD: TestAdminOnly!Pass1234
+        run: npx playwright test
+      - name: Upload Playwright HTML report, screenshots and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hrms-playwright-e2e-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+            /tmp/hrms-e2e/api.log
+            /tmp/hrms-e2e/web.log
+          retention-days: 14
