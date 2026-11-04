@@ -1,7 +1,7 @@
 name: HRMS checks
 on:
   push:
-    branches: [feature/hrms-mvp, feature/employee-core-1-10, feature/leave-management-11-22, feature/projects-redesign, feature/project-bonus-attendance-fy, main]
+    branches: [feature/hrms-mvp, feature/employee-core-1-10, feature/leave-management-11-22, feature/projects-redesign, feature/project-bonus-attendance-fy, feature/bonus-policy-sidebar, main]
   pull_request:
     branches: [main, feature/hrms-mvp, feature/employee-core-1-10, feature/leave-management-11-22, feature/projects-redesign]
 jobs:
@@ -42,6 +42,7 @@ jobs:
           assert '/core/org-chart' in paths
           assert '/leave/requests' in paths
           assert '/project-management/projects' in paths
+          assert '/policies/project-bonus' in paths
           print('Validated',len(paths),'API routes')
           PY
       - name: Employee Core integration smoke test

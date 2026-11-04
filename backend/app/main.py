@@ -326,6 +326,8 @@ def initialize():
             ("start_date","DATE"),
             ("bonus_amount_inr","NUMERIC(12,2) NOT NULL DEFAULT 0")]:
             connection.execute(text(f"ALTER TABLE project_details ADD COLUMN IF NOT EXISTS {field} {ddl}"))
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE employee_core ADD COLUMN IF NOT EXISTS project_bonus_inr NUMERIC(12,2)"))
     email = os.environ.get("ADMIN_EMAIL")
     passwd = os.environ.get("ADMIN_PASSWORD")
     if email and passwd and len(passwd) >= 12:
@@ -707,3 +709,6 @@ async def stop_bonus_reconciler():
         except asyncio.CancelledError:
             pass
         _bonus_sync_task=None
+
+from .bonus_policy import router as bonus_policy_router  # noqa: E402
+app.include_router(bonus_policy_router)

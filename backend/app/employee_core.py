@@ -67,6 +67,7 @@ class EmployeeCore(Base):
     aadhaar: Mapped[str] = mapped_column(Text, default="")
     uan: Mapped[str] = mapped_column(Text, default="")
     lifecycle: Mapped[str] = mapped_column(String(30), default="probation")
+    project_bonus_inr: Mapped[Decimal | None] = mapped_column(Numeric(12,2), nullable=True)
 
 
 class ChangeRequest(Base):
@@ -124,6 +125,7 @@ class UnitIn(BaseModel):
 
 
 class MasterIn(BaseModel):
+    project_bonus_inr: Decimal | None = Field(default=None, ge=0, le=100000000, decimal_places=2)
     manager_id: int | None = None
     hod_id: int | None = None
     department_id: int | None = None
@@ -295,8 +297,9 @@ def apply_master(db: Session, employee_id: int, data: MasterIn):
 def master_dict(row: EmployeeCore | None, *, include_sensitive: bool):
     if not row:
         return {}
-    fields = ("manager_id","hod_id","department_id","designation_id","grade_id","branch_id","cost_center_id","date_of_birth","personal_email","address","emergency_name","emergency_phone","lifecycle")
+    fields = ("manager_id","hod_id","department_id","designation_id","grade_id","branch_id","cost_center_id","date_of_birth","personal_email","address","emergency_name","emergency_phone","lifecycle","project_bonus_inr")
     result = {field: getattr(row, field) for field in fields}
+    result["project_bonus_inr"] = float(row.project_bonus_inr) if row.project_bonus_inr is not None else None
     for field in SENSITIVE:
         value = getattr(row, field)
         result[field] = unseal(value) if include_sensitive else ("••••" if value else "")
@@ -403,7 +406,15 @@ def org_units(kind: str | None = None, user: Employee = Depends(current_user), d
 
 @router.post("/units", status_code=201)
 def create_org_unit(body: UnitIn, user: Employee = Depends(require_hr), db: Session = Depends(db_session)):
-    row = OrgUnit(kind=body.kind, name=body.name.strip(), code=body.code.strip().upper())
+    name = " ".join(body.name.split())
+    code = body.code.strip().upper()
+    if not re.fullmatch(r"[A-Z0-9][A-Z0-9_-]{0,34}", code):
+        raise HTTPException(422, detail={"field":"code","message":"Use letters, numbers, hyphens or underscores for the unit code."})
+    existing_name = db.scalar(select(OrgUnit.id).where(
+        OrgUnit.kind == body.kind, func.lower(OrgUnit.name) == name.lower()))
+    if existing_name:
+        raise HTTPException(409, detail={"field":"name","message":"This organization unit already exists."})
+    row = OrgUnit(kind=body.kind, name=name, code=code)
     db.add(row)
     try:
         db.commit()
@@ -466,6 +477,10 @@ def create_full_employee(body: EmployeeCreateIn, user: Employee = Depends(requir
     if db.scalar(select(Employee.id).where(func.lower(Employee.email) == str(account.email).lower())):
         raise HTTPException(409, detail={"field":"email","message":"This email is already registered."})
     validate_relationships(db, -1, body.master)
+    # A selected department ID is the source of truth for the employee's department.
+    if body.master.department_id is not None:
+        department = db.get(OrgUnit, body.master.department_id)
+        account = account.model_copy(update={"department": department.name})
     profile_fields = {"work_location","employment_type","manager_name","emergency_contact"}
     employee = Employee(**account.model_dump(exclude={"password","employee_code"} | profile_fields), password_hash=passwords.hash(account.password))
     db.add(employee)

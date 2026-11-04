@@ -56,3 +56,43 @@
 .project-page{display:grid;gap:18px}.project-table{min-width:1060px}.project-table td strong{display:block;font-size:13px;font-weight:700;color:#333c50}.project-table td small,.project-main small{display:block;font-size:11px;color:#8793a5;margin-top:5px}.project-rate{white-space:nowrap;font-weight:750;color:#4d426d}.project-team-list{padding-top:15px}.project-team-list>div{padding:10px 0;border-bottom:1px solid #e7eaf0}.project-page .employee-field textarea{border:1px solid #dce1e9;border-radius:8px;padding:10px 12px;width:100%;resize:vertical;min-height:90px;max-width:950px;font:inherit;font-size:13px}.project-page .employee-form-footer .employee-primary{width:auto;min-width:120px}.project-page .employee-form-footer .employee-cancel{width:auto}
 
 .punch-control{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;background:#f7f8fc;border:1px solid #e4e7f0;border-radius:10px;padding:13px 15px}.punch-status{display:flex;align-items:center;gap:10px;color:#6b5b91}.punch-status strong{display:block;font-size:13px;color:#29324b}.punch-status small{display:block;margin-top:3px;color:#8b95a6;font-size:11px}.punch-buttons{display:flex;align-items:center;gap:7px}.punch-control .field-error{flex-basis:100%;margin:0}.project-bonus strong{display:block;font-size:13px}.project-bonus small{display:block;color:#8d95a5;font-size:11px;margin:4px 0}.project-bonus button{padding:4px 0}
+
+/* Desktop app shell: independent nav and content scrolling */
+@media(min-width:701px){
+ html,body{height:100%;overflow:hidden}
+ .shell{height:100dvh;min-height:0;overflow:hidden}
+ .sidebar{height:100dvh;position:sticky;top:0;display:flex;flex-direction:column;overflow:hidden}
+ .sidebar .brand{flex:0 0 auto}
+ .sidebar .menu{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#586482 transparent;padding-right:3px}
+ .content{height:100dvh;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+}
+.project-auto-bonus{display:flex;align-items:center;gap:10px;padding:10px 11px;border:1px solid #e1e4ed;background:#f8f9fc;border-radius:8px}
+.project-auto-bonus strong{font-size:17px;color:#30294b}
+.project-auto-bonus span{font-size:11px;color:#748098}
+.project-override-check{display:flex!important;align-items:center;gap:8px!important;font-size:12px;color:#526075;font-weight:600}
+.project-override-check input{width:15px!important;height:15px!important}
+.policy-card{border:1px solid #e4e7ef;border-radius:12px;padding:22px;max-width:760px}
+.policy-card-head{display:flex;align-items:center;gap:12px;color:#6e5a9a;margin-bottom:22px}
+.policy-card-head h3{font-size:17px;margin:0;color:#27324a}
+.policy-card-head p{font-size:12px;color:#8995a6;margin:5px 0 0}
+.policy-form{display:grid;gap:22px}
+.policy-form .employee-field{max-width:440px}
+.policy-summary{display:grid;grid-template-columns:max-content 1fr;gap:10px 18px;font-size:12px}
+.policy-summary span{color:#8b95a8}.policy-summary strong{color:#35415a}
+.policy-actions{display:flex;justify-content:flex-end;border-top:1px solid #edf0f4;padding-top:15px}
+.policy-guidance{max-width:760px;display:flex;align-items:flex-start;gap:11px;padding:14px 16px;margin-top:14px;background:#f8f9fc;border:1px solid #e6e8ef;border-radius:9px;color:#705e95}
+.policy-guidance p{margin:0;color:#606d82;font-size:12px;line-height:1.65}
+.policy-guidance svg{flex-shrink:0}
+
+/* Employee onboarding department picker */
+.employee-department-picker{min-width:0}
+.employee-department-row{display:flex;align-items:stretch;gap:8px;min-width:0}
+.employee-department-row select{flex:1;min-width:0}
+.employee-department-row .employee-cancel{white-space:nowrap;min-width:max-content;display:inline-flex;gap:6px;align-items:center;padding:9px 12px}
+.employee-add-dept-form{background:#f8f9fd;border:1px solid #e1e5ee;border-radius:10px;padding:14px;display:grid;gap:9px;margin-top:9px}
+.employee-add-dept-form strong{font-size:13px;color:#303852}
+.employee-add-dept-form label{font-size:12px;color:#56627a}
+.employee-add-dept-form input{width:100%;max-width:100%;min-width:0;height:39px;border-radius:8px;border:1px solid #dce2ec;background:white;padding:9px 11px}
+.employee-add-dept-actions{display:flex;justify-content:flex-end;align-items:center;gap:9px;margin-top:5px}
+.employee-add-dept-actions button{width:auto;max-width:max-content;min-width:0}
+@media(max-width:520px){.employee-department-row{flex-wrap:wrap}.employee-department-row select{flex-basis:100%}}

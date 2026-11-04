@@ -40,6 +40,39 @@ def test_project_management():
         assert awarded.status_code==201,awarded.text
         assert awarded.json()["amount_inr"]==15000
         assert client.post("/project-management/projects/"+str(data["id"])+"/award-bonus",headers=ORIGIN).status_code==409
+        policy=client.get("/policies/project-bonus")
+        assert policy.status_code==200 and policy.json()["default_project_bonus_inr"]==10000
+        changed=client.put("/policies/project-bonus",headers=ORIGIN,json={"default_project_bonus_inr":12500})
+        assert changed.status_code==200,changed.text
+        effective=client.get("/project-management/employees/"+str(owner_id)+"/bonus-default")
+        assert effective.status_code==200 and effective.json()["bonus_amount_inr"]==12500
+        assert effective.json()["source"]=="company"
+        new_default=client.post("/project-management/projects",headers=ORIGIN,json={
+            "name":"Automatic Bonus Project","client":"Policy Test",
+            "engagement_type":"c2c","rate":70,"sourced_by_id":owner_id,
+            "start_date":str(date.today()+timedelta(days=3))})
+        assert new_default.status_code==201,new_default.text
+        assert new_default.json()["bonus_amount_inr"]==12500
+        assert new_default.json()["bonus_source"]=="company"
+        # Employee-specific setting takes precedence over company policy.
+        update=client.put("/core/employees/"+str(owner_id),headers=ORIGIN,json={"project_bonus_inr":15000})
+        assert update.status_code==200,update.text
+        assert client.get("/project-management/employees/"+str(owner_id)+"/bonus-default").json()["bonus_amount_inr"]==15000
+        employee_bonus=client.post("/project-management/projects",headers=ORIGIN,json={
+            "name":"Employee Bonus Default","client":"Policy Test",
+            "engagement_type":"w2","rate":75,"sourced_by_id":owner_id,
+            "start_date":str(date.today()+timedelta(days=4))})
+        assert employee_bonus.status_code==201,employee_bonus.text
+        assert employee_bonus.json()["bonus_amount_inr"]==15000
+        assert employee_bonus.json()["bonus_source"]=="employee"
+        assert client.get("/project-management/projects/"+str(new_default.json()["id"])).json()["bonus_amount_inr"]==12500
+        custom=client.post("/project-management/projects",headers=ORIGIN,json={
+            "name":"Special Bonus Override","client":"Policy Test",
+            "engagement_type":"c2c","rate":90,"sourced_by_id":owner_id,
+            "start_date":str(date.today()+timedelta(days=4)),"bonus_amount_inr":9000})
+        assert custom.status_code==201,custom.text
+        assert custom.json()["bonus_source"]=="project_override"
+        assert custom.json()["bonus_amount_inr"]==9000
         assert client.get("/project-management/projects/"+str(data["id"])).status_code==200
         assert any(p["project_number"]==data["project_number"] for p in client.get("/project-management/projects").json())
         another=client.post("/project-management/projects",headers=ORIGIN,json={

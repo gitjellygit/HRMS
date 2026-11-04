@@ -24,6 +24,17 @@ def test_employee_core_end_to_end():
         unit=client.post("/core/units",headers=ORIGIN,json={"kind":"department","name":"Engineering","code":"ENG"})
         assert unit.status_code==201,unit.text
         assert client.get("/core/units").status_code==200
+        duplicate_name=client.post("/core/units",headers=ORIGIN,
+            json={"kind":"department","name":" engineering ","code":"ENG-SECOND"})
+        assert duplicate_name.status_code==409,duplicate_name.text
+        duplicate_code=client.post("/core/units",headers=ORIGIN,
+            json={"kind":"department","name":"Engineering Two","code":"ENG"})
+        assert duplicate_code.status_code==409,duplicate_code.text
+        new_dept=client.post("/core/units",headers=ORIGIN,
+            json={"kind":"department","name":"Talent Acquisition","code":"TALENT-ACQUISITION"})
+        assert new_dept.status_code==201,new_dept.text
+        department_choices=client.get("/core/units?kind=department").json()
+        assert any(row["id"]==new_dept.json()["id"] for row in department_choices)
 
         manager=client.post("/core/employees",headers=ORIGIN,
             json={"account":account("Morgan Manager","morgan.manager@example.org","manager"),"master":{"department_id":unit.json()["id"]}})
@@ -36,6 +47,12 @@ def test_employee_core_end_to_end():
         employee_id=person.json()["id"]
         assert person.json()["employee_code"]=="JG-002"
         assert person.json()["master"]["manager_id"]==manager_id
+        # API uses the selected department ID, even if a client sends stale text.
+        hr_employee=client.post("/core/employees",headers=ORIGIN,json={
+            "account":account("Tara Kapoor","tara.kapoor@example.org"),
+            "master":{"department_id":new_dept.json()["id"]}})
+        assert hr_employee.status_code==201,hr_employee.text
+        assert hr_employee.json()["department"]=="Talent Acquisition"
 
         with SessionLocal() as session:
             core=session.get(EmployeeCore,employee_id)

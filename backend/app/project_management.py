@@ -10,6 +10,8 @@ from sqlalchemy import ForeignKey, Numeric, String, UniqueConstraint, Date, Inte
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .main import Base, Project, Employee, Bonus, db_session, current_user
+from .employee_core import EmployeeCore
+from .bonus_policy import policy_default
 
 router = APIRouter(prefix="/project-management", tags=["Project Management"])
 HR_ROLES = {"super_admin", "admin", "hr"}
@@ -51,7 +53,7 @@ class ProjectCreate(BaseModel):
     description: str = Field(default="", max_length=3000)
     sourced_by_id: int = Field(gt=0)
     start_date: date
-    bonus_amount_inr: Decimal = Field(gt=0, le=100000000, decimal_places=2)
+    bonus_amount_inr: Decimal | None = Field(default=None, ge=0, le=100000000, decimal_places=2)
 
     @field_validator("name", "client")
     @classmethod
@@ -96,6 +98,23 @@ def serialize(project: Project, detail: ProjectDetail | None, awards: set[int] |
             "bonus_eligible_on":eligible_on,"bonus_status":state}
 
 
+def effective_bonus(db: Session, employee_id: int) -> tuple[Decimal, str]:
+    profile=db.get(EmployeeCore,employee_id)
+    if profile and profile.project_bonus_inr is not None:
+        return Decimal(profile.project_bonus_inr), "employee"
+    return policy_default(db), "company"
+
+
+@router.get("/employees/{employee_id}/bonus-default")
+def preview_employee_bonus(employee_id: int,user: Employee=Depends(manage),db:Session=Depends(db_session)):
+    staff=db.get(Employee,employee_id)
+    if not staff or staff.status!="active":
+        raise HTTPException(404,"Active employee not found")
+    amount,source=effective_bonus(db,employee_id)
+    return {"employee_id":employee_id,"bonus_amount_inr":float(amount),
+            "source":source,"can_override":True}
+
+
 @router.get("/next-number")
 def preview_number(user: Employee = Depends(manage), db: Session = Depends(db_session)):
     number, called = db.execute(text("SELECT last_value, is_called FROM hrms_project_number_seq")).one()
@@ -116,6 +135,8 @@ def create_project(body: ProjectCreate,user: Employee = Depends(manage),db: Sess
     staff=db.get(Employee,body.sourced_by_id)
     if not staff or staff.status!="active":
         raise HTTPException(422,detail={"field":"sourced_by_id","message":"Select an active employee who sourced this project."})
+    default_amount,default_source=effective_bonus(db,body.sourced_by_id)
+    final_bonus=body.bonus_amount_inr if body.bonus_amount_inr is not None else default_amount
     project=Project(name=body.name,client=body.client,description=body.description,status="active")
     db.add(project)
     db.flush()
@@ -126,12 +147,14 @@ def create_project(body: ProjectCreate,user: Employee = Depends(manage),db: Sess
         candidate_name=body.candidate_name.strip(),vendor_name=body.vendor_name.strip(),
         prime_vendor_name=body.prime_vendor_name.strip(),engagement_type=body.engagement_type,
         rate=body.rate,currency=body.currency,rate_unit=body.rate_unit,
-        sourced_by_id=body.sourced_by_id,start_date=body.start_date,bonus_amount_inr=body.bonus_amount_inr
+        sourced_by_id=body.sourced_by_id,start_date=body.start_date,bonus_amount_inr=final_bonus
     )
     db.add(detail)
     db.commit()
     db.refresh(project)
-    return serialize(project,detail)
+    result=serialize(project,detail)
+    result["bonus_source"]="project_override" if body.bonus_amount_inr is not None else default_source
+    return result
 
 
 @router.get("/projects/{project_id}")

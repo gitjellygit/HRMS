@@ -4,7 +4,7 @@ import { ArrowDown, ArrowLeft, BadgeCheck, Building2, CalendarClock, Check, Down
 
 type Person = {id:number;name:string;email:string;employee_code?:string;designation:string;department:string;role:string;status:string;phone?:string;joining_date?:string};
 type Unit={id:number;kind:string;name:string;code:string};
-type Core={manager_id?:number|null;hod_id?:number|null;department_id?:number|null;designation_id?:number|null;grade_id?:number|null;branch_id?:number|null;cost_center_id?:number|null;date_of_birth?:string|null;personal_email?:string|null;address?:string;emergency_name?:string;emergency_phone?:string;bank_account?:string;bank_ifsc?:string;pan?:string;aadhaar?:string;uan?:string;lifecycle?:string};
+type Core={project_bonus_inr?:number|null;manager_id?:number|null;hod_id?:number|null;department_id?:number|null;designation_id?:number|null;grade_id?:number|null;branch_id?:number|null;cost_center_id?:number|null;date_of_birth?:string|null;personal_email?:string|null;address?:string;emergency_name?:string;emergency_phone?:string;bank_account?:string;bank_ifsc?:string;pan?:string;aadhaar?:string;uan?:string;lifecycle?:string};
 type RecordType=Person&{master:Core};
 type Change={id:number;employee_id:number;field:string;status:string;requested_at:string;value:string};
 type Doc={id:number;name:string;category:string;type:string;expiry_date?:string|null};
@@ -195,6 +195,7 @@ export default function CoreWorkspace({api,mode,user,employeeId,onBack}:{api:str
      {selectRelation("hod_id","Second-level manager / HOD",people.filter(p=>p.id!==target).map(p=>({id:p.id,name:managerLabels[p.id]})))}
      {kinds.map(([kind,label])=>selectRelation((kind+"_id") as keyof Core,label,units.filter(u=>u.kind===kind)))}
     </div>
+    {isHR&&<><h3 className="core-subhead">Project incentive default</h3><div className="employee-form-grid"><label className="core-label">Bonus per sourced project (INR)<input type="number" min="0" step="0.01" value={draft.project_bonus_inr??""} placeholder="Company policy default" onChange={e=>setDraft(v=>({...v,project_bonus_inr:e.target.value===""?null:Number(e.target.value)}))}/><span className="field-help">Leave blank to use the default from Policies. Existing projects retain their saved bonus.</span></label></div></>}
     <h3 className="core-subhead">Personal details & emergency contact</h3>
     <div className="employee-form-grid">{fields.filter(([field])=>!sensitive.includes(field)).map(([field,label])=>input(field,label,field==="date_of_birth"?"date":field==="personal_email"?"email":"text"))}</div>
     {isHR&&<><h3 className="core-subhead"><LockKeyhole size={17}/> Restricted HR-only identifiers and bank details</h3><div className="employee-form-grid">{fields.filter(([field])=>sensitive.includes(field)).map(([field,label])=>input(field,label))}</div><div className="core-form-actions"><button disabled={busy} className="employee-primary">Save master record</button></div></>}
