@@ -15,6 +15,10 @@ def add(c,name,email,role,manager):
         "name":name,"email":email,"password":PASS,"role":role,
         "designation":"QA Engineer","department":"Engineering",
         "joining_date":str(date.today())},"master":{"manager_id":manager}})
+    if r.status_code==409:
+        existing=next((e for e in c.get("/employees").json() if e["email"]==email),None)
+        assert existing is not None,r.text
+        return existing["id"]
     assert r.status_code==201,r.text
     return r.json()["id"]
 
