@@ -1,5 +1,6 @@
 "use client";
 import {useState} from "react";
+import FeedbackMotion from "./FeedbackMotion";
 import {LockKeyhole,Eye,EyeOff} from "lucide-react";
 
 export default function ChangePassword({api,required,onComplete}:{api:string;required:boolean;onComplete:()=>void}){
@@ -28,7 +29,7 @@ export default function ChangePassword({api,required,onComplete}:{api:string;req
  return <section className={required?"password-change-required":"password-change-inline"}>
   <div className="password-change-card">
    <div className="core-head"><LockKeyhole size={21}/><div><h2>{required?"Change your temporary password":"Change password"}</h2><p>{required?"For security, set your own password before accessing HRMS.":"Change your password; you will then sign in again."}</p></div></div>
-   {error&&<p role="alert" className="error">{error}</p>}
+   {error&&<FeedbackMotion type="error" compact message={error}/>}{busy&&<FeedbackMotion type="loading" compact message="Updating your password…"/>}
    <form className="password-change-form" onSubmit={change}>
     {!required&&<label>Current password<input type={show?"text":"password"} autoComplete="current-password" required value={oldPass} onChange={e=>setOldPass(e.target.value)}/></label>}
     <label>New password<input type={show?"text":"password"} autoComplete="new-password" required minLength={12} value={newPass} onChange={e=>setNewPass(e.target.value)}/></label>

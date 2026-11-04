@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import FeedbackMotion from "./FeedbackMotion";
 import { ArrowLeft, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 
 type User={id:number;name:string;email:string;role:string;designation:string;department:string;joining_date:string;status:string;must_change_password?:boolean};
@@ -49,7 +50,7 @@ export default function Login({api,onLogin,initialNotice=""}:{api:string;onLogin
     <h2>{mode==="login"?"Welcome back":mode==="forgot"?"Forgot your password?":"Set a new password"}</h2>
     <p className="auth-subtitle">{mode==="login"?"Sign in with your JellyGit work account.":mode==="forgot"?"We'll send a secure reset link to your registered work email.":"Choose a new password (at least 12 characters)."}</p>
     {error&&<div className="error" role="alert">{error}</div>}
-    {message&&<div className="auth-notice" role="status">{message}</div>}
+    {message&&<FeedbackMotion type="success" compact message={message}/>}
     <form className="auth-form" onSubmit={submit}>
      {mode!=="reset"&&<label>Work email<input name="email" type="email" placeholder="you@jellygit.com" defaultValue={email} autoComplete="username" required/></label>}
      {mode!=="forgot"&&<label>{mode==="login"?"Password":"New password"}<div className="password-field"><input name="password" type={show?"text":"password"} placeholder="Enter password" autoComplete={mode==="login"?"current-password":"new-password"} minLength={mode==="reset"?12:undefined} required/><button type="button" aria-label={show?"Hide password":"Show password"} onClick={()=>setShow(!show)}>{show?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></label>}
