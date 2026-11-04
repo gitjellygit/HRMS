@@ -13,6 +13,9 @@ import AttendanceByDay from "./AttendanceByDay";
 import ChangePassword from "./ChangePassword";
 import OverviewAttendance from "./OverviewAttendance";
 import TimeWorkspace from "./TimeWorkspace";
+import PayrollWorkspace from "./PayrollWorkspace";
+import PeopleWorkspace from "./PeopleWorkspace";
+import PlatformWorkspace from "./PlatformWorkspace";
 import { LayoutDashboard, Users, Clock3, CalendarDays, BriefcaseBusiness, Wallet, Award, LogOut, GitBranch, Building2, UserRound, ShieldCheck, FileDown, ClipboardList, Settings2 } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -27,6 +30,9 @@ const sections = [
   { id:"leaves",label:"Leave requests",Icon:CalendarDays },
   { id:"projects",label:"Projects",Icon:BriefcaseBusiness },
   { id:"bonuses",label:"Bonuses",Icon:Wallet },
+  { id:"payroll",label:"Payroll & expenses",Icon:Wallet },
+  { id:"people",label:"People operations",Icon:ClipboardList },
+  { id:"platform",label:"Insights & security",Icon:ShieldCheck },
   { id:"appraisals",label:"Appraisals",Icon:Award },
   { id:"hrdesk",label:"HR overview",Icon:ClipboardList },
   { id:"policies",label:"Policies",Icon:Settings2 },
@@ -183,7 +189,10 @@ export default function Home() {
     </label>
     <div className="hrms-user-meta"><strong>{user.name}</strong><small>{user.role}</small><select aria-label="My availability" value={presence} onChange={e=>void changePresence(e.target.value)}>{[["available","Available"],["busy","Busy"],["away","Away"],["do_not_disturb","Do not disturb"]].map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></div>
   </div></div>{error&&<div className="error">{error}</div>}
-    {section==="time"?<TimeWorkspace api={API} user={user}/> :section==="policies"?<CompanyPolicies api={API}/>:section==="projects"?<ProjectsManagement api={API} canCreate={Boolean(canHR)}/>:section==="leaves"?<LeaveWorkspace api={API} user={user}/>:section==="hrdesk"?<HRDesk api={API}/>:section==="employees"?<EmployeeManagement api={API} canCreate={Boolean(canHR)} currentRole={user.role} onOpenEmployee={id=>{setSelectedEmployeeId(id);setSection("employee-record")}}/>:
+    {section==="payroll"?<PayrollWorkspace api={API} user={user}/>:
+    section==="people"?<PeopleWorkspace api={API} user={user as any}/>:
+    section==="platform"?<PlatformWorkspace api={API} user={user}/>:
+    section==="time"?<TimeWorkspace api={API} user={user}/> :section==="policies"?<CompanyPolicies api={API}/>:section==="projects"?<ProjectsManagement api={API} canCreate={Boolean(canHR)}/>:section==="leaves"?<LeaveWorkspace api={API} user={user}/>:section==="hrdesk"?<HRDesk api={API}/>:section==="employees"?<EmployeeManagement api={API} canCreate={Boolean(canHR)} currentRole={user.role} onOpenEmployee={id=>{setSelectedEmployeeId(id);setSection("employee-record")}}/>:
     ["employee-record","organization","orgchart","profile","approvals","bulk"].includes(section)?
       <CoreWorkspace api={API} mode={(section==="employee-record"?"profile":section==="organization"?"organization":section==="orgchart"?"orgchart":section==="profile"?"profile":section==="approvals"?"approvals":"bulk")}
         user={user as any} employeeId={section==="employee-record"?selectedEmployeeId:null}
