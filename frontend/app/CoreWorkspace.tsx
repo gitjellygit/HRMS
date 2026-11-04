@@ -5,7 +5,7 @@ import { ArrowDown, ArrowLeft, BadgeCheck, Building2, CalendarClock, Check, Down
 type Person = {id:number;name:string;email:string;employee_code?:string;designation:string;department:string;role:string;status:string;phone?:string;joining_date?:string};
 type Unit={id:number;kind:string;name:string;code:string};
 type Core={project_bonus_inr?:number|null;manager_id?:number|null;hod_id?:number|null;department_id?:number|null;designation_id?:number|null;grade_id?:number|null;branch_id?:number|null;cost_center_id?:number|null;date_of_birth?:string|null;personal_email?:string|null;address?:string;emergency_name?:string;emergency_phone?:string;bank_account?:string;bank_ifsc?:string;pan?:string;aadhaar?:string;uan?:string;lifecycle?:string};
-type RecordType=Person&{master:Core};
+type RecordType=Person&{master:Core;probation_end_date?:string;probation_days_remaining?:number;effective_lifecycle?:string};
 type Change={id:number;employee_id:number;field:string;status:string;requested_at:string;value:string};
 type Doc={id:number;name:string;category:string;type:string;expiry_date?:string|null};
 type History={event:string;note:string;date:string;by:number};
@@ -187,7 +187,18 @@ export default function CoreWorkspace({api,mode,user,employeeId,onBack}:{api:str
   </section>}
   {mode==="orgchart"&&<section className="employee-surface"><header className="core-head"><GitBranch size={21}/><div><h2>Reporting hierarchy</h2><p>A visual org chart based on the assigned reporting manager.</p></div></header>{chart.length?renderOrgTree():<div className="empty">No employees found.</div>}</section>}
   {mode==="profile"&&person&&<><section className="employee-surface"><header className="core-head"><UserRound size={22}/><div><h2>{person.name} <span className="employee-id">{person.employee_code||"Legacy"}</span></h2><p>{person.designation} · {person.department} · {person.email}</p></div></header>
-   <div className="core-stat-row"><span>Role <strong>{person.role.replace("_"," ")}</strong></span><span>Status <strong>{person.status}</strong></span><span>Lifecycle <strong>{person.master?.lifecycle||"Not set"}</strong></span><span>Joining date <strong>{person.joining_date||"—"}</strong></span></div>
+   <div className="core-stat-row"><span>Role <strong>{person.role.replace("_"," ")}</strong></span><span>Status <strong>{person.status}</strong></span><span>Lifecycle <strong>{person.effective_lifecycle||person.master?.lifecycle||"Not set"}</strong></span><span>Joining date <strong>{person.joining_date||"—"}</strong></span></div>
+   <h3 className="core-subhead">Personal & contact details</h3>
+   <div className="core-contact-grid">
+    <div><span>Full name</span><strong>{person.name}</strong></div>
+    <div><span>Work email</span><strong>{person.email}</strong></div>
+    <div><span>Indian mobile</span><strong>{person.phone||"Not provided"}</strong></div>
+    <div><span>Designation</span><strong>{person.designation||"—"}</strong></div>
+    <div><span>Department</span><strong>{person.department||"—"}</strong></div>
+    <div><span>Date of joining</span><strong>{person.joining_date||"—"}</strong></div>
+    <div><span>90-day probation ends</span><strong>{person.probation_end_date||"—"}</strong></div>
+    <div><span>Probation remaining</span><strong>{person.effective_lifecycle==="probation"?(person.probation_days_remaining??0)+" days":"Completed"}</strong></div>
+   </div>
    <h3 className="core-subhead">Reporting & organization</h3>
    <form onSubmit={saveMaster} className="core-form">
     <div className="employee-form-grid">

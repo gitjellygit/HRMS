@@ -96,3 +96,59 @@
 .employee-add-dept-actions{display:flex;justify-content:flex-end;align-items:center;gap:9px;margin-top:5px}
 .employee-add-dept-actions button{width:auto;max-width:max-content;min-width:0}
 @media(max-width:520px){.employee-department-row{flex-wrap:wrap}.employee-department-row select{flex-basis:100%}}
+
+/* Unified form fields throughout HRMS. Browser-native menus retain keyboard access. */
+:root{--hrms-field-font:13px;--hrms-field-border:#d7deea;--hrms-field-focus:#6750a4}
+input:not([type=checkbox]):not([type=radio]),select,textarea{
+  font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:var(--hrms-field-font);
+  line-height:1.4;
+  box-sizing:border-box;
+}
+select{
+  appearance:none;-webkit-appearance:none;
+  border:1px solid var(--hrms-field-border);
+  border-radius:9px;
+  color:#27334b;
+  background-color:#fff;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236c7591' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 13px center;background-size:16px 16px;
+  padding:10px 37px 10px 13px;
+  min-height:40px;
+  font-weight:550;
+  text-overflow:ellipsis;
+  cursor:pointer;
+  transition:border-color .15s ease,box-shadow .15s ease;
+}
+select option{font:500 13px/1.5 Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#27334b;background:#fff;padding:9px}
+select:focus-visible,input:focus-visible,textarea:focus-visible{
+  outline:2px solid #c8b8ee;outline-offset:1px;border-color:var(--hrms-field-focus);
+}
+select:disabled{opacity:.65;cursor:not-allowed;background-color:#f3f5f8}
+.core-contact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(195px,1fr));gap:12px;margin:12px 0 22px}
+.core-contact-grid>div{border:1px solid #e5e9f0;background:#f9fafc;padding:13px;border-radius:9px;min-width:0}
+.core-contact-grid span{display:block;font-size:11px;color:#8791a3;margin-bottom:5px}
+.core-contact-grid strong{display:block;font-size:13px;color:#293450;overflow-wrap:anywhere}
+.attendance-days{display:grid;gap:10px}
+.attendance-day{border:1px solid #e2e7ef;border-radius:11px;overflow:hidden;background:white}
+.attendance-day-toggle{width:100%;display:flex;align-items:center;gap:10px;padding:14px 16px;background:#f8f9fc;border:0;text-align:left;color:#52617c;cursor:pointer}
+.attendance-day-toggle strong{font-size:13px;color:#253450;margin-right:auto}
+.attendance-day-toggle span{font-size:12px;color:#77849b}
+.attendance-day-toggle:hover{background:#f0eef7}
+.attendance-session-table{min-width:450px}
+.employee-row-actions{display:flex;flex-wrap:wrap;gap:6px 12px}
+.employee-temporary-password{display:grid;gap:12px;padding-top:15px}
+.employee-temporary-password code{padding:15px;background:#f4f3f9;border-radius:8px;overflow-wrap:anywhere;font-size:16px}
+.employee-temporary-password p{font-size:12px;color:#6d768e}
+.employee-modal .employee-field textarea,.policy-record-form textarea{width:100%;font:inherit;border:1px solid #d7deea;border-radius:9px;padding:12px;background:white}
+.policy-records{margin-top:28px;border-top:1px solid #e5eaf1;padding-top:21px}
+.policy-record-form{padding:15px;border:1px solid #e3e7ee;background:#f8f9fb;border-radius:10px;margin:14px 0;display:grid;gap:14px}
+.policy-record-form .employee-field{display:grid;gap:7px;font-size:12px;color:#52607a}
+.policy-record-form .employee-field input{min-height:39px;border:1px solid #d8deeb;border-radius:8px;padding:9px 12px}
+.policy-record-list{display:grid;gap:10px;margin-top:14px}
+.policy-record{border:1px solid #e4e9f0;border-radius:9px;padding:12px}
+.policy-record summary{display:flex;justify-content:space-between;gap:14px;cursor:pointer;align-items:center}
+.policy-record summary strong{font-size:13px;color:#313e57}
+.policy-record summary span{font-size:11px;color:#8a95a7;text-transform:capitalize}
+.policy-record p{white-space:pre-wrap;color:#46556f;font-size:12px;line-height:1.7}
+@media(max-width:700px){.attendance-day-toggle{flex-wrap:wrap}.attendance-day-toggle strong{margin-right:0}.attendance-day-toggle span:last-child{width:100%;padding-left:30px}}
