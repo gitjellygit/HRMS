@@ -102,7 +102,10 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
     {r.status==="approved"&&hr&&<button className="employee-primary" disabled={busy} onClick={()=>void submit(()=>call("/runs/"+r.id+"/publish","POST"),"Payslips published.")}>Publish</button>}
    </div>)}</div>
    {runDetail&&<div className="ops-breakdown"><h4>Run {runDetail.period} · {runDetail.status}</h4><p>Gross {cash(runDetail.gross_total)} · Net {cash(runDetail.net_total)} · {runDetail.exceptions} attendance exceptions</p>
-    <div className="table-wrap"><table><thead><tr><th>Employee</th><th>Gross</th><th>LOP days</th><th>LOP</th><th>Net</th><th>Exceptions</th></tr></thead><tbody>{runDetail.lines?.map((line:Row)=><tr key={line.id}><td>#{line.employee_id}</td><td>{cash(line.gross)}</td><td>{line.lop_days}</td><td>{cash(line.lop_amount)}</td><td>{cash(line.net)}</td><td>{line.exceptions||"None"}</td></tr>)}</tbody></table></div></div>}
+    <div className="table-wrap"><table><thead><tr><th>Employee</th><th>Gross</th><th>LOP days</th><th>LOP</th><th>Net</th><th>Exceptions</th></tr></thead><tbody>{runDetail.lines?.map((line:Row)=><tr key={line.id}><td>#{line.employee_id}</td><td>{cash(line.gross)}</td><td>{line.lop_days}</td><td>{cash(line.lop_amount)}</td><td>{cash(line.net)}</td><td>{line.exceptions||"None"}{line.exceptions&&hr&&<button className="employee-cancel" disabled={busy}
+   onClick={()=>{const reason=window.prompt("Explain the verified attendance exception (20+ characters).");
+    if(reason)void submit(()=>call("/runs/"+runDetail.id+"/lines/"+line.id+"/resolve-exception","POST",{reason}),"Attendance exception reviewed.");
+   }}>Resolve with reason</button>}</td></tr>)}</tbody></table></div></div>}
   </section>}
   {tab==="payslips"&&<section className="employee-surface">
    <h3><FileDown size={19}/> Published payslips</h3><p className="muted">Confidential; only published statements are available for download.</p>

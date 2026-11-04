@@ -81,6 +81,21 @@ class PayrollLine(Base):
     exceptions:Mapped[str]=mapped_column(Text,default="")
     __table_args__=(UniqueConstraint("run_id","employee_id",name="uq_pay_line_employee_period"),)
 
+class PayrollReviewAudit(Base):
+    __tablename__="pay_review_audit"
+    id:Mapped[int]=mapped_column(primary_key=True)
+    run_id:Mapped[int]=mapped_column(ForeignKey("pay_runs.id"))
+    line_id:Mapped[int]=mapped_column(ForeignKey("pay_run_lines.id"))
+    reviewer_id:Mapped[int]=mapped_column(ForeignKey("employees.id"))
+    action:Mapped[str]=mapped_column(String(40))
+    reason:Mapped[str]=mapped_column(Text)
+    reviewed_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
+
+
+class ResolveExceptionIn(BaseModel):
+    reason:str=Field(min_length=20,max_length=2000)
+
+
 class ExpenseClaim(Base):
     __tablename__="pay_expense_claims"
     id:Mapped[int]=mapped_column(primary_key=True)
@@ -247,6 +262,24 @@ def view_run(run_id:int,user:Employee=Depends(current_user),db:Session=Depends(d
             "gross_total":sum((r.gross for r in rows),Decimal(0)),
             "net_total":sum((r.net for r in rows),Decimal(0)),
             "exceptions":sum(bool(r.exceptions) for r in rows)}
+
+@router.post("/runs/{run_id}/lines/{line_id}/resolve-exception")
+def resolve_payroll_exception(run_id:int,line_id:int,body:ResolveExceptionIn,
+                              user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    role(user,HR)
+    run=db.get(PayrollRun,run_id)
+    row=db.get(PayrollLine,line_id)
+    if not run or not row or row.run_id!=run_id:raise HTTPException(404)
+    if run.status!="draft":raise HTTPException(409,"Only draft payroll can be corrected.")
+    if not row.exceptions:raise HTTPException(409,"No unresolved exception.")
+    reason=body.reason.strip()
+    db.add(PayrollReviewAudit(run_id=run_id,line_id=line_id,reviewer_id=user.id,
+                              action="attendance_exception_resolved",
+                              reason="Original exception: "+row.exceptions+". Review: "+reason))
+    row.exceptions=""
+    db.commit()
+    return {"id":row.id,"exceptions":"","audit_recorded":True}
+
 
 @router.post("/runs/{run_id}/approve")
 def approve_run(run_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
