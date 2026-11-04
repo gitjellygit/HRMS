@@ -201,7 +201,8 @@ export default function CoreWorkspace({api,mode,user,employeeId,onBack,onPasswor
     <div><span>Probation remaining</span><strong>{person.effective_lifecycle==="probation"?(person.probation_days_remaining??0)+" days":"Completed"}</strong></div>
    </div>
    <h3 className="core-subhead">Reporting & organization</h3>
-   <form onSubmit={saveMaster} className="core-form">
+   {!isHR&&<p className="field-help">HR manages these records. To update your own personal details, submit a profile change request below for approval.</p>}
+   <form onSubmit={saveMaster} className="core-form"><fieldset disabled={!isHR} className="core-readonly-fieldset">
     <div className="employee-form-grid">
      {selectRelation("manager_id","Reporting manager",people.filter(p=>p.id!==target).map(p=>({id:p.id,name:managerLabels[p.id]})))}
      {selectRelation("hod_id","Second-level manager / HOD",people.filter(p=>p.id!==target).map(p=>({id:p.id,name:managerLabels[p.id]})))}
@@ -211,7 +212,7 @@ export default function CoreWorkspace({api,mode,user,employeeId,onBack,onPasswor
     <h3 className="core-subhead">Personal details & emergency contact</h3>
     <div className="employee-form-grid">{fields.filter(([field])=>!sensitive.includes(field)).map(([field,label])=>input(field,label,field==="date_of_birth"?"date":field==="personal_email"?"email":"text"))}</div>
     {isHR&&<><h3 className="core-subhead"><LockKeyhole size={17}/> Restricted HR-only identifiers and bank details</h3><div className="employee-form-grid">{fields.filter(([field])=>sensitive.includes(field)).map(([field,label])=>input(field,label))}</div><div className="core-form-actions"><button disabled={busy} className="employee-primary">Save master record</button></div></>}
-   </form>
+   </fieldset></form>
   </section>
   {target===user.id&&<ChangePassword api={api} required={false} onComplete={()=>onPasswordChanged?.()}/>}
   <section className="employee-surface"><header className="core-head"><FilePlus2 size={20}/><div><h2>Employee documents</h2><p>Offer letters, ID proofs, certificates and their expiry dates.</p></div></header>
