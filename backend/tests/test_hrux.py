@@ -36,14 +36,14 @@ def test_employee_ids_phone_password_and_deactivation():
             "account":employee("Test Invalid","invalid.phone.hrux@example.org",phone="1234567890"),"master":{"manager_id":manager_id}})
         assert invalid_phone.status_code==422,invalid_phone.text
         created=c.post("/core/employees",headers=ORIGIN,json={
-            "account":employee("Ravi Tester","ravi.hrux@example.org",code,"+91 98765 43210"),"master":{}})
+            "account":employee("Ravi Tester","ravi.hrux@example.org",code,"+91 98765 43210"),"master":{"manager_id":manager_id}})
         assert created.status_code==201,created.text
         employee_id=created.json()["id"]
         assert created.json()["employee_code"]==code
         assert created.json()["phone"]=="+919876543210"
         assert created.json()["probation_end_date"]==(date.today()+timedelta(days=90)).isoformat()
         duplicate=c.post("/core/employees",headers=ORIGIN,json={
-            "account":employee("Second Tester","second.hrux@example.org",code),"master":{}})
+            "account":employee("Second Tester","second.hrux@example.org",code),"master":{"manager_id":manager_id}})
         assert duplicate.status_code==409,duplicate.text
         elevated=f"JG-{number+120:03d}"
         manual=c.post("/core/employees",headers=ORIGIN,json={
@@ -63,7 +63,8 @@ def test_employee_ids_phone_password_and_deactivation():
         assert c.post("/auth/login",json={"email":"ravi.hrux@example.org",
                                          "password":"SecureTempPass!1234"}).status_code==401
         assert c.post("/auth/login",json={"email":"ravi.hrux@example.org","password":temp}).status_code==200
-        assert c.get(f"/core/employees/{employee_id}").status_code==200
+        assert c.get("/me").json()["must_change_password"] is True
+        assert c.get(f"/core/employees/{employee_id}").status_code==403
         assert c.get("/dashboard").status_code==403
         changed=c.post("/auth/change-password",headers=ORIGIN,
                        json={"new_password":"BrandNewPass!98765"})
