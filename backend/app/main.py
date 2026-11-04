@@ -515,6 +515,12 @@ def attendance_status(user: Employee = Depends(current_user), db: Session = Depe
 
 @app.post("/attendance/punch", response_model=AttendanceOut)
 def punch(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
+    # Calls from /time/punch can pass an approved verified geographic location.
+    # The legacy route must not bypass an enabled office geofence.
+    from .time_tracking import TimePolicy
+    active_policy=db.scalar(select(TimePolicy).where(TimePolicy.location=="all"))
+    if active_policy and active_policy.geo_required and not db.info.get("geo_verified"):
+        raise HTTPException(403,detail={"field":"location","message":"Use the verified GPS attendance button."})
     # One active punch state per user, even with simultaneous clicks/browser tabs.
     db.execute(select(func.pg_advisory_xact_lock(93001,user.id)))
     open_shift = db.scalar(select(Attendance).where(Attendance.employee_id == user.id, Attendance.punch_out.is_(None)).order_by(Attendance.id.desc()))
@@ -852,6 +858,9 @@ async def stop_bonus_reconciler():
         except asyncio.CancelledError:
             pass
         _bonus_sync_task=None
+
+from .time_tracking import router as time_tracking_router  # noqa: E402
+app.include_router(time_tracking_router)
 
 from .bonus_policy import router as bonus_policy_router  # noqa: E402
 app.include_router(bonus_policy_router)

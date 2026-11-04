@@ -219,7 +219,11 @@ def geo_punch(body:GeoPunchIn,user:Employee=Depends(current_user),db:Session=Dep
         if distance>p.radius_meters:
             raise HTTPException(403,detail={"field":"location","message":"Outside the permitted office radius."})
     # This route uses the same advisory-locked punch core as the existing UI.
-    row=punch(user=user,db=db)
+    db.info["geo_verified"]=True
+    try:
+        row=punch(user=user,db=db)
+    finally:
+        db.info.pop("geo_verified",None)
     return {"id":row.id,"punch_in":row.punch_in,"punch_out":row.punch_out}
 
 @router.post("/biometric/events")
@@ -268,7 +272,8 @@ def roster(employee_id:int|None=None,user:Employee=Depends(current_user),db:Sess
             for r in db.scalars(select(Roster).where(Roster.employee_id==owner).order_by(Roster.work_date.desc())).all()]
 
 @router.get("/daily")
-def daily(employee_id:int|None=None,month:int=Field(default=0),user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+def daily(employee_id:int|None=None,month:int=0,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    if not 0<=month<=12:raise HTTPException(422,"Month must be between 1 and 12.")
     owner=employee_id or user.id
     if owner!=user.id and not permitted(db,user,owner):raise HTTPException(403,"Team access required")
     punches=db.scalars(select(Attendance).where(Attendance.employee_id==owner).order_by(Attendance.punch_in.desc()).limit(1000)).all()
@@ -277,6 +282,7 @@ def daily(employee_id:int|None=None,month:int=Field(default=0),user:Employee=Dep
     grace=policy.grace_minutes if policy else 15
     entries={}
     for punch in punches:
+        if month and punch.punch_in.month!=month:continue
         key=punch.punch_in.date().isoformat()
         if key not in entries:entries[key]={"date":key,"sessions":0,"hours":0.0,"open":False,"first_punch":punch.punch_in}
         entries[key]["sessions"]+=1
