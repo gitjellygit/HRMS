@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import FeedbackMotion from "./FeedbackMotion";
 import { ArrowLeft, BadgeCheck, BriefcaseBusiness, FileUp, IdCard, Plus, RefreshCw, Search, ShieldCheck, Users, X } from "lucide-react";
 
 type OrgUnit={id:number;kind:string;name:string;code:string};
@@ -219,7 +220,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
  }
  return <div className="employee-page">
   {failure&&!open&&<div className="error" role="alert">{failure}</div>}
-  {message&&<div className="employee-success" role="status"><BadgeCheck size={18}/>{message}</div>}
+  {message&&<FeedbackMotion type="success" compact message={message}/>}
   {!open?<><div className="employee-metrics">
    <div className="employee-metric"><Users size={20}/><span>Total employees</span><strong>{employees.length}</strong></div>
    <div className="employee-metric"><BadgeCheck size={20}/><span>Active employees</span><strong>{employees.filter(e=>e.status==="active").length}</strong></div>
