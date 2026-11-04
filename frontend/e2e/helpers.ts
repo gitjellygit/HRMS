@@ -24,7 +24,7 @@ export async function navigate(page: Page, label: string) {
   await expect(page.locator('.content h1.title')).toHaveText(label);
 }
 export const NAV = [
-  'Overview', 'Employees', 'Attendance', 'Leave requests', 'Projects',
+  'Overview', 'Employees', 'Attendance', 'Time & shifts', 'Leave requests', 'Projects',
   'Bonuses', 'Appraisals', 'HR overview', 'Policies', 'Organization',
   'Org chart', 'My profile', 'Profile requests', 'Bulk data & expiries',
 ] as const;
@@ -34,6 +34,6 @@ export function permitted(role: string): Set<string> {
   const all = new Set<string>(NAV);
   if (!['super_admin', 'admin', 'hr'].includes(role)) hiddenHR.forEach(x => all.delete(x));
   if (!['super_admin', 'admin', 'hr', 'accountant'].includes(role)) hiddenEmployee.forEach(x => all.delete(x));
-  if (!['super_admin', 'admin', 'hr', 'manager', 'employee'].includes(role)) all.delete('Profile approvals');
+  if (!['super_admin', 'admin', 'hr'].includes(role)) all.delete('Profile requests');
   return all;
 }
