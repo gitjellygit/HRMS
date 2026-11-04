@@ -12,7 +12,13 @@ export function users(): Persona[] {
 }
 export async function login(page: Page, user: Persona) {
   await page.goto('/');
-  await expect(page.locator('input[name="email"]')).toBeVisible();
+  const emailInput=page.locator('input[name="email"]');
+  if(!(await emailInput.isVisible())){
+    const signOut=page.locator('.sidebar nav').getByRole('button',{name:'Sign out'});
+    await expect(signOut).toBeVisible();
+    await signOut.click();
+  }
+  await expect(emailInput).toBeVisible();
   await page.locator('input[name="email"]').fill(user.email);
   await page.locator('input[name="password"]').fill(TEST_PASSWORD);
   await page.getByRole('button', { name: /sign in/i }).click();
@@ -34,6 +40,6 @@ export function permitted(role: string): Set<string> {
   const all = new Set<string>(NAV);
   if (!['super_admin', 'admin', 'hr'].includes(role)) hiddenHR.forEach(x => all.delete(x));
   if (!['super_admin', 'admin', 'hr', 'accountant'].includes(role)) hiddenEmployee.forEach(x => all.delete(x));
-  if (!['super_admin', 'admin', 'hr', 'manager', 'employee'].includes(role)) all.delete('Profile approvals');
+  if (!['super_admin', 'admin', 'hr'].includes(role)) all.delete('Profile requests');
   return all;
 }
