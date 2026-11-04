@@ -466,14 +466,12 @@ def get_employee_core(employee_id: int, user: Employee = Depends(current_user), 
 
 @router.post("/employees", status_code=201)
 def create_full_employee(body: EmployeeCreateIn, user: Employee = Depends(require_hr), db: Session = Depends(db_session)):
-    from .main import EmployeeProfile
+    from .main import EmployeeProfile, employee_code_value
     account = body.account
     if account.role not in ("super_admin","admin","hr","manager","employee","accountant"):
         raise HTTPException(422, "Unknown account role")
     if account.role in ("super_admin", "admin") and user.role not in ADMIN_ROLES:
         raise HTTPException(403, "Only Super Admin may create an administrator")
-    if account.employee_code:
-        raise HTTPException(422, "Employee ID is generated automatically")
     if db.scalar(select(Employee.id).where(func.lower(Employee.email) == str(account.email).lower())):
         raise HTTPException(409, detail={"field":"email","message":"This email is already registered."})
     validate_relationships(db, -1, body.master)
@@ -486,8 +484,8 @@ def create_full_employee(body: EmployeeCreateIn, user: Employee = Depends(requir
     db.add(employee)
     try:
         db.flush()
-        number = db.execute(text("SELECT nextval('hrms_employee_code_seq')")).scalar_one()
-        db.add(EmployeeProfile(employee_id=employee.id, employee_code=f"JG-{number:03d}", **account.model_dump(include=profile_fields)))
+        code = employee_code_value(db, account.employee_code)
+        db.add(EmployeeProfile(employee_id=employee.id, employee_code=code, **account.model_dump(include=profile_fields)))
         apply_master(db, employee.id, body.master)
         db.add(LifecycleEvent(employee_id=employee.id, event="probation", note="Employee created", effective_date=account.joining_date, performed_by=user.id))
         db.commit()
