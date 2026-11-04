@@ -311,6 +311,12 @@ def employee_view(db: Session, employee: Employee, user: Employee, *, detailed: 
     if not can_view(user, employee.id, core):
         raise HTTPException(403, "Employee record access denied")
     result = as_employee_out(db, employee).model_dump(mode="json")
+    probation_end=employee.joining_date+timedelta(days=90)
+    result["probation_end_date"]=probation_end.isoformat()
+    result["probation_days_remaining"]=max(0,(probation_end-date.today()).days) if employee.status=="active" else 0
+    result["effective_lifecycle"]=("confirmed" if (core is None or core.lifecycle=="probation") and
+                                  employee.status=="active" and date.today()>=probation_end
+                                  else core.lifecycle if core else "probation")
     if detailed:
         if user.role == "manager" and user.id != employee.id:
             result["master"] = {"manager_id": core.manager_id if core else None,
@@ -603,6 +609,73 @@ def change_lifecycle(employee_id: int, body: LifecycleIn, user: Employee = Depen
     db.add(LifecycleEvent(employee_id=employee_id, event=body.event, note=body.note, effective_date=body.effective_date, performed_by=user.id))
     db.commit()
     return {"employee_id":employee_id, "lifecycle":body.event}
+
+
+class DeactivateEmployeeIn(BaseModel):
+    reason: str = Field(min_length=10,max_length=500)
+
+
+class TemporaryPasswordIn(BaseModel):
+    reason: str = Field(min_length=10,max_length=500)
+
+
+def protect_privileged_target(actor: Employee,target:Employee):
+    if actor.id==target.id:
+        raise HTTPException(403,"You cannot perform this operation on your own account.")
+    if target.role in ("super_admin","admin") and actor.role not in ("super_admin","admin"):
+        raise HTTPException(403,"Only administrators may manage administrator accounts.")
+    if target.role=="super_admin" and actor.role!="super_admin":
+        raise HTTPException(403,"Only a Super Admin may manage this account.")
+
+
+@router.post("/employees/{employee_id}/deactivate")
+def deactivate_employee(employee_id:int,body:DeactivateEmployeeIn,user:Employee=Depends(require_hr),db:Session=Depends(db_session)):
+    target=employee_or_404(db,employee_id)
+    protect_privileged_target(user,target)
+    if target.status!="active":
+        raise HTTPException(409,"Employee is already inactive.")
+    target.status="inactive"
+    db.add(LifecycleEvent(employee_id=employee_id,event="deactivated",note=body.reason.strip(),
+                          effective_date=date.today(),performed_by=user.id))
+    db.commit()
+    return {"employee_id":employee_id,"status":"inactive","reason_recorded":True}
+
+
+@router.post("/employees/{employee_id}/reset-password")
+def reset_employee_password(employee_id:int,body:TemporaryPasswordIn,user:Employee=Depends(require_hr),db:Session=Depends(db_session)):
+    target=employee_or_404(db,employee_id)
+    protect_privileged_target(user,target)
+    if target.status!="active":
+        raise HTTPException(409,"Reactivate the employee before issuing new credentials.")
+    import string
+    chars=string.ascii_letters+string.digits+"!@#$%&*"
+    temporary="".join(secrets.choice(chars) for _ in range(20))
+    # Force representative character classes for the password policy.
+    temporary="A9!a"+temporary
+    target.password_hash=passwords.hash(temporary)
+    db.add(LifecycleEvent(employee_id=employee_id,event="password_reset",
+                          note="HR-issued temporary password: "+body.reason.strip(),
+                          effective_date=date.today(),performed_by=user.id))
+    db.commit()
+    # No password in logs, DB or email; return once to authorized caller.
+    return {"employee_id":employee_id,"temporary_password":temporary,"must_change_on_login":False,
+            "message":"Share securely; existing sessions have been invalidated."}
+
+
+def sync_probation_periods(db:Session)->int:
+    due=db.execute(select(EmployeeCore,Employee).join(Employee,Employee.id==EmployeeCore.employee_id).where(
+        Employee.status=="active",EmployeeCore.lifecycle=="probation",
+        Employee.joining_date<=date.today()-timedelta(days=90))).all()
+    count=0
+    for core,employee in due:
+        core.lifecycle="confirmed"
+        db.add(LifecycleEvent(employee_id=employee.id,event="confirmed",
+                              note="Automatic confirmation after 90 calendar days from DOJ",
+                              effective_date=employee.joining_date+timedelta(days=90),
+                              performed_by=employee.id))
+        count+=1
+    db.commit()
+    return count
 
 
 @router.post("/employees/{employee_id}/documents", status_code=201)
