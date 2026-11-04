@@ -220,3 +220,7 @@ select:disabled{opacity:.65;cursor:not-allowed;background-color:#f3f5f8}
 @keyframes hrmsSpin{to{transform:rotate(360deg)}}.motion-fallback-spin{animation:hrmsSpin .9s linear infinite}
 @media(prefers-reduced-motion:reduce){.motion-visual{display:none!important}.motion-fallback-spin{animation:none}}
 @media(max-width:1080px){.time-columns{grid-template-columns:1fr}}@media(max-width:650px){.time-form{grid-template-columns:1fr}.time-form .wide,.time-form .employee-primary{grid-column:1}}
+
+/* Accessible field errors across legacy and new forms */
+.employee-page :is(input,select,textarea)[aria-invalid=true],.project-page :is(input,select,textarea)[aria-invalid=true],.policy-page :is(input,select,textarea)[aria-invalid=true],.password-change-form :is(input,select,textarea)[aria-invalid=true]{border:2px solid #d64a4a!important;background:#fff7f7!important;box-shadow:0 0 0 3px #f4b3b333!important;scroll-margin:90px}
+.time-swap-consent{border:1px solid #dcd4f0;border-radius:10px;padding:14px;background:#faf8ff;margin:12px 0}.time-swap-consent p{font-size:12px;color:#6f7592;margin:7px 0 13px}
