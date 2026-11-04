@@ -135,6 +135,7 @@ class LoginIn(BaseModel):
     email: EmailStr
     password: str
     remember: bool = False
+    otp: str | None = Field(default=None,pattern=r"^[0-9]{6}$")
 
 class ResetRequestIn(BaseModel):
     email: EmailStr
@@ -355,6 +356,8 @@ def login(body: LoginIn, response: Response, db: Session = Depends(db_session)):
     user = db.scalar(select(Employee).where(Employee.email == str(body.email)))
     if not user or user.status != "active" or not passwords.verify(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    from .security import require_login_mfa
+    require_login_mfa(db,user.id,body.otp)
     lifetime = timedelta(days=30) if body.remember else timedelta(hours=8)
     token = jwt.encode({"sub": str(user.id), "pv": hashlib.sha256((SECRET + user.password_hash).encode()).hexdigest(), "exp": datetime.now(timezone.utc) + lifetime}, SECRET, algorithm="HS256")
     response.set_cookie(COOKIE_NAME, token, httponly=True, secure=COOKIE_SECURE, samesite='lax', max_age=int(lifetime.total_seconds()) if body.remember else None, path='/')
@@ -904,3 +907,6 @@ app.include_router(payroll_router)
 
 from .people_operations import router as people_operations_router  # noqa: E402
 app.include_router(people_operations_router)
+
+from .security import router as security_router  # noqa: E402
+app.include_router(security_router)
