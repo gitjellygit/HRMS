@@ -901,3 +901,6 @@ async def stop_probation_sync():
 # New salary/expense tables are registered before application startup.
 from .payroll import router as payroll_router  # noqa: E402
 app.include_router(payroll_router)
+
+from .people_operations import router as people_operations_router  # noqa: E402
+app.include_router(people_operations_router)
