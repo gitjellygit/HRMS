@@ -634,7 +634,7 @@ def change_bonus(bonus_id: int, body: StatusIn, user: Employee = Depends(require
 @app.get("/appraisals", response_model=list[AppraisalOut])
 def appraisals(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
     query = select(Appraisal).order_by(Appraisal.id.desc())
-    if user.role not in ("admin", "hr"):
+    if user.role not in ("super_admin", "admin", "hr"):
         query = query.where(Appraisal.employee_id == user.id)
     return db.scalars(query).all()
 
