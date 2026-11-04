@@ -51,14 +51,14 @@ export default function PayrollWorkspace({api,user}:{api:string;user:User}){
   try{await action();setNotice(message);await load()}
   catch(err){const e=err as Error&{field?:string};setError(e.message);setBadField(e.field||"");
    window.requestAnimationFrame(()=>{
-    const el=window.document.querySelector<HTMLElement>('[name="'+(e.field||"")+""]');
+    const el=e.field?window.document.querySelector<HTMLElement>(`[name="${e.field}"]`):null;
     el?.scrollIntoView({behavior:"smooth",block:"center"});el?.focus();
    });
   }finally{setBusy(false)}
  }
  async function getFile(path:string,name:string){
   setError("");
-  const r=await fetch(url+path,{credentials:"include"});
+  const r=await fetch(path.startsWith(api)?path:url+path,{credentials:"include"});
   if(!r.ok){setError("Cannot download this document. You may not have access.");return}
   const blob=await r.blob(),link=window.document.createElement("a");
   const object=URL.createObjectURL(blob);link.href=object;link.download=name;
@@ -148,7 +148,7 @@ export default function PayrollWorkspace({api,user}:{api:string;user:User}){
     <div className="ops-list">{runs.map(run=><div key={run.id}>
       <strong>{run.month}/{run.year} · {run.status}</strong>
       <button className="employee-cancel" onClick={()=>void call("/runs/"+run.id).then(setSelectedRun).catch(e=>setError(e.message))}>Review run</button>
-      {run.status==="approved"&&<button className="employee-cancel" onClick={()=>void getFile("/../platform/accounting/payroll.csv?run_id="+run.id,"payroll-"+run.id+".csv")}>Accounting CSV</button>}
+      {run.status==="approved"&&<button className="employee-cancel" onClick={()=>void getFile(api+"/platform/accounting/payroll.csv?run_id="+run.id,"payroll-"+run.id+".csv")}>Accounting CSV</button>}
     </div>)}{!runs.length&&<p>No payroll runs yet.</p>}</div>
    </section><section className="employee-surface"><h3>Payroll review</h3>{selectedRun?<div className="ops-review">
     <p>Period {selectedRun.month}/{selectedRun.year} · {selectedRun.status}</p>
