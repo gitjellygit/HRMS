@@ -279,6 +279,7 @@ def daily(employee_id:int|None=None,month:int=0,user:Employee=Depends(current_us
     punches=db.scalars(select(Attendance).where(Attendance.employee_id==owner).order_by(Attendance.punch_in.desc()).limit(1000)).all()
     policy=effective_policy(db)
     threshold=float(policy.half_day_under_hours) if policy else 4
+    overtime_threshold=float(policy.overtime_after_hours) if policy else 9
     grace=policy.grace_minutes if policy else 15
     entries={}
     for punch in punches:
@@ -298,6 +299,7 @@ def daily(employee_id:int|None=None,month:int=0,user:Employee=Depends(current_us
             start=datetime.combine(date.fromisoformat(key),time.fromisoformat(shift.start_time),tzinfo=timezone.utc)
             v["late"]=v["first_punch"]>start+timedelta(minutes=grace)
         v["half_day"]=not v["open"] and v["hours"]<threshold
+        v["overtime_hours"]=round(max(0,v["hours"]-overtime_threshold),2) if not v["open"] else 0
         v["hours"]=round(v["hours"],2)
         del v["first_punch"]
         v["classification_only"]=True

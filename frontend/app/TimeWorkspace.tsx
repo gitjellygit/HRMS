@@ -117,7 +117,7 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
     <p className="field-help">Mobile web browsers are supported. Biometric imports require a separately configured device integration.</p>
    </section>
    <section className="employee-surface"><h3>Daily attendance summary</h3><p className="muted">Late / half-day flags are preliminary classifications, not automatic salary deductions.</p>
-    <div className="time-day-list">{daily.length?daily.slice(0,20).map(d=><div key={d.date}><strong>{d.date}</strong><span>{d.sessions} sessions · {d.hours}h</span><small>{d.open?"On shift":d.late?"Late mark":d.half_day?"Half day":"Complete"}</small></div>):<p>No punch sessions yet.</p>}</div>
+    <div className="time-day-list">{daily.length?daily.slice(0,20).map(d=><div key={d.date}><strong>{d.date}</strong><span>{d.sessions} sessions · {d.hours}h{d.overtime_hours>0?" · OT "+d.overtime_hours+"h":""}</span><small>{d.open?"On shift":d.late?"Late mark":d.half_day?"Half day":"Complete"}</small></div>):<p>No punch sessions yet.</p>}</div>
    </section>
   </div>}
 
