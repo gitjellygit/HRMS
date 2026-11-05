@@ -18,8 +18,8 @@ from test_pay_people import login, create, seed, PASS, ORIGIN
 today=date.today()
 def sign_out(c):
     c.post("/auth/logout",headers=ORIGIN)
-def switch(c,email,password=PASS):
-    sign_out(c);login(c,email,password)
+def switch(c,email="admin@example.com",password=None):
+    sign_out(c);login(c,email,password or ("test-admin-password-12345" if email=="admin@example.com" else PASS))
 
 @pytest.mark.parametrize("idx",range(80),ids=lambda i:"invoice-window-%03d"%i)
 def test_invoice_period_boundaries(idx):
