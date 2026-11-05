@@ -931,3 +931,6 @@ app.include_router(billing_reviews_router)
 
 from .payroll_components import router as salary_components_router  # noqa: E402
 app.include_router(salary_components_router)
+
+from .notification_center import router as notification_center_router  # noqa: E402
+app.include_router(notification_center_router)

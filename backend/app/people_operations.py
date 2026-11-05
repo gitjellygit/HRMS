@@ -205,6 +205,11 @@ def notify(db,employee_id,event,subject,body):
     rule=db.scalar(select(NotifyRule).where(NotifyRule.event==event))
     channels=[c for c in ("email","sms","push","whatsapp") if not rule or getattr(rule,c)]
     if not rule:channels=["email"]
+    from .notification_center import add_inbox
+    # The in-app inbox works even when no external delivery provider is connected.
+    destination={"helpdesk":"people","approval":"leaves","offer":"people",
+                 "exit":"people"}.get(event,"dashboard")
+    add_inbox(db,employee_id,event,subject,body,destination)
     for channel in channels:
         # A queued adapter is not a claim of delivery. No background sender until configured.
         db.add(NotifyOutbox(employee_id=employee_id,event=event,subject=subject,body=body,
@@ -338,7 +343,12 @@ def complete_task(task_id:int,user:Employee=Depends(current_user),db:Session=Dep
 def add_announcement(body:AnnouncementIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     require_hr(user)
     row=Announcement(**body.model_dump(),created_by=user.id);db.add(row);db.flush()
-    audit(db,user,"announcement",row.id,"published");db.commit();return {"id":row.id}
+    from .notification_center import add_inbox
+    ids=db.scalars(select(Employee.id).where(Employee.status=="active")).all()
+    for employee_id in ids:
+        add_inbox(db,employee_id,"announcement",row.title,row.body,"people")
+    audit(db,user,"announcement",row.id,"published");db.commit()
+    return {"id":row.id,"recipients":len(ids)}
 
 @router.get("/announcements")
 def announcements(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
