@@ -199,7 +199,11 @@ def calculate(db,employee,period):
     settings=db.get(StatutorySettings,employee.id)
     if not salary or salary.effective_from>end:raise ValueError("Salary structure missing/effective later")
     if not settings or settings.effective_from>end:raise ValueError("Reviewed statutory configuration missing")
-    gross=money(salary.basic+salary.hra+salary.allowances)
+    from .payroll_components import effective_components
+    components=effective_components(db,employee.id,end)
+    extra_earnings=sum((Decimal(x.amount) for x in components if x.kind=="earning"),Decimal(0))
+    extra_deductions=sum((Decimal(x.amount) for x in components if x.kind=="deduction"),Decimal(0))
+    gross=money(salary.basic+salary.hra+salary.allowances+extra_earnings)
     # Payroll basis is calendar days in selected month and approved LOP only.
     # A missing punch is an exception to review, never automatically unpaid leave.
     days=Decimal((end-start).days+1)
@@ -220,11 +224,11 @@ def calculate(db,employee,period):
         Attendance.punch_out.is_not(None))) or 0
     exceptions="No completed punches recorded; verify attendance" if not count else ""
     deductions=money(loss+settings.pf_employee_monthly+settings.esi_employee_monthly+
-        settings.professional_tax_monthly+settings.tds_monthly+salary.other_deductions)
+        settings.professional_tax_monthly+settings.tds_monthly+salary.other_deductions+extra_deductions)
     if deductions>gross:raise ValueError("Deductions exceed gross salary")
     return dict(employee_id=employee.id,gross=gross,lop_days=lop,lop_amount=loss,pf=settings.pf_employee_monthly,
         esi=settings.esi_employee_monthly,pt=settings.professional_tax_monthly,tds=settings.tds_monthly,
-        other_deductions=salary.other_deductions,net=money(gross-deductions),
+        other_deductions=money(salary.other_deductions+extra_deductions),net=money(gross-deductions),
         attendance_sessions=count,exceptions=exceptions)
 
 @router.post("/runs",status_code=201)
@@ -242,7 +246,13 @@ def create_run(body:RunIn,user:Employee=Depends(current_user),db:Session=Depends
     if not rows:raise HTTPException(422,"No eligible employees in period.")
     run=PayrollRun(period=body.period,created_by=user.id)
     db.add(run);db.flush()
-    for row in rows:db.add(PayrollLine(run_id=run.id,**row))
+    from .payroll_components import effective_components, PayslipComponent
+    for row in rows:
+        line=PayrollLine(run_id=run.id,**row)
+        db.add(line);db.flush()
+        for component in effective_components(db,row["employee_id"],end):
+            db.add(PayslipComponent(line_id=line.id,code=component.code,title=component.title,
+                  kind=component.kind,amount=component.amount))
     db.commit();db.refresh(run)
     return {"id":run.id,"period":run.period,"status":run.status,"employees":len(rows)}
 
@@ -325,12 +335,18 @@ def pdf_payslip(line_id:int,user:Employee=Depends(current_user),db:Session=Depen
     pdf.drawString(46,759,"Employee: "+employee.name)
     pdf.drawString(46,740,"Period: "+run.period+"    |    Employee ID: "+str(employee.id))
     pdf.line(46,721,549,721)
+    from .payroll_components import PayslipComponent
+    components=db.scalars(select(PayslipComponent).where(PayslipComponent.line_id==row.id).order_by(PayslipComponent.kind,PayslipComponent.title)).all()
     labels=[("Gross monthly earnings",row.gross),("Approved loss of pay",row.lop_amount),
         ("Employee PF",row.pf),("Employee ESI",row.esi),("Professional tax",row.pt),
-        ("TDS",row.tds),("Other deductions",row.other_deductions)]
+        ("TDS",row.tds),("Other deductions (including configured items)",row.other_deductions)]
+    labels.extend((("Additional "+("earning" if x.kind=="earning" else "deduction")+": "+x.title,x.amount) for x in components)
     y=693
     for name,amount in labels:
+        if y<180:
+            pdf.showPage();pdf.setFont("Helvetica",10);y=760
         pdf.drawString(46,y,name);pdf.drawRightString(540,y,"INR "+format(amount,",.2f"));y-=31
+    if y<165:pdf.showPage();pdf.setFont("Helvetica",10);y=760
     pdf.line(46,y,549,y);y-=28
     pdf.setFont("Helvetica-Bold",14);pdf.drawString(46,y,"Net pay")
     pdf.drawRightString(540,y,"INR "+format(row.net,",.2f"))
