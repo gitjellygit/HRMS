@@ -16,7 +16,7 @@ export default function AttendanceByDay({records}:{records:Punch[]}){
  const [expanded,setExpanded]=useState<Record<string,boolean>>({});
  if(!records.length)return <div className="empty">No attendance yet. Punch in to start recording sessions.</div>;
  return <div className="attendance-days">{groups.map(([date,items],idx)=>{
-  const open=expanded[date]??idx===0;
+  const open=expanded[date]??false;
   const total=items.reduce((hours,p)=>hours+duration(p),0);
   const live=items.some(p=>!p.punch_out);
   return <section className="attendance-day" key={date}>
