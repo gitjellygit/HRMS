@@ -14,6 +14,8 @@ import ChangePassword from "./ChangePassword";
 import OverviewAttendance from "./OverviewAttendance";
 import TimeWorkspace from "./TimeWorkspace";
 import PayrollWorkspace from "./PayrollWorkspace";
+import FinanceWorkspace from "./FinanceWorkspace";
+import GovernancePanel from "./GovernancePanel";
 import PeopleOpsWorkspace from "./PeopleOpsWorkspace";
 import PerformanceWorkspace from "./PerformanceWorkspace";
 import { LayoutDashboard, Users, Clock3, CalendarDays, BriefcaseBusiness, Wallet, Award, LogOut, GitBranch, Building2, UserRound, ShieldCheck, FileDown, ClipboardList, Settings2 } from "lucide-react";
@@ -28,6 +30,8 @@ const sections = [
   { id:"attendance",label:"Attendance",Icon:Clock3 },
   { id:"time",label:"Time & shifts",Icon:FileDown },
   { id:"payroll",label:"Payroll & expenses",Icon:Wallet },
+  { id:"finance",label:"Finance & invoicing",Icon:Wallet },
+  { id:"governance",label:"Admin approvals",Icon:ShieldCheck },
   { id:"people",label:"People operations",Icon:ClipboardList },
   { id:"leaves",label:"Leave requests",Icon:CalendarDays },
   { id:"projects",label:"Projects",Icon:BriefcaseBusiness },
@@ -64,6 +68,8 @@ export default function Home() {
   const canSeeEmployees = canFinance;
   const visible = sections.filter(s=>{
     if(["employees","bonuses"].includes(s.id)&&!canSeeEmployees)return false;
+    if(s.id==="finance"&&!canFinance)return false;
+    if(s.id==="governance"&&!canHR)return false;
     if(["organization","bulk","hrdesk","policies"].includes(s.id)&&!canHR)return false;
     if(s.id==="approvals"&&!canHR)return false;
     return true;
@@ -88,7 +94,7 @@ export default function Home() {
     if(!user||user.must_change_password)return;
     fetch(API+"/me/presence",{credentials:"include"}).then(r=>r.ok?r.json():null).then(v=>{if(v){setPresence(v.status);setHasPhoto(v.has_photo)}}).catch(()=>{});
   },[user]);
-  useEffect(()=>{if(user&&!user.must_change_password&&!["organization","orgchart","profile","approvals","bulk","employee-record","hrdesk","leaves","projects","policies","performance","payroll","people","time"].includes(section))refresh(section);},[user,section]);
+  useEffect(()=>{if(user&&!user.must_change_password&&!["organization","orgchart","profile","approvals","bulk","employee-record","hrdesk","leaves","projects","policies","performance","payroll","people","time","finance","governance"].includes(section))refresh(section);},[user,section]);
   async function logout(){try{await request("/auth/logout","POST");}finally{setUser(null);setRows([]);setSection("dashboard");}}
   async function changePresence(status:string){
    try{await request("/me/presence","PUT",{status});setPresence(status)}catch(e){setError((e as Error).message)}
@@ -189,7 +195,7 @@ export default function Home() {
     </label>
     <div className="hrms-user-meta"><strong>{user.name}</strong><small>{user.role}</small><select aria-label="My availability" value={presence} onChange={e=>void changePresence(e.target.value)}>{[["available","Available"],["busy","Busy"],["away","Away"],["do_not_disturb","Do not disturb"]].map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></div>
   </div></div>{error&&<div className="error">{error}</div>}
-    {section==="performance"?<PerformanceWorkspace api={API} user={user}/> :section==="payroll"?<PayrollWorkspace api={API} user={user}/> :section==="people"?<PeopleOpsWorkspace api={API} user={user}/> :section==="time"?<TimeWorkspace api={API} user={user}/> :section==="policies"?<CompanyPolicies api={API}/>:section==="projects"?<ProjectsManagement api={API} canCreate={Boolean(canHR)}/>:section==="leaves"?<LeaveWorkspace api={API} user={user}/>:section==="hrdesk"?<HRDesk api={API}/>:section==="employees"?<EmployeeManagement api={API} canCreate={Boolean(canHR)} currentRole={user.role} onOpenEmployee={id=>{setSelectedEmployeeId(id);setSection("employee-record")}}/>:
+    {section==="governance"?<GovernancePanel api={API} user={user}/> :section==="finance"?<FinanceWorkspace api={API} user={user}/> :section==="performance"?<PerformanceWorkspace api={API} user={user}/> :section==="payroll"?<PayrollWorkspace api={API} user={user}/> :section==="people"?<PeopleOpsWorkspace api={API} user={user}/> :section==="time"?<TimeWorkspace api={API} user={user}/> :section==="policies"?<CompanyPolicies api={API} user={user}/>:section==="projects"?<ProjectsManagement api={API} canCreate={Boolean(canHR)}/>:section==="leaves"?<LeaveWorkspace api={API} user={user}/>:section==="hrdesk"?<HRDesk api={API}/>:section==="employees"?<EmployeeManagement api={API} canCreate={Boolean(canHR)} currentRole={user.role} onOpenEmployee={id=>{setSelectedEmployeeId(id);setSection("employee-record")}}/>:
     ["employee-record","organization","orgchart","profile","approvals","bulk"].includes(section)?
       <CoreWorkspace api={API} mode={(section==="employee-record"?"profile":section==="organization"?"organization":section==="orgchart"?"orgchart":section==="profile"?"profile":section==="approvals"?"approvals":"bulk")}
         user={user as any} employeeId={section==="employee-record"?selectedEmployeeId:null}

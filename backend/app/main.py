@@ -919,3 +919,12 @@ app.include_router(performance_extensions_router)
 
 from .people_ops_extensions import router as people_ops_extensions_router  # noqa: E402
 app.include_router(people_ops_extensions_router)
+
+from .project_finance import router as project_finance_router  # noqa: E402
+app.include_router(project_finance_router)
+
+from .governance import router as governance_router  # noqa: E402
+app.include_router(governance_router)
+
+from .billing_reviews import router as billing_reviews_router  # noqa: E402
+app.include_router(billing_reviews_router)

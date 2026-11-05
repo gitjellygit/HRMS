@@ -37,8 +37,8 @@ def get_bonus_policy(user:Employee=Depends(current_user),db:Session=Depends(db_s
 
 @router.put("/project-bonus")
 def set_bonus_policy(body:BonusPolicyIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
-    if user.role not in HR_ROLES:
-        raise HTTPException(403,"Only HR may change bonus policies")
+    if user.role not in ("super_admin","admin"):
+        raise HTTPException(403,"Admin approval required; HR must submit a governance request")
     row=db.get(CompanyPolicy,"default_project_bonus_inr")
     if row is None:
         row=CompanyPolicy(key="default_project_bonus_inr",decimal_value=body.default_project_bonus_inr)
@@ -78,8 +78,8 @@ def list_company_policies(user:Employee=Depends(current_user),db:Session=Depends
 
 @router.post("/records",status_code=201)
 def create_company_policy(body:PolicyRecordIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
-    if user.role not in HR_ROLES:
-        raise HTTPException(403,"Only HR/Admin may publish policies")
+    if user.role not in ("super_admin","admin"):
+        raise HTTPException(403,"Admin approval required; HR must submit a governance request")
     row=CompanyPolicyRecord(title=body.title.strip(),category=body.category,
                             description=body.description.strip(),effective_date=body.effective_date,
                             active=body.active,created_by=user.id)

@@ -195,8 +195,8 @@ def hr_only(user: Employee = Depends(current_user)):
 
 
 def policy_admin(user: Employee = Depends(current_user)):
-    if user.role not in ("super_admin","admin","hr"):
-        raise HTTPException(403,"Policy administrator required")
+    if user.role not in ("super_admin","admin"):
+        raise HTTPException(403,"Admin approval required; HR must submit a governance request")
     return user
 
 
@@ -435,7 +435,7 @@ def save_policy(body: PolicyIn,user: Employee = Depends(policy_admin),db: Sessio
 
 
 @router.put("/allocations")
-def allocate(body: EntitlementIn,user: Employee = Depends(hr_only),db: Session = Depends(db_session)):
+def allocate(body: EntitlementIn,user: Employee = Depends(policy_admin),db: Session = Depends(db_session)):
     employee(db,body.employee_id)
     policy(db,body.leave_type)
     row=db.scalar(select(LeaveEntitlement).where(

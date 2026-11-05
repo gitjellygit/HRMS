@@ -4,7 +4,9 @@ import FeedbackMotion from "./FeedbackMotion";
 import {Settings2, ShieldCheck, CircleDollarSign, Info, CheckCircle2, Plus} from "lucide-react";
 
 type ProjectPolicy={default_project_bonus_inr:number;currency:string;milestone_days:number;award_status:string};
-export default function CompanyPolicies({api}:{api:string}){
+export default function CompanyPolicies({api,user}:{api:string;user:{id:number;role:string}}){
+ const isHR=user.role==="hr";
+ const [approvalReason,setApprovalReason]=useState("");
  const [policy,setPolicy]=useState<ProjectPolicy|null>(null);
  const [amount,setAmount]=useState("");
  const [error,setError]=useState("");
@@ -30,29 +32,32 @@ export default function CompanyPolicies({api}:{api:string}){
   if(amount===""||!Number.isFinite(n)||n<0||n>100000000){setError("Enter a valid INR amount from 0 to 100,000,000.");window.document.getElementById("default-bonus")?.focus();return}
   setSaving(true);
   try{
-   const r=await fetch(api+"/policies/project-bonus",{method:"PUT",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({default_project_bonus_inr:n})});
+   const r=await fetch(api+(isHR?"/governance/requests":"/policies/project-bonus"),{method:isHR?"POST":"PUT",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(isHR?{kind:"bonus_policy",payload:{default_project_bonus_inr:n},reason:approvalReason}:{default_project_bonus_inr:n})});
    const result=await r.json().catch(()=>({}));
    if(!r.ok)throw Error(typeof result.detail==="string"?result.detail:"Unable to update policy.");
-   setPolicy(result);setSaved("Company default bonus saved.");
+   if(!isHR)setPolicy(result);
+   setSaved(isHR?"Bonus policy sent for admin approval (#"+result.id+").":"Company default bonus saved.");
   }catch(err){setError((err as Error).message)}finally{setSaving(false)}
  }
  async function createRecord(e:React.FormEvent){
   e.preventDefault();setError("");setSaved("");
+  if(isHR&&approvalReason.trim().length<10){setError("Provide a business reason of at least 10 characters.");return}
   if(policyTitle.trim().length<3||policyDescription.trim().length<20){setError("Add a title and description of at least 20 characters.");return}
   setPolicyBusy(true);
   try{
-   const response=await fetch(api+"/policies/records",{method:"POST",credentials:"include",
+   const response=await fetch(api+(isHR?"/governance/requests":"/policies/records"),{method:"POST",credentials:"include",
     headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({title:policyTitle.trim(),category:policyCategory,description:policyDescription.trim(),effective_date:effectiveDate,active:true})});
+    body:JSON.stringify(isHR?{kind:"company_policy",reason:approvalReason,payload:{title:policyTitle.trim(),category:policyCategory,description:policyDescription.trim(),effective_date:effectiveDate,active:true}}:{title:policyTitle.trim(),category:policyCategory,description:policyDescription.trim(),effective_date:effectiveDate,active:true})});
    const data=await response.json().catch(()=>({}));
    if(!response.ok)throw Error(typeof data.detail==="string"?data.detail:"Unable to create policy.");
-   setRecords(previous=>[data,...previous]);setAdding(false);setPolicyTitle("");setPolicyDescription("");setSaved("Company policy created successfully.");
+   if(!isHR)setRecords(previous=>[data,...previous]);setAdding(false);setPolicyTitle("");setPolicyDescription("");setSaved(isHR?"Policy submitted for admin approval (#"+data.id+").":"Company policy created successfully.");
   }catch(err){setError((err as Error).message)}finally{setPolicyBusy(false)}
  }
  return <div className="policy-page">
   <section className="employee-surface"><div className="core-head"><Settings2 size={21}/><div><h2>Company policies</h2><p>Centralized HR settings used across onboarding and project workflows.</p></div></div>
    {error&&<div className="error" role="alert">{error}</div>}
    {saved&&<FeedbackMotion type="success" compact message={saved}/>}
+   {isHR&&<label className="employee-field">Business reason for admin approval<textarea minLength={10} required value={approvalReason} onChange={e=>setApprovalReason(e.target.value)} placeholder="Explain why this policy change is needed"/></label>}
    <div className="policy-card"><div className="policy-card-head"><CircleDollarSign size={20}/><div><h3>Project sourcing incentive</h3><p>Default milestone bonus for employees who source projects.</p></div></div>
     <form className="policy-form" onSubmit={submit}>
      <div className="employee-field"><label htmlFor="default-bonus">Company default bonus (INR)</label><input id="default-bonus" value={amount} aria-invalid={Boolean(error&&error.includes("INR"))} type="number" min="0" max="100000000" step="0.01" onChange={e=>setAmount(e.target.value)} required/><span className="field-help">Applies to newly created projects, unless an employee-specific amount or project override is supplied.</span></div>
