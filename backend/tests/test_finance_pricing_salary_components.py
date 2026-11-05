@@ -81,6 +81,21 @@ def test_hr_salary_components_adjust_payroll_and_employee_cannot_edit():
             row=calculate(db,person,date.today().strftime("%Y-%m"))
             assert Decimal(str(row["gross"]))==Decimal("51500.00")
             assert Decimal(str(row["net"]))==Decimal("49600.00")
+        # A new offer template may opt in to the reviewed salary breakdown.
+        template=c.post("/people/offer-templates",headers=ORIGIN,json={
+          "name":"QA Dynamic Salary Offer","content":
+          "Dear {{employee_name}}, your compensation:\\n{{salary_breakdown}}"})
+        assert template.status_code==201,template.text
+        offer=c.post("/people/offers",headers=ORIGIN,json={
+          "employee_id":one,"template_id":template.json()["id"],
+          "title":"Test Engineer","annual_ctc":"1200000.00",
+          "joining_date":date.today().isoformat()})
+        assert offer.status_code==201,offer.text
+        from app.people_operations import Offer
+        with SessionLocal() as db:
+            record=db.get(Offer,offer.json()["id"])
+            assert "Night shift bonus (earning): INR 1500.00/month" in record.rendered_content
+            assert "Parking deduction (deduction): INR 200.00/month" in record.rendered_content
         c.post("/auth/logout",headers=ORIGIN)
         login(c,"payroll.person.qa@example.org",PASS)
         mine=c.get(f"/payroll/components?employee_id={one}")
