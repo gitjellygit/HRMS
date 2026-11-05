@@ -3,7 +3,7 @@ from datetime import date, datetime, timezone
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, select
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 from .main import Base, Employee, current_user, db_session
 from .performance_growth import ReviewCycle, allowed, can_manage, require_employee, HR
@@ -19,6 +19,7 @@ class FeedbackAssignment(Base):
     score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     feedback: Mapped[str] = mapped_column(Text, default="")
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    __table_args__ = (UniqueConstraint('employee_id', 'reviewer_id', 'cycle_id', name='uq_growth_feedback_assignment'),)
 
 class LearningTask(Base):
     __tablename__ = "growth_learning_tasks"
