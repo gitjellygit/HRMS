@@ -938,3 +938,6 @@ app.include_router(salary_components_router)
 
 from .notification_center import router as notification_center_router  # noqa: E402
 app.include_router(notification_center_router)
+
+from .exit_workflow import router as exit_workflow_router  # noqa: E402
+app.include_router(exit_workflow_router)
