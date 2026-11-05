@@ -166,7 +166,11 @@ export default function CoreWorkspace({api,mode,user,employeeId,onBack,onPasswor
  }
  const managerLabels=useMemo(()=>Object.fromEntries(people.map(p=>[p.id,p.name+" · "+(p.employee_code||p.email)])),[people]);
  function input(field:keyof Core,label:string,type="text"){
-  return <label key={field} className="core-label">{label}<input type={type} value={String(draft[field]||"")} onChange={e=>setDraft(d=>({...d,[field]:e.target.value}))} disabled={!isHR}/></label>;
+  return <label key={field} className="core-label">{label}<input type={field==="emergency_phone"?"tel":type}
+    maxLength={field==="emergency_phone"?20:field==="personal_email"?255:undefined}
+    pattern={field==="emergency_phone"?"[+]?[0-9 ()-]{7,20}":undefined}
+    title={field==="emergency_phone"?"Enter 7 to 15 digits with optional country code":undefined}
+    value={String(draft[field]||"")} onChange={e=>setDraft(d=>({...d,[field]:e.target.value}))} disabled={!isHR}/></label>;
  }
  function selectRelation(field:keyof Core,label:string,options:{id:number;name:string}[]){
   return <label key={field} className="core-label">{label}<select value={String(draft[field]||"")} disabled={!isHR} onChange={e=>setDraft(d=>({...d,[field]:e.target.value?Number(e.target.value):null}))}><option value="">Not assigned</option>{options.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label>;
