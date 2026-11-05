@@ -928,3 +928,6 @@ app.include_router(governance_router)
 
 from .billing_reviews import router as billing_reviews_router  # noqa: E402
 app.include_router(billing_reviews_router)
+
+from .payroll_components import router as salary_components_router  # noqa: E402
+app.include_router(salary_components_router)
