@@ -8,7 +8,7 @@ const origin={Origin:WEB_URL};
 test("employee creates a private goal and tracks progress",async({page})=>{
  await login(page,person("developer_a"));
  await navigate(page,"Performance & growth");
- await expect(page.getByRole("heading",{name:"Performance & growth"})).toBeVisible();
+ await expect(page.getByRole("heading",{name:"Performance & growth",level:2})).toBeVisible();
  const label="QA growth goal "+Date.now();
  await page.getByRole("tab",{name:"Goals & KRAs"}).click();
  await page.getByLabel("Goal title").fill(label);
