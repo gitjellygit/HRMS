@@ -80,7 +80,7 @@ test("accountant can save a weekly invoice rate in a single action and expand th
  await expanded.getByRole("textbox",{name:"Billing recipient name"}).fill("QA Billing Client");
  await expanded.getByRole("textbox",{name:"Billing email"}).fill("candidate.billing@example.org");
  await expanded.getByRole("combobox",{name:"Bill every"}).selectOption("weekly");
- await expanded.getByRole("spinbutton",{name:/Billing weekday/}).fill("5");
+ await expanded.getByRole("combobox",{name:"Billing weekday"}).selectOption("5");
  await expanded.getByRole("spinbutton",{name:"Invoice rate (USD)"}).fill("20");
  await expanded.getByRole("button",{name:"Save billing settings"}).click();
  await expect(page.getByRole("status")).toContainText("saved");
