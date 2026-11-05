@@ -81,7 +81,12 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
      <label className="employee-field">Policy details<textarea rows={5} minLength={20} maxLength={10000} value={policyDescription} required placeholder="Write the policy and its conditions…" onChange={e=>setPolicyDescription(e.target.value)}/></label>
      <div className="employee-form-footer"><button type="button" className="employee-cancel" onClick={()=>setAdding(false)}>Cancel</button><button className="employee-primary" disabled={policyBusy}>{policyBusy?"Creating…":"Create policy"}</button></div>
     </form>}
-    <div className="policy-record-list">{records.length?records.map(r=><details key={r.id} className="policy-record"><summary><strong>{r.title}</strong><span>{r.category} · Effective {r.effective_date}</span></summary><p>{r.description}</p></details>):<p className="muted">No additional company policies have been created yet.</p>}</div>
+    <div className="policy-record-list">{records.length?records.map(r=><details key={r.id} className="policy-record"><summary><strong>{r.title}</strong><span>{r.category} · Effective {r.effective_date}</span></summary><p>{r.description}</p>
+      {(r.attachments||[]).map(a=><p key={a.id}><a href={api+"/policies/records/"+r.id+"/attachments/"+a.id} target="_blank" rel="noreferrer">{a.name} · View PDF</a></p>)}
+      {["super_admin","admin","hr"].includes(user.role)&&<div className="policy-attachment-form">
+       <label>Attach PDF (max 5 MB)<input type="file" accept=".pdf,application/pdf" onChange={e=>setDocument(e.target.files?.[0]||null)}/></label>
+       <button type="button" className="employee-primary" disabled={uploading===r.id} onClick={()=>void uploadAttachment(r.id)}>{uploading===r.id?"Uploading…":"Attach PDF"}</button>
+      </div>}</details>):<p className="muted">No additional company policies have been created yet.</p>}</div>
    </section>
    <div className="policy-guidance"><ShieldCheck size={18}/><p><strong>Priority order:</strong> Project override → Employee bonus → Company policy. For example, set the company default to ₹10,000, optionally set an employee's amount to ₹15,000, and only override an individual project when needed. Existing project bonuses do not change when the policy is updated.</p></div>
    <div className="policy-guidance"><Info size={18}/><p>Leave policies are managed under <strong>Leave requests → Policies & balances</strong>. Use Add policy above for written company policies.</p></div>
