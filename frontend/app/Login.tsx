@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import FeedbackMotion from "./FeedbackMotion";
+import BrandIllustration from "./BrandIllustration";
 import { ArrowLeft, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 
 type User={id:number;name:string;email:string;role:string;designation:string;department:string;joining_date:string;status:string;must_change_password?:boolean};
@@ -42,6 +43,7 @@ export default function Login({api,onLogin,initialNotice=""}:{api:string;onLogin
    <div className="showcase-tag">JELLYGIT · PEOPLE OPERATIONS</div>
    <h1>People first.<br/><em>Everything in one place.</em></h1>
    <p>A thoughtfully simple space for your people, attendance, leave, projects and growth.</p>
+   <BrandIllustration asset="login-team" alt="JellyGit teammates collaborating around a laptop" className="showcase-team-art" loading="eager"/>
    <div className="showcase-foot"><ShieldCheck size={19}/>Built for your team. Private by design.</div>
   </div></aside>
   <section className="auth-side"><div className="auth-top"><span className="auth-brand">JELLYGIT <b>HRMS</b></span><span className="auth-secure"><LockKeyhole size={14}/> Secure access</span></div>

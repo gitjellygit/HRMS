@@ -2,6 +2,7 @@
 import {useEffect,useState} from "react";
 import {BriefcaseBusiness,CalendarDays,ClipboardCheck,Megaphone,ReceiptText,Users} from "lucide-react";
 import OverviewAttendance from "./OverviewAttendance";
+import BrandIllustration from "./BrandIllustration";
 type Item=Record<string,any>;
 export default function RoleOverview({api,role,onNavigate,refreshKey}:{
  api:string;role:string;onNavigate:(section:string)=>void;refreshKey:number;
@@ -37,7 +38,7 @@ export default function RoleOverview({api,role,onNavigate,refreshKey}:{
     <p className="overview-big-number">{active.length}</p>
     {active.length?active.slice(0,3).map(p=><div className="overview-tile-row" key={p.id}>
       <strong>{p.name}</strong><small>{p.client||"Client not specified"} · {p.project_number||"Project"}</small>
-    </div>):<p className="muted">No active projects assigned yet.</p>}
+    </div>):<div className="jellygit-empty-state"><BrandIllustration asset="empty-folder-state" alt="" className="jellygit-empty-art"/><p className="muted">No active projects assigned yet.</p></div>}
     <button className="overview-text-link" onClick={()=>onNavigate(accountant?"finance":"projects")}>View {accountant?"billing projects":"projects"} →</button>
    </section>
    <section className="overview-feature-card">

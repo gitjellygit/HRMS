@@ -3,6 +3,7 @@ import {useEffect,useState} from "react";
 import {ClipboardCheck,Send,LifeBuoy,UserRoundX,BarChart3,Bell,ShieldCheck,FileSignature} from "lucide-react";
 import FeedbackMotion from "./FeedbackMotion";
 import PeopleOpsExtras from "./PeopleOpsExtras";
+import BrandIllustration,{WelcomeAnimation} from "./BrandIllustration";
 type Row=Record<string,any>;
 type Area="offers"|"onboarding"|"announcements"|"helpdesk"|"exit"|"analytics"|"notifications"|"audit"|"assets";
 const areas:[Area,string][]=[["offers","Offer letters"],["onboarding","Onboarding"],["announcements","Announcements"],["helpdesk","Helpdesk"],["exit","Exit management"],
@@ -95,6 +96,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
    </div>}
   {tab==="onboarding"&&<div className="ops-columns">
    <section className="employee-surface"><h3><ClipboardCheck size={17}/> Onboarding checklist</h3>
+    <div className="jellygit-onboarding-welcome"><WelcomeAnimation/><div><strong>Welcome to your JellyGit journey</strong><p className="muted">Complete your orientation, review company policies and meet your team.</p></div></div>
     {hr&&<form className="ops-form" onSubmit={e=>{e.preventDefault();void submit("/onboarding",{
       employee_id:Number(draft.employee_id),category:draft.category||"document",
       title:draft.title,due_date:draft.due_date||null,assigned_to:draft.assigned_to?Number(draft.assigned_to):null,
@@ -115,10 +117,11 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
     <strong>{t.title}</strong><span>{t.category} · {t.status} · #{t.employee_id}</span>
     {t.asset_code&&<small>Asset: {t.asset_code}</small>}
     {t.status==="pending"&&(hr||t.assigned_to===user.id)&&<button className="employee-primary" onClick={()=>void save(()=>call("/onboarding/"+t.id+"/complete","POST"),"Task completed.")}>Complete</button>}
-   </div>)}{!tasks.length&&<p>No onboarding tasks.</p>}</div></section>
+   </div>)}{!tasks.length&&<div className="jellygit-empty-state"><BrandIllustration asset="empty-folder-state" alt="" className="jellygit-empty-art"/><p>No onboarding tasks yet.</p></div>}</div></section>
   </div>}
   {tab==="announcements"&&<div className="ops-columns">
    <section className="employee-surface"><h3><Send size={17}/> Announcements and policies</h3>
+    {hr&&<div className="jellygit-template-download"><BrandIllustration asset="welcome-card-template" alt="Welcome to the Team card design" className="jellygit-template-art"/><div><strong>New-joiner announcement design</strong><p className="muted">This exported card is a visual reference. Edit the original Canva design to replace the sample text before publishing.</p><a href="/assets/welcome-card-template.webp" download="jellygit-welcome-template.webp">Download card template</a></div></div>}
     {hr&&<form className="ops-form" onSubmit={e=>{e.preventDefault();void submit("/announcements",{
       title:draft.title,body:draft.body,requires_ack:!!draft.requires_ack},"Announcement published.")}}>
       {input("title","Title",true)}
