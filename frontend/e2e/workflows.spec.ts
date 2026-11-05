@@ -197,6 +197,7 @@ test.describe('business-critical cross-role workflows',()=>{
     const managerRow=page.locator('.leave-table tr').filter({hasText:reason});
     await expect(managerRow).toBeVisible();
     await managerRow.getByRole('button',{name:'Approve'}).click();
+    await expect(page.getByRole('status')).toContainText('Leave request updated');
     await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
 
     await login(page,persona('hr'));await navigate(page,'Leave requests');
