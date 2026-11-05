@@ -105,9 +105,13 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
      {input("due_date","Due date",false,"date")}
      <label>Responsible person<select value={draft.assigned_to||""} onChange={e=>setDraft(v=>({...v,assigned_to:e.target.value}))}>
       <option value="">HR team</option>{staff.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></label>
-     <button className="employee-primary">Assign task</button></form>}
+     <button className="employee-primary">Assign task</button>
+     <button type="button" className="employee-cancel" disabled={!draft.employee_id} onClick={()=>void save(()=>call("/onboarding/orientation/"+draft.employee_id,"POST"),"Seven-step welcome orientation initialized.")}>Start welcome orientation (7 steps)</button></form>}
    </section>
-   <section className="employee-surface"><h3>Open and completed tasks</h3><div className="ops-table">{tasks.map(t=><div className="ops-row" key={t.id}>
+   <section className="employee-surface"><h3>Open and completed tasks</h3>
+    <p className="muted">Welcome journey: {tasks.filter(t=>t.status==="completed").length} of {tasks.length} tasks completed</p>
+    <progress max={Math.max(1,tasks.length)} value={tasks.filter(t=>t.status==="completed").length} style={{width:"100%"}} aria-label="Onboarding progress"/>
+    <div className="ops-table">{tasks.map(t=><div className="ops-row" key={t.id}>
     <strong>{t.title}</strong><span>{t.category} · {t.status} · #{t.employee_id}</span>
     {t.asset_code&&<small>Asset: {t.asset_code}</small>}
     {t.status==="pending"&&(hr||t.assigned_to===user.id)&&<button className="employee-primary" onClick={()=>void save(()=>call("/onboarding/"+t.id+"/complete","POST"),"Task completed.")}>Complete</button>}
