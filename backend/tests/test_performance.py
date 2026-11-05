@@ -72,3 +72,64 @@ def test_goals_reviews_and_development_permissions():
         assert r.json()["status"]=="completed" and r.json()["manager_rating"]==4
         assert c.post(f"/performance/reviews/{rid}/manager",headers=ORIGIN,json={
             "rating":4,"feedback":"Double review should fail."}).status_code==409
+
+def test_learning_career_and_private_peer_feedback():
+    with TestClient(app) as c:
+        admin, hr, one, other = seed(c)
+        future=(date.today()+timedelta(days=90)).isoformat()
+        learning=c.post("/growth/learning",headers=ORIGIN,json={
+            "employee_id":one,"title":"System design workshop","provider":"Internal",
+            "target_date":future})
+        assert learning.status_code==201,learning.text
+        cid=c.post("/performance/cycles",headers=ORIGIN,json={
+            "name":"Confidential peers "+str(one),"start_date":date.today().isoformat(),
+            "end_date":future})
+        assert cid.status_code==201,cid.text
+        cycle=cid.json()["id"]
+        assignment=c.post("/growth/feedback-assignments",headers=ORIGIN,json={
+            "employee_id":one,"reviewer_id":other,"cycle_id":cycle})
+        assert assignment.status_code==201,assignment.text
+        aid=assignment.json()["id"]
+        career=c.post("/growth/career",headers=ORIGIN,json={
+            "employee_id":one,"target_role":"Senior Engineer",
+            "requirements":"Lead two technical designs and mentor junior engineers.",
+            "target_date":future})
+        assert career.status_code==201,career.text
+        career_id=career.json()["id"]
+        c.post("/auth/logout",headers=ORIGIN)
+
+        login(c,"payroll.person.qa@example.org",PASS)
+        assert c.post("/growth/career",headers=ORIGIN,json={
+            "employee_id":one,"target_role":"Manager",
+            "requirements":"Complete leadership development requirements.",
+            "target_date":future}).status_code==403
+        summary=c.get(f"/growth/feedback-summary/{one}/{cycle}")
+        assert summary.status_code==200 and summary.json()["average_score"] is None
+        assert c.get(f"/growth/feedback-summary/{other}/{cycle}").status_code==403
+        assert c.post(f"/growth/feedback-assignments/{aid}/submit",headers=ORIGIN,json={
+            "score":5,"feedback":"Unauthorized submission from the subject employee."}).status_code==404
+        assert c.patch(f"/growth/career/{career_id}",headers=ORIGIN,json={
+            "status":"achieved"}).status_code==404
+        c.post("/auth/logout",headers=ORIGIN)
+
+        login(c,"payroll.other.qa@example.org",PASS)
+        mine=c.get("/growth/feedback-assignments")
+        assert mine.status_code==200 and any(x["id"]==aid for x in mine.json())
+        submitted=c.post(f"/growth/feedback-assignments/{aid}/submit",headers=ORIGIN,json={
+            "score":4,"feedback":"Consistently collaborative and technically reliable."})
+        assert submitted.status_code==200,submitted.text
+        assert c.post(f"/growth/feedback-assignments/{aid}/submit",headers=ORIGIN,json={
+            "score":5,"feedback":"Duplicate confidential feedback submission."}).status_code==409
+        assert c.get("/growth/learning?employee_id="+str(one)).status_code==403
+        c.post("/auth/logout",headers=ORIGIN)
+
+        login(c,"payroll.person.qa@example.org",PASS)
+        summary=c.get(f"/growth/feedback-summary/{one}/{cycle}").json()
+        assert summary["response_count"]==1 and summary["average_score"] is None
+        assert "confidential_reviews" not in summary
+        c.post("/auth/logout",headers=ORIGIN)
+
+        login(c,"payroll.hr.qa@example.org",PASS)
+        summary=c.get(f"/growth/feedback-summary/{one}/{cycle}").json()
+        assert summary["average_score"]==4.0
+        assert summary["confidential_reviews"][0]["reviewer_id"]==other
