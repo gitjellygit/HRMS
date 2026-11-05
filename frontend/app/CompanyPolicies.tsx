@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useState} from "react";
 import FeedbackMotion from "./FeedbackMotion";
+import {explainError} from "./formErrors";
 import {Settings2, ShieldCheck, CircleDollarSign, Info, CheckCircle2, Plus} from "lucide-react";
 
 type ProjectPolicy={default_project_bonus_inr:number;currency:string;milestone_days:number;award_status:string};
@@ -12,13 +13,17 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
  const [error,setError]=useState("");
  const [saved,setSaved]=useState("");
  const [saving,setSaving]=useState(false);
- const [records,setRecords]=useState<{id:number;title:string;category:string;description:string;effective_date:string;active:boolean}[]>([]);
+ const [records,setRecords]=useState<{id:number;title:string;category:string;description:string;effective_date:string;active:boolean;attachments?:{id:number;name:string}[]}[]>([]);
  const [adding,setAdding]=useState(false);
  const [policyTitle,setPolicyTitle]=useState("");
  const [policyCategory,setPolicyCategory]=useState("general");
  const [policyDescription,setPolicyDescription]=useState("");
  const [effectiveDate,setEffectiveDate]=useState(new Date().toISOString().slice(0,10));
  const [policyBusy,setPolicyBusy]=useState(false);
+ const [audience,setAudience]=useState<number[]>([]);
+ const [staff,setStaff]=useState<{id:number;name:string;status?:string}[]>([]);
+ const [document,setDocument]=useState<File|null>(null);
+ const [uploading,setUploading]=useState<number|null>(null);
  useEffect(()=>{
   fetch(api+"/policies/project-bonus",{credentials:"include"})
   .then(async r=>{if(!r.ok)throw Error("Cannot read company bonus policy.");return r.json()})
@@ -34,7 +39,7 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
   try{
    const r=await fetch(api+(isHR?"/governance/requests":"/policies/project-bonus"),{method:isHR?"POST":"PUT",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(isHR?{kind:"bonus_policy",payload:{default_project_bonus_inr:n},reason:approvalReason}:{default_project_bonus_inr:n})});
    const result=await r.json().catch(()=>({}));
-   if(!r.ok)throw Error(typeof result.detail==="string"?result.detail:"Unable to update policy.");
+   if(!r.ok)throw Error(explainError(result,r.status));
    if(!isHR)setPolicy(result);
    setSaved(isHR?"Bonus policy sent for admin approval (#"+result.id+").":"Company default bonus saved.");
   }catch(err){setError((err as Error).message)}finally{setSaving(false)}
@@ -47,10 +52,10 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
   try{
    const response=await fetch(api+(isHR?"/governance/requests":"/policies/records"),{method:"POST",credentials:"include",
     headers:{"Content-Type":"application/json"},
-    body:JSON.stringify(isHR?{kind:"company_policy",reason:approvalReason,payload:{title:policyTitle.trim(),category:policyCategory,description:policyDescription.trim(),effective_date:effectiveDate,active:true}}:{title:policyTitle.trim(),category:policyCategory,description:policyDescription.trim(),effective_date:effectiveDate,active:true})});
+    body:JSON.stringify(isHR?{kind:"company_policy",reason:approvalReason,payload:{title:policyTitle.trim(),category:policyCategory,description:policyDescription.trim(),effective_date:effectiveDate,active:true,audience_ids:audience}}:{title:policyTitle.trim(),category:policyCategory,description:policyDescription.trim(),effective_date:effectiveDate,active:true,audience_ids:audience})});
    const data=await response.json().catch(()=>({}));
-   if(!response.ok)throw Error(typeof data.detail==="string"?data.detail:"Unable to create policy.");
-   if(!isHR)setRecords(previous=>[data,...previous]);setAdding(false);setPolicyTitle("");setPolicyDescription("");setSaved(isHR?"Policy submitted for admin approval (#"+data.id+").":"Company policy created successfully.");
+   if(!response.ok)throw Error(explainError(data,response.status));
+   if(!isHR)setRecords(previous=>[data,...previous]);setAdding(false);setPolicyTitle("");setPolicyDescription("");setAudience([]);setSaved(isHR?"Policy submitted for admin approval (#"+data.id+").":"Company policy created successfully.");
   }catch(err){setError((err as Error).message)}finally{setPolicyBusy(false)}
  }
  return <div className="policy-page">
