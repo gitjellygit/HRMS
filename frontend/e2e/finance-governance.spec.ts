@@ -64,7 +64,7 @@ test("employee cannot access finance, but can complete a welcome orientation",as
 });
 
 
-test("accountant can set a 20 percent billing rate and collapse project billing details",async({page})=>{
+test("accountant can save a weekly invoice rate in a single action and expand the selected project row",async({page})=>{
  await login(page,role("hr"));
  const pid=await project(page);
  const profile=await (await page.request.get(API_URL+"/finance/projects")).json();
@@ -74,22 +74,23 @@ test("accountant can set a 20 percent billing rate and collapse project billing 
  await login(page,role("accountant"));
  await navigate(page,"Finance & invoicing");
  await page.getByRole("button",{name:new RegExp(row.project_number)}).click();
- await expect(page.getByText("Billing details: "+row.name)).toBeVisible();
- await page.getByRole("combobox",{name:"Invoice recipient"}).selectOption("candidate");
- await page.getByRole("textbox",{name:"Billing recipient name"}).fill("Test Candidate");
- await page.getByRole("textbox",{name:"Invoice email"}).fill("candidate.billing@example.org");
- await page.getByRole("button",{name:"Save billing details"}).click();
- await expect(page.getByRole("status")).toContainText("Billing contact");
- await page.getByRole("combobox",{name:"How to charge"}).selectOption("percentage");
- await page.getByRole("spinbutton",{name:"Percentage to charge (%)"}).fill("20");
- await page.getByRole("button",{name:"Save invoice pricing"}).click();
- await expect(page.getByRole("status")).toContainText("Invoice pricing saved");
+ const expanded=page.locator(".finance-expanded-row");
+ await expect(expanded.getByText("Billing settings")).toBeVisible();
+ await expect(page.locator(".finance-selected-row + .finance-expanded-row")).toHaveCount(1);
+ await expanded.getByRole("textbox",{name:"Billing recipient name"}).fill("QA Billing Client");
+ await expanded.getByRole("textbox",{name:"Billing email"}).fill("candidate.billing@example.org");
+ await expanded.getByRole("combobox",{name:"Bill every"}).selectOption("weekly");
+ await expanded.getByRole("spinbutton",{name:/Billing weekday/}).fill("5");
+ await expanded.getByRole("spinbutton",{name:"Invoice rate (USD)"}).fill("20");
+ await expanded.getByRole("button",{name:"Save billing settings"}).click();
+ await expect(page.getByRole("status")).toContainText("saved");
  const pricing=await (await page.request.get(API_URL+"/finance/projects")).json();
  const selected=pricing.find((x:any)=>x.id===pid);
- expect(selected.charges.find((x:any)=>x.recipient_type==="candidate").pricing_value).toBe(20);
- await page.getByRole("button",{name:"Collapse details"}).click();
- await expect(page.getByText("Billing details: "+row.name)).toHaveCount(0);
+ expect(selected.charges.find((x:any)=>x.recipient_type==="client").pricing_value).toBe(20);
+ expect(selected.billing.billing_frequency).toBe("weekly");
+ await expanded.getByRole("button",{name:"Collapse"}).click();
+ await expect(expanded).toHaveCount(0);
  await page.getByRole("tab",{name:"Invoice schedule"}).click();
- await page.getByRole("combobox",{name:"Project to process"}).selectOption(String(pid));
+ await page.getByRole("combobox",{name:"Projects"}).selectOption(String(pid));
  await expect(page.getByText("candidate.billing@example.org")).toBeVisible();
 });
