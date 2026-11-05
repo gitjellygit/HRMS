@@ -1,4 +1,5 @@
-import {test,expect} from '@playwright/test';
+import {test,expect,request} from '@playwright/test';
+import {API_URL,WEB_URL} from '../playwright.config';
 import {login,navigate,users} from './helpers';
 
 const qa=(key:string)=>users().find(u=>u.key===key)!;
@@ -33,7 +34,20 @@ test('HR can add company policy and view it in the register',async({page})=>{
   const title='QA policy '+Date.now();
   await page.locator('.policy-record-form input').first().fill(title);
   await page.locator('.policy-record-form textarea').fill('Quality assurance policy for controlled test data, never applied to real employee records.');
+  await page.getByPlaceholder('Explain why this policy change is needed').fill('HR onboarding policy requires independent admin approval.');
   await page.getByRole('button',{name:'Create policy'}).click();
+  await expect(page.getByText(/Policy submitted for admin approval/)).toBeVisible();
+  const proposals=await (await page.request.get(API_URL+'/governance/requests')).json();
+  const proposal=proposals.find((r:any)=>r.payload?.title===title);
+  expect(proposal?.status).toBe('pending');
+  const admin=await request.newContext({extraHTTPHeaders:{Origin:WEB_URL}});
+  try{
+    expect((await admin.post(API_URL+'/auth/login',{data:{email:process.env.E2E_ADMIN_EMAIL,
+      password:process.env.E2E_ADMIN_PASSWORD}})).status()).toBe(200);
+    expect((await admin.post(API_URL+'/governance/requests/'+proposal.id+'/review',{data:{
+      approve:true,reason:'Approved for controlled QA onboarding policy.'}})).status()).toBe(200);
+  }finally{await admin.dispose()}
+  await page.reload();
   await expect(page.locator('.policy-record-list')).toContainText(title);
 });
 
