@@ -99,12 +99,12 @@ export default function Home() {
   useEffect(()=>{request("/me").then(setUser).catch(()=>{}).finally(()=>setReady(true));},[]);
   useEffect(()=>{
     if(!user||user.must_change_password)return;
-    fetch(API+"/me/presence",{credentials:"include"}).then(r=>r.ok?r.json():null).then(v=>{if(v){setPresence(v.status);setHasPhoto(v.has_photo)}}).catch(()=>{});
+    fetch(API+"/me/presence",{credentials:"include"}).then(r=>r.ok?r.json():null).then(v=>{if(v){setHasPhoto(v.has_photo)}}).catch(()=>{});
   },[user]);
   useEffect(()=>{if(user&&!user.must_change_password&&!["organization","orgchart","profile","approvals","bulk","employee-record","hrdesk","leaves","projects","policies","performance","payroll","people","time","finance","governance","notifications"].includes(section))refresh(section);},[user,section]);
   async function logout(){try{await request("/auth/logout","POST");}finally{setUser(null);setRows([]);setSection("dashboard");}}
   async function changePresence(status:string){
-   try{await request("/me/presence","PUT",{status});setPresence(status)}catch(e){setError((e as Error).message)}
+   try{await request("/me/presence","PUT",{status});}catch(e){setError((e as Error).message)}
   }
   async function uploadAvatar(file:File|undefined){
    if(!file)return;
