@@ -1,4 +1,5 @@
 "use client";
+import {explainError} from "./formErrors";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import FeedbackMotion from "./FeedbackMotion";
 import { Bell, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, Download, FileText, Gift, Plus, RefreshCw, Settings2, ShieldCheck, Users, X } from "lucide-react";
@@ -20,7 +21,7 @@ function messageFor(data:any):string{
  const detail=data?.detail||data;
  if(typeof detail==="string")return detail;
  if(Array.isArray(detail))return detail.map((e:any)=>e.msg||"Invalid value").join("; ");
- return "Could not complete the request. Please check the details.";
+ return explainError(data);
 }
 function monthLabel(year:number,month:number){return new Date(year,month-1,1).toLocaleString("en-IN",{month:"long",year:"numeric"})}
 export default function LeaveWorkspace({api,user}:{api:string;user:User}){
