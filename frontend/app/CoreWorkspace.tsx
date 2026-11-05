@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ChangePassword from "./ChangePassword";
+import AccountSecurity from "./AccountSecurity";
 import { ArrowDown, ArrowLeft, BadgeCheck, Building2, CalendarClock, Check, Download, FileDown, FilePlus2, GitBranch, LockKeyhole, Search, ShieldCheck, Upload, UserRound, Users, X } from "lucide-react";
 
 type Person = {id:number;name:string;email:string;employee_code?:string;designation:string;department:string;role:string;status:string;phone?:string;joining_date?:string};
@@ -214,7 +215,7 @@ export default function CoreWorkspace({api,mode,user,employeeId,onBack,onPasswor
     {isHR&&<><h3 className="core-subhead"><LockKeyhole size={17}/> Restricted HR-only identifiers and bank details</h3><div className="employee-form-grid">{fields.filter(([field])=>sensitive.includes(field)).map(([field,label])=>input(field,label))}</div><div className="core-form-actions"><button disabled={busy} className="employee-primary">Save master record</button></div></>}
    </fieldset></form>
   </section>
-  {target===user.id&&<ChangePassword api={api} required={false} onComplete={()=>onPasswordChanged?.()}/>}
+  {target===user.id&&<><ChangePassword api={api} required={false} onComplete={()=>onPasswordChanged?.()}/><AccountSecurity api={api}/></>}
   <section className="employee-surface"><header className="core-head"><FilePlus2 size={20}/><div><h2>Employee documents</h2><p>Offer letters, ID proofs, certificates and their expiry dates.</p></div></header>
     {isHR&&<form className="core-inline-form" onSubmit={upload}><select value={category} onChange={e=>setCategory(e.target.value)}>{categories.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select><input type="date" aria-label="Document expiry date" value={expiry} onChange={e=>setExpiry(e.target.value)}/><input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={e=>setDocument(e.target.files?.[0]||null)}/><button disabled={busy} className="employee-primary"><Upload size={15}/> Upload</button></form>}
     {documents.length?<div className="table-wrap"><table><thead><tr><th>Document</th><th>Category</th><th>Expiry</th><th>Action</th></tr></thead><tbody>{documents.map(d=><tr key={d.id}><td>{d.name}</td><td>{d.category.replace("_"," ")}</td><td>{d.expiry_date||"—"}</td><td><button className="employee-link" onClick={()=>downloadDoc(d)}>Download</button></td></tr>)}</tbody></table></div>:<div className="empty">No documents uploaded yet.</div>}
