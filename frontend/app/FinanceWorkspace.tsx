@@ -135,12 +135,16 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
          <div className="finance-form-section"><h4>Invoice amount and schedule</h4>
           <p className="muted">Placement contract: {currency(p.rate,p.currency||"USD")} per {p.rate_unit||"hour"}. The invoice rate below is independent.</p>
           <div className="finance-field-grid">
-           <label>Bill every<select value={billing.billing_frequency} onChange={e=>update("billing_frequency",e.target.value)}>
+           <label>Bill every<select value={billing.billing_frequency} onChange={e=>{update("billing_frequency",e.target.value);setBilling(v=>({...v,billing_frequency:e.target.value,billing_day:e.target.value==="monthly"?"15":"1"}))}}>
             <option value="weekly">Weekly</option><option value="biweekly">Every two weeks</option><option value="monthly">Monthly</option>
            </select></label>
-           <label>{billing.billing_frequency==="monthly"?"Billing day of month (1–28)":"Billing weekday (1 = Monday, 7 = Sunday)"}
-            <input type="number" min="1" max={billing.billing_frequency==="monthly"?"28":"7"} required
-             value={billing.billing_day} onChange={e=>update("billing_day",e.target.value)}/></label>
+           <label>{billing.billing_frequency==="monthly"?"Billing day of month (1–28)":"Billing weekday"}
+            {billing.billing_frequency==="monthly"?<input type="number" min="1" max="28" required
+             value={billing.billing_day} onChange={e=>update("billing_day",e.target.value)}/>:
+             <select value={billing.billing_day} onChange={e=>update("billing_day",e.target.value)}>
+              {["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"].map((day,i)=>
+                <option key={day} value={i+1}>{day}</option>)}
+             </select>}</label>
            <label>Invoice currency<input value={p.currency||"USD"} disabled readOnly/></label>
            <label>Invoice rate basis<select value={billing.rate_unit} onChange={e=>update("rate_unit",e.target.value)}>
             <option value="hour">Per hour</option><option value="day">Per day</option><option value="week">Per week</option>
