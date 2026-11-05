@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
 import {BadgeCheck,ChevronDown,ChevronUp,X} from "lucide-react";
+import {explainError} from "./formErrors";
 
 type Row=Record<string,any>;
 type User={id:number;name:string;role:string};
@@ -32,7 +33,7 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
   const response=await fetch(api+"/finance"+path,{method,credentials:"include",
    headers:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});
   const data=await response.json().catch(()=>null);
-  if(!response.ok)throw Error(typeof data?.detail==="string"?data.detail:"Please review the billing values and try again.");
+  if(!response.ok)throw Error(explainError(data,response.status));
   return data;
  }
  async function refresh(){
@@ -166,14 +167,20 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
   </>}
   {tab==="invoices"&&<>
    <h2>Invoice ledger</h2>
-   <form className="form" onSubmit={e=>{e.preventDefault();void save(()=>call("/invoices","POST",{
+   <form className="form" onSubmit={e=>{e.preventDefault();
+     if(!selected){setNotice({kind:"error",text:"Project: choose a project before creating an invoice."});return}
+     if(periodEnd<periodStart){setNotice({kind:"error",text:"Billing period ends: choose a date on or after the billing period start."});return}
+     if(chosen?.start_date&&periodStart<chosen.start_date){setNotice({kind:"error",text:"Billing period starts: cannot be earlier than the project's start date ("+chosen.start_date+")."});return}
+     if(!chosen?.billing?.recipient_name){setNotice({kind:"error",text:"Billing recipient: open Project billing and save the recipient details first."});return}
+     if(!Number.isFinite(Number(quantity))||Number(quantity)<=0){setNotice({kind:"error",text:"Verified billable quantity: enter a positive number."});return}
+     void save(()=>call("/invoices","POST",{
     project_id:Number(selected),period_start:periodStart,period_end:periodEnd,
     quantity:Number(quantity),tax_rate_pct:Number(tax),issue_date:today()}),"Invoice draft created successfully.")}}>
     <label>Project<select value={selected} onChange={e=>{setSelected(e.target.value);const p=projects.find(x=>String(x.id)===e.target.value);
       setPeriodStart(p?.start_date||today());setPeriodEnd(today());setTax(String(p?.charges?.find((c:Row)=>c.recipient_type===(p.billing?.recipient_type||"client"))?.tax_rate_pct??0))}} required>
      <option value="">Select project</option>{projects.map(p=><option key={p.id} value={p.id}>{p.project_number} · {p.name} ({p.status})</option>)}</select></label>
     <label>Billing period starts<input type="date" required value={periodStart} onChange={e=>setPeriodStart(e.target.value)}/></label>
-    <label>Billing period ends<input type="date" required value={periodEnd} onChange={e=>setPeriodEnd(e.target.value)}/></label>
+    <label>Billing period ends<input type="date" required min={periodStart} aria-invalid={periodEnd<periodStart} value={periodEnd} onChange={e=>setPeriodEnd(e.target.value)}/></label>
     <label>Verified billable quantity<input type="number" min="0.01" step="0.01" required value={quantity} onChange={e=>setQuantity(e.target.value)}/></label>
     <label>Tax (%)<input type="number" min={0} max={100} step="0.01" value={tax} onChange={e=>setTax(e.target.value)}/></label>
     {chosen&&<div className="finance-preview"><span>Estimated total · {chosen.currency}</span>
