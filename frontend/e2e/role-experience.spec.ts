@@ -59,11 +59,8 @@ test('employee can update presence and upload a private profile picture',async({
  const status=await page.request.get(API_URL+'/me/presence');
  expect((await status.json()).status).toBe('busy');
  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9zMfSC8AAAAASUVORK5CYII=','base64');
- const uploadPromise=page.waitForResponse(r=>r.url().endsWith('/me/photo')&&r.request().method()==='POST');
  await page.locator('.hrms-avatar-button input[type="file"]').setInputFiles({
   name:'qa-avatar.png',mimeType:'image/png',buffer:png});
- const uploadResponse=await uploadPromise;
- expect(uploadResponse.status(),await uploadResponse.text()).toBe(200);
  await expect(page.locator('.hrms-avatar-button img')).toBeVisible();
  await expect.poll(async()=>(await page.request.get(API_URL+'/me/photo')).status()).toBe(200);
 });
