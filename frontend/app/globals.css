@@ -450,3 +450,93 @@ select:disabled{opacity:.65;cursor:not-allowed;background-color:#f3f5f8}
  .finance-premium .finance-settings-footer{align-items:stretch;flex-direction:column}
  .finance-toast,.project-save-toast{top:12px;right:12px}
  .finance-premium .finance-billing-card{padding:12px}}
+
+
+/* Employee pilot: compact, consistent actions across all modules. */
+.ops-area .form > button,
+.ops-area .ops-form > button,
+.ops-area .employee-primary,
+.ops-area button.primary,
+.ops-area button.secondary,
+.policy-page .employee-primary,
+.core-form-actions .employee-primary,
+.project-page .employee-primary,
+.panel .primary,
+.panel .secondary{
+ width:max-content!important;max-width:100%;min-height:35px;height:auto!important;
+ padding:8px 13px!important;line-height:1.3!important;
+ justify-self:start!important;align-self:start!important;
+ border-radius:8px!important;font-size:12px!important;font-weight:650!important;
+ box-shadow:none!important;
+}
+.ops-area .ops-form button{grid-column:auto!important}
+.ops-area .ops-form .wide{grid-column:1/-1}
+.ops-area .ops-form .ops-form-actions{grid-column:1/-1;display:flex;gap:10px}
+.ops-area .employee-surface .employee-primary:hover,
+.ops-area button.primary:hover{filter:brightness(.95)}
+.ops-area button:focus-visible,.policy-page button:focus-visible,.content button:focus-visible{
+ outline:3px solid #9aabea;outline-offset:2px}
+input:invalid:not(:placeholder-shown):not(:focus),select[aria-invalid=true],
+textarea[aria-invalid=true],input[aria-invalid=true]{
+ border-color:#c44949!important;box-shadow:0 0 0 2px #d74f4f12}
+.form label{min-width:0}
+.ops-area .time-form-error,.ops-area>.employee-success,
+.policy-page .error,.core-page .error{position:sticky;top:8px;z-index:60;
+ box-shadow:0 10px 30px #10182b16;border:1px solid #eac2c2;padding:12px 15px;border-radius:10px}
+.ops-area>.employee-success{background:#edf9f0;color:#24633c;border-color:#badac5}
+.app-global-success{position:fixed;right:18px;top:18px;z-index:160;background:#f1faef;color:#235d3d;
+ border:1px solid #b8deca;border-radius:12px;box-shadow:0 16px 40px #14254c2e;
+ padding:13px 16px;font-size:13px;font-weight:650;display:flex;align-items:center;gap:12px}
+.app-global-success button{border:0;background:none;color:inherit}
+.hrms-user-widget{position:relative}
+.hrms-profile-trigger{width:44px;height:44px;display:grid;place-items:center;border-radius:50%;
+ border:1px solid #d7dbea;background:#e9e4f4;color:#544d83;font-size:14px;font-weight:750}
+.hrms-profile-trigger img{height:100%;width:100%;object-fit:cover;border-radius:50%}
+.hrms-profile-menu{position:absolute;right:0;top:calc(100% + 12px);z-index:120;
+ background:#fff;border:1px solid #e0e5ee;border-radius:12px;
+ box-shadow:0 16px 44px #10182b28;width:210px;padding:10px;display:grid;gap:4px}
+.hrms-profile-menu strong{font-size:13px;color:#253454}
+.hrms-profile-menu small{font-size:11px;color:#77839a;text-transform:capitalize;margin-bottom:8px}
+.hrms-profile-menu button,.hrms-profile-menu .hrms-photo-change{padding:10px;font-size:12px;
+ color:#46546c;background:transparent;border:0;border-radius:7px;text-align:left;cursor:pointer}
+.hrms-profile-menu button:hover,.hrms-profile-menu .hrms-photo-change:hover{background:#f0f2fa}
+.hrms-photo-change input{display:none}
+.policy-audience{border:1px solid #e0e5ee;border-radius:10px;padding:12px;margin:10px 0}
+.policy-audience legend{font-weight:700;font-size:12px;color:#485773}
+.policy-audience-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));
+ gap:6px;max-height:175px;overflow:auto;margin:8px 0}
+.policy-audience label{display:flex;align-items:center;gap:7px;font-size:12px}
+.policy-audience small{font-size:11px;color:#79869b}
+.policy-attachment-form{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin:13px 0}
+.policy-attachment-form label{display:grid;gap:5px;font-size:12px}
+.exit-config-panel{padding:12px!important;margin:16px 0}
+.exit-config-panel>summary{cursor:pointer;font-weight:700;font-size:13px;color:#44567a}
+.exit-task-list{margin:10px 0;display:grid;gap:5px}
+.exit-task-list p{font-size:12px;margin:0}
+.exit-task-list small{color:#7b87a0}
+.exit-task-controls{display:grid;gap:9px;margin:10px 0}
+.exit-task-entry{border-left:3px solid #6677d1;background:#f6f7fc;border-radius:8px;padding:11px;display:grid;gap:7px}
+.exit-task-entry small{font-size:11px;color:#768399}
+.exit-task-entry label{display:grid;gap:5px;font-size:12px}
+.exit-task-entry input{max-width:420px}
+:root[data-theme="dark"]{color-scheme:dark;background:#111829;color:#e2e8f5}
+[data-theme="dark"] body,[data-theme="dark"] .content{background:#111829!important;color:#e2e8f5}
+[data-theme="dark"] .panel,[data-theme="dark"] .card,[data-theme="dark"] .employee-surface,
+[data-theme="dark"] .policy-card,[data-theme="dark"] .policy-record,[data-theme="dark"] .finance-billing-card,
+[data-theme="dark"] .overview-feature-card,[data-theme="dark"] .notification-page,
+[data-theme="dark"] .notification-popover,[data-theme="dark"] .hrms-profile-menu,
+[data-theme="dark"] .employee-modal,[data-theme="dark"] .ops-row,
+[data-theme="dark"] .notification-item{background:#1c263a!important;color:#e1e8f5!important;border-color:#354159!important}
+[data-theme="dark"] :is(h1,h2,h3,h4,strong,.title,.employee-title-row h2,
+.overview-feature-heading h2,.employee-group-head h3,.hrms-profile-menu strong,
+.employee-metric strong,.project-table td strong){color:#e5ecfb!important}
+[data-theme="dark"] :is(.muted,.field-help,small,th,label){color:#a1afc6}
+[data-theme="dark"] :is(input,select,textarea){background:#202d43!important;color:#e5ebf9!important;border-color:#435069!important}
+[data-theme="dark"] :is(.form,.ops-form,.employee-form-footer,.employee-filters,.time-tabs,
+.finance-expanded-row>td,.finance-form-section,.finance-preview){background:#202b40!important;color:#e5ecfb!important}
+[data-theme="dark"] :is(td,th){border-color:#344159;color:#d6dff1}
+[data-theme="dark"] :is(.finance-selected-row,.notification-item.is-unread,.exit-task-entry){background:#293958!important}
+[data-theme="dark"] .hrms-profile-menu button,[data-theme="dark"] .hrms-photo-change{color:#e5eaf5}
+[data-theme="dark"] .hrms-profile-trigger{background:#334160;color:#f0eaff}
+[data-theme="dark"] .sidebar{background:#0c1426}
+@media(max-width:740px){.hrms-profile-menu{right:0}.policy-audience-list{grid-template-columns:1fr}}
