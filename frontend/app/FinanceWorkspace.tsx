@@ -10,6 +10,8 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
  const [tab,setTab]=useState<"projects"|"invoices"|"schedule">("projects");
  const [projects,setProjects]=useState<Row[]>([]);
  const [invoices,setInvoices]=useState<Row[]>([]);
+ const [reviews,setReviews]=useState<Row[]>([]);
+ const [approvedUnits,setApprovedUnits]=useState<Record<number,string>>({});
  const [selected,setSelected]=useState("");
  const [billing,setBilling]=useState<Row>({recipient_type:"client",recipient_name:"",recipient_email:"",recipient_phone:"",billing_address:"",billing_day:"15",payment_terms_days:15,end_date:""});
  const [periodStart,setPeriodStart]=useState(today());
@@ -31,7 +33,7 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
   return j;
  }
  async function refresh(){
-  const [p,i]=await Promise.all([call("/projects"),call("/invoices")]);setProjects(p);setInvoices(i);
+  const [p,i,r]=await Promise.all([call("/projects"),call("/invoices"),call("/reviews")]);setProjects(p);setInvoices(i);setReviews(r);
  }
  useEffect(()=>{void refresh().catch(e=>setError((e as Error).message));},[api,user.id]);
  useEffect(()=>{
@@ -119,7 +121,20 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
      ()=>call("/schedules/run","POST",{as_of:scheduleDate}),"Schedule evaluated. Review the generated drafts before sending.")}}>
     <label>Schedule date<input type="date" required value={scheduleDate} onChange={e=>setScheduleDate(e.target.value)}/></label>
     <button disabled={busy}>Run due invoice schedules</button></form>
-   {result&&Array.isArray(result.created)&&<p>{result.created.length} draft(s) created; {result.skipped?.length||0} projects skipped.</p>}
+   {result&&Array.isArray(result.tasks_created)&&<p>{result.tasks_created.length} billing review(s) queued; {result.skipped?.length||0} projects skipped. No invoices sent.</p>}
+   <h3>Due billing reviews</h3>
+   <div className="ops-table">{reviews.map(r=><div className="ops-row" key={r.id}>
+     <strong>Task #{r.id} · Project #{r.project_id} · {r.status}</strong>
+     <span>Service period {r.period_start} to {r.period_end}</span>
+     {r.status==="needs_units"&&<div className="form">
+       <label>Approved billable units<input type="number" min="0.01" step="0.01" placeholder="Enter verified hours, days or milestone quantity"
+         aria-label={"Approved billable units for task "+r.id}
+         value={approvedUnits[r.id]||""} onChange={e=>setApprovedUnits(v=>({...v,[r.id]:e.target.value}))}/></label>
+       <button className="primary" disabled={!approvedUnits[r.id]||Number(approvedUnits[r.id])<=0||busy}
+        onClick={()=>void save(()=>call("/reviews/"+r.id+"/invoice","POST",{
+          quantity:Number(approvedUnits[r.id]),tax_rate_pct:Number(tax)}),"Verified billing draft prepared for review.")}>Create reviewed invoice draft</button>
+     </div>}
+   </div>)}</div>
   </>}
  </div>;
 }
