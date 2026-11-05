@@ -97,6 +97,7 @@ class InvoiceIn(BaseModel):
     @model_validator(mode="after")
     def validate_window(self):
         if self.period_end<self.period_start:raise ValueError("Invoice period end precedes start.")
+        if self.issue_date>date.today():raise ValueError("Cannot issue invoices in the future.")
         return self
 
 class ScheduleIn(BaseModel):
@@ -121,6 +122,7 @@ def live_period(p:Project,d:ProjectDetail,profile:ProjectBilling|None,start:date
     if not d.start_date:raise HTTPException(422,"Project start date required")
     if start<d.start_date:raise HTTPException(422,"Invoice starts before project start")
     if end<start:raise HTTPException(422,"Invalid period")
+    if as_of>date.today():raise HTTPException(422,"Future service periods are not billable")
     if end>as_of:raise HTTPException(422,"Cannot invoice future service dates")
     if profile and profile.end_date and end>profile.end_date:
         raise HTTPException(409,"Invoice period exceeds project end date")
@@ -246,6 +248,9 @@ def run_schedule(body:ScheduleIn,user:Employee=Depends(current_user),db:Session=
         p=db.get(Project,c.project_id);d=db.get(ProjectDetail,c.project_id)
         if not p or not d or not d.start_date or p.status!="active" or c.stopped_at:
             skipped.append({"project_id":c.project_id,"reason":"inactive or invalid project"});continue
+        if c.end_date and body.as_of>c.end_date:
+            p.status="inactive";c.stopped_at=c.end_date
+            db.commit();skipped.append({"project_id":p.id,"reason":"project ended; schedule disabled"});continue
         end=c.end_date
         if body.as_of>d.start_date and ((body.as_of.day==c.billing_day) or (end and body.as_of==end)):
             prior=db.scalar(select(func.max(ClientInvoice.period_end)).where(
