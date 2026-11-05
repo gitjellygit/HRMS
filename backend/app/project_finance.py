@@ -429,7 +429,7 @@ def invoice_pdf(invoice_id:int,user:Employee=Depends(current_user),db:Session=De
     safe=lambda s:escape(str(s or ""))
     story=[Paragraph("JellyGit — Invoice Draft / Recorded Invoice",styles["Heading1"]),
       Spacer(1,12),Paragraph("Invoice #"+str(x.id)+" — "+safe(x.status).upper(),styles["Normal"]),
-      Paragraph("Bill to: "+safe(x.recipient_name)+" ("+safe(x.recipient_type)+")",styles["Normal"]),
+      Paragraph("Bill to: "+safe(x.recipient_name),styles["Normal"]),
       Paragraph("Email: "+safe(x.recipient_email)+" | Phone: "+safe(x.recipient_phone),styles["Normal"]),
       Paragraph("Address: "+safe(x.billing_address),styles["Normal"]),
       Paragraph("Service period: "+str(x.period_start)+" to "+str(x.period_end),styles["Normal"]),
