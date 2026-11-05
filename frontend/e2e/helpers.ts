@@ -14,9 +14,13 @@ export async function login(page: Page, user: Persona) {
   await page.goto('/');
   // Preserve the post-logout login guard from main when switching QA personas.
   const email=page.locator('input[name="email"]');
+  // Wait for the asynchronous /me session check before deciding whether to sign out.
+  // Without this guard, a slow Next.js dev hydration can look like neither login
+  // nor an authenticated workspace and produce intermittent matrix failures.
+  const signOut=page.locator('.sidebar nav').getByRole('button',{name:'Sign out'});
+  await expect.poll(async()=>await email.isVisible()||await signOut.isVisible(),
+    {timeout:12000,message:'Expected either login form or authenticated sidebar'}).toBe(true);
   if(!(await email.isVisible())){
-    const signOut=page.locator('.sidebar nav').getByRole('button',{name:'Sign out'});
-    await expect(signOut).toBeVisible();
     await signOut.click();
   }
   await expect(email).toBeVisible();

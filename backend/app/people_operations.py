@@ -205,6 +205,11 @@ def notify(db,employee_id,event,subject,body):
     rule=db.scalar(select(NotifyRule).where(NotifyRule.event==event))
     channels=[c for c in ("email","sms","push","whatsapp") if not rule or getattr(rule,c)]
     if not rule:channels=["email"]
+    from .notification_center import add_inbox
+    # The in-app inbox works even when no external delivery provider is connected.
+    destination={"helpdesk":"people","approval":"leaves","offer":"people",
+                 "exit":"people"}.get(event,"dashboard")
+    add_inbox(db,employee_id,event,subject,body,destination)
     for channel in channels:
         # A queued adapter is not a claim of delivery. No background sender until configured.
         db.add(NotifyOutbox(employee_id=employee_id,event=event,subject=subject,body=body,
@@ -228,6 +233,20 @@ def create_offer(body:OfferIn,user:Employee=Depends(current_user),db:Session=Dep
     emp=db.get(Employee,body.employee_id);templ=db.get(OfferTemplate,body.template_id)
     if not emp or not templ or not templ.active:raise HTTPException(422,"Choose a valid employee and active offer template.")
     content=templ.content
+    # Offer templates may include {{salary_breakdown}} to show the reviewed items
+    # that exist when the offer is generated. Sent offers remain immutable snapshots.
+    from .payroll_components import effective_components
+    from .payroll import SalaryStructure
+    base=db.get(SalaryStructure,emp.id)
+    breakdown=[]
+    if base and base.effective_from<=body.joining_date:
+        breakdown.extend([f"Basic salary: INR {base.basic}/month",
+                          f"HRA: INR {base.hra}/month",
+                          f"Other allowances: INR {base.allowances}/month",
+                          f"Other deductions: INR {base.other_deductions}/month"])
+    for item in effective_components(db,emp.id,body.joining_date):
+        breakdown.append(f"{item.title} ({item.kind}): INR {item.amount}/month")
+    content=content.replace("{{salary_breakdown}}","\n".join(breakdown) if breakdown else "Salary breakdown pending HR review")
     for key,value in (("employee_name",emp.name),("job_title",body.title),
             ("annual_ctc",str(body.annual_ctc)),("joining_date",body.joining_date.isoformat())):
         content=content.replace("{{"+key+"}}",value)
@@ -324,7 +343,12 @@ def complete_task(task_id:int,user:Employee=Depends(current_user),db:Session=Dep
 def add_announcement(body:AnnouncementIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     require_hr(user)
     row=Announcement(**body.model_dump(),created_by=user.id);db.add(row);db.flush()
-    audit(db,user,"announcement",row.id,"published");db.commit();return {"id":row.id}
+    from .notification_center import add_inbox
+    ids=db.scalars(select(Employee.id).where(Employee.status=="active")).all()
+    for employee_id in ids:
+        add_inbox(db,employee_id,"announcement",row.title,row.body,"people")
+    audit(db,user,"announcement",row.id,"published");db.commit()
+    return {"id":row.id,"recipients":len(ids)}
 
 @router.get("/announcements")
 def announcements(user:Employee=Depends(current_user),db:Session=Depends(db_session)):

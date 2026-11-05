@@ -34,6 +34,43 @@ class ProjectBilling(Base):
     stopped_at:Mapped[date|None]=mapped_column(Date,nullable=True)
     updated_by:Mapped[int]=mapped_column(ForeignKey("employees.id"))
 
+class ProjectCharge(Base):
+    """Recipient-specific invoice pricing, independent of the placement rate."""
+    __tablename__="finance_project_charges"
+    project_id:Mapped[int]=mapped_column(ForeignKey("projects.id"),primary_key=True)
+    recipient_type:Mapped[str]=mapped_column(String(24),primary_key=True)
+    pricing_mode:Mapped[str]=mapped_column(String(20),default="fixed_rate")
+    pricing_value:Mapped[Decimal]=mapped_column(Numeric(14,2))
+    tax_rate_pct:Mapped[Decimal]=mapped_column(Numeric(6,2),default=Decimal("0"))
+    updated_by:Mapped[int]=mapped_column(ForeignKey("employees.id"))
+
+
+class ChargeIn(BaseModel):
+    recipient_type:Literal["client","vendor","candidate"]
+    pricing_mode:Literal["fixed_rate","percentage"]
+    pricing_value:Decimal=Field(gt=0,le=100000000,decimal_places=2)
+    tax_rate_pct:Decimal=Field(default=0,ge=0,le=100,decimal_places=2)
+
+    @model_validator(mode="after")
+    def ensure_percentage(self):
+        if self.pricing_mode=="percentage" and self.pricing_value>100:
+            raise ValueError("Percentage of placement rate cannot exceed 100.")
+        return self
+
+
+def charge_view(row:ProjectCharge):
+    return {"project_id":row.project_id,"recipient_type":row.recipient_type,
+            "pricing_mode":row.pricing_mode,"pricing_value":row.pricing_value,
+            "tax_rate_pct":row.tax_rate_pct}
+
+def charge_rate(db:Session,project_id:int,recipient_type:str,placement_rate:Decimal)->Decimal:
+    row=db.get(ProjectCharge,(project_id,recipient_type))
+    if row is None:return placement_rate
+    if row.pricing_mode=="percentage":
+        return (placement_rate*row.pricing_value/Decimal(100)).quantize(Decimal("0.01"),rounding=ROUND_HALF_UP)
+    return Decimal(row.pricing_value)
+
+
 class ClientInvoice(Base):
     __tablename__="finance_invoices"
     id:Mapped[int]=mapped_column(primary_key=True)
@@ -92,7 +129,7 @@ class InvoiceIn(BaseModel):
     period_start:date
     period_end:date
     quantity:Decimal=Field(gt=0,le=100000000,decimal_places=2)
-    tax_rate_pct:Decimal=Field(default=0,ge=0,le=100,decimal_places=2)
+    tax_rate_pct:Decimal|None=Field(default=None,ge=0,le=100,decimal_places=2)
     issue_date:date=Field(default_factory=date.today)
     @model_validator(mode="after")
     def validate_window(self):
@@ -151,14 +188,16 @@ def create_row(db:Session,user:Employee,p:Project,d:ProjectDetail,c:ProjectBilli
       ClientInvoice.project_id==p.id,ClientInvoice.period_start==start,
       ClientInvoice.period_end==end,ClientInvoice.recipient_type==c.recipient_type))
     if existing:raise HTTPException(409,"Invoice already exists for this project, recipient and period")
-    rate=Decimal(d.rate);money=lambda n:n.quantize(Decimal("0.01"),rounding=ROUND_HALF_UP)
-    subtotal=money(rate*quantity);tax_amount=money(subtotal*tax/Decimal(100))
+    rate=charge_rate(db,p.id,c.recipient_type,Decimal(d.rate));money=lambda n:n.quantize(Decimal("0.01"),rounding=ROUND_HALF_UP)
+    pricing=db.get(ProjectCharge,(p.id,c.recipient_type))
+    applied_tax=Decimal(tax) if tax is not None else Decimal(pricing.tax_rate_pct if pricing else 0)
+    subtotal=money(rate*quantity);tax_amount=money(subtotal*applied_tax/Decimal(100))
     x=ClientInvoice(project_id=p.id,recipient_type=c.recipient_type,
        recipient_name=c.recipient_name,recipient_email=c.recipient_email,
        recipient_phone=c.recipient_phone,billing_address=c.billing_address,
        period_start=start,period_end=end,issue_date=issued,
        due_date=issued+timedelta(days=c.payment_terms_days),quantity=quantity,
-       unit_rate=rate,subtotal=subtotal,tax_rate_pct=tax,
+       unit_rate=rate,subtotal=subtotal,tax_rate_pct=applied_tax,
        tax_amount=tax_amount,total=subtotal+tax_amount,currency=d.currency,
        created_by=user.id,source=source)
     db.add(x);db.flush();audit(db,user,p.id,"invoice_created",source)
@@ -172,7 +211,36 @@ def finance_projects(user:Employee=Depends(current_user),db:Session=Depends(db_s
         ProjectDetail.project_id.in_([p.id for p in projects]))).all()}
     profiles={x.project_id:x for x in db.scalars(select(ProjectBilling).where(
         ProjectBilling.project_id.in_([p.id for p in projects]))).all()}
-    return [billing_view(p,details[p.id],profiles.get(p.id)) for p in projects if p.id in details]
+    charges=db.scalars(select(ProjectCharge).where(ProjectCharge.project_id.in_([p.id for p in projects]))).all()
+    by_project={}
+    for charge in charges:by_project.setdefault(charge.project_id,[]).append(charge_view(charge))
+    result=[]
+    for p in projects:
+        if p.id not in details:continue
+        entry=billing_view(p,details[p.id],profiles.get(p.id))
+        entry["charges"]=by_project.get(p.id,[])
+        result.append(entry)
+    return result
+
+@router.put("/projects/{project_id}/charges")
+def save_charge(project_id:int,body:ChargeIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    authorized(user)
+    project,detail=project_detail(db,project_id)
+    if project.status!="active":raise HTTPException(409,"Inactive project pricing is locked")
+    row=db.get(ProjectCharge,(project_id,body.recipient_type))
+    if row is None:
+        row=ProjectCharge(project_id=project_id,recipient_type=body.recipient_type,
+                          updated_by=user.id,pricing_value=body.pricing_value)
+        db.add(row)
+    row.pricing_mode=body.pricing_mode
+    row.pricing_value=body.pricing_value
+    row.tax_rate_pct=body.tax_rate_pct
+    row.updated_by=user.id
+    audit(db,user,project_id,"pricing_updated",
+          f"{body.recipient_type}: {body.pricing_mode} {body.pricing_value}")
+    db.commit()
+    return charge_view(row) | {"effective_rate":charge_rate(db,project_id,body.recipient_type,Decimal(detail.rate))}
+
 
 @router.put("/projects/{project_id}/billing")
 def set_billing(project_id:int,body:BillingIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
