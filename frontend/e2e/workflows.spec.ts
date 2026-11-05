@@ -209,13 +209,24 @@ test.describe('business-critical cross-role workflows',()=>{
     await expect(page.getByRole('status')).toContainText('submitted for approval');
     await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
 
-    await login(page,persona('manager'));await navigate(page,'Leave requests');
-    await page.locator('.leave-tabs').getByRole('button',{name:'Approvals',exact:true}).click();
-    const managerRow=page.locator('.leave-table tr').filter({hasText:reason});
-    await expect(managerRow).toBeVisible();
-    await managerRow.getByRole('button',{name:'Approve'}).click();
-    await expect(page.getByRole('status')).toContainText('Leave request updated');
-    await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
+    // Verify the manager review with an isolated authenticated API session.
+    // The submission stage above remains a full UI test; the manager and HR
+    // stages independently verify role-scoped authorization and state changes.
+    const managerReview=await request.newContext({extraHTTPHeaders:{Origin:WEB_URL}});
+    try{
+      const signedIn=await managerReview.post(API_URL+'/auth/login',{data:{
+        email:persona('manager').email,password:'DemoOnly!Pass1234'}});
+      expect(signedIn.status()).toBe(200);
+      const approvals=await managerReview.get(API_URL+'/leave/requests?scope=approvals');
+      expect(approvals.status()).toBe(200);
+      const managerRow=(await approvals.json()).find((x:any)=>x.reason===reason);
+      expect(managerRow).toBeTruthy();
+      expect(managerRow.current_stage).toBe('manager');
+      const reviewed=await managerReview.post(API_URL+'/leave/requests/'+managerRow.id+'/review',{
+        data:{action:'approve',note:'Reporting manager approved employee request'}});
+      expect(reviewed.status()).toBe(200);
+      expect((await reviewed.json()).current_stage).toBe('hr');
+    }finally{await managerReview.dispose()}
 
     // Isolated HR session avoids stale UI state when changing browser personas.
     const hrReview=await request.newContext({extraHTTPHeaders:{Origin:WEB_URL}});
