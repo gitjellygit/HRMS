@@ -35,7 +35,7 @@ test.describe('login and privacy', () => {
     test(key + ': signs in with proper employee role', async ({ page }) => {
       const person = users().find(u => u.key === key)!;
       await login(page, person);
-      await expect(page.locator('.top .user')).toContainText(person.role);
+      await expect(page.locator('.hrms-user-meta')).toContainText(person.role);
       // The presence of an HR privilege in the nav is a security-relevant assertion.
       const hrNav = page.locator('.sidebar nav').getByRole('button', { name: 'HR overview', exact: true });
       if (person.role === 'hr') await expect(hrNav).toBeVisible();

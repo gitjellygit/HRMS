@@ -12,11 +12,12 @@ import re
 from sqlalchemy.exc import IntegrityError
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, status, Request, Response, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from pwdlib import PasswordHash
@@ -50,6 +51,7 @@ class Employee(Base):
     phone: Mapped[str] = mapped_column(String(30), default="")
     joining_date: Mapped[date] = mapped_column(Date, default=date.today)
     status: Mapped[str] = mapped_column(String(20), default="active")
+    must_change_password: Mapped[bool] = mapped_column(default=False)
 
 class Attendance(Base):
     __tablename__ = "attendance"
@@ -126,11 +128,14 @@ class EmployeeProfile(Base):
     employment_type: Mapped[str] = mapped_column(String(40), default="Full time")
     manager_name: Mapped[str] = mapped_column(String(120), default="")
     emergency_contact: Mapped[str] = mapped_column(String(100), default="")
+    availability: Mapped[str] = mapped_column(String(25), default="available")
+    photo_key: Mapped[str] = mapped_column(String(80), default="")
 
 class LoginIn(BaseModel):
     email: EmailStr
     password: str
     remember: bool = False
+    otp: str | None = Field(default=None,pattern=r"^[0-9]{6}$")
 
 class ResetRequestIn(BaseModel):
     email: EmailStr
@@ -272,6 +277,8 @@ def current_user(request: Request, credentials: HTTPAuthorizationCredentials | N
         raise HTTPException(status_code=401, detail="Account unavailable")
     if payload.get("pv") != hashlib.sha256((SECRET + user.password_hash).encode()).hexdigest():
         raise HTTPException(status_code=401, detail="Session expired")
+    if user.must_change_password and request.url.path not in ("/me","/auth/change-password","/auth/logout","/auth/my-status"):
+        raise HTTPException(status_code=403, detail="Password change required before using HRMS.")
     return user
 
 def require(*roles):
@@ -329,6 +336,9 @@ def initialize():
             connection.execute(text(f"ALTER TABLE project_details ADD COLUMN IF NOT EXISTS {field} {ddl}"))
     with engine.begin() as connection:
         connection.execute(text("ALTER TABLE employee_core ADD COLUMN IF NOT EXISTS project_bonus_inr NUMERIC(12,2)"))
+        connection.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false"))
+        connection.execute(text("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS availability VARCHAR(25) NOT NULL DEFAULT 'available'"))
+        connection.execute(text("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS photo_key VARCHAR(80) NOT NULL DEFAULT ''"))
     email = os.environ.get("ADMIN_EMAIL")
     passwd = os.environ.get("ADMIN_PASSWORD")
     if email and passwd and len(passwd) >= 12:
@@ -346,22 +356,95 @@ def login(body: LoginIn, response: Response, db: Session = Depends(db_session)):
     user = db.scalar(select(Employee).where(Employee.email == str(body.email)))
     if not user or user.status != "active" or not passwords.verify(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    from .security import require_login_mfa
+    require_login_mfa(db,user.id,body.otp)
     lifetime = timedelta(days=30) if body.remember else timedelta(hours=8)
     token = jwt.encode({"sub": str(user.id), "pv": hashlib.sha256((SECRET + user.password_hash).encode()).hexdigest(), "exp": datetime.now(timezone.utc) + lifetime}, SECRET, algorithm="HS256")
     response.set_cookie(COOKIE_NAME, token, httponly=True, secure=COOKIE_SECURE, samesite='lax', max_age=int(lifetime.total_seconds()) if body.remember else None, path='/')
-    return {"user": EmployeeOut.model_validate(user)}
+    return {"user": {**EmployeeOut.model_validate(user).model_dump(mode="json"),"must_change_password":user.must_change_password}}
 
-@app.get("/me", response_model=EmployeeOut)
+@app.get("/me")
 def me(user: Employee = Depends(current_user)):
-    return user
+    return {**EmployeeOut.model_validate(user).model_dump(mode="json"),"must_change_password":user.must_change_password}
+
+class AvailabilityIn(BaseModel):
+    status: Literal["available","busy","away","do_not_disturb"]
+
+
+def own_profile(db:Session,user:Employee)->EmployeeProfile:
+    row=db.scalar(select(EmployeeProfile).where(EmployeeProfile.employee_id==user.id))
+    if not row:
+        row=EmployeeProfile(employee_id=user.id)
+        db.add(row);db.flush()
+    return row
+
+
+@app.get("/me/presence")
+def get_presence(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    row=db.scalar(select(EmployeeProfile).where(EmployeeProfile.employee_id==user.id))
+    return {"status":row.availability if row else "available","has_photo":bool(row and row.photo_key)}
+
+
+@app.put("/me/presence")
+def update_presence(body:AvailabilityIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    row=own_profile(db,user)
+    row.availability=body.status
+    db.commit()
+    return {"status":row.availability}
+
+
+@app.post("/me/photo")
+async def upload_my_photo(photo:UploadFile=File(...),user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    content=await photo.read(2*1024*1024+1)
+    if len(content)>2*1024*1024:
+        raise HTTPException(413,"Profile photo must be smaller than 2 MB.")
+    png=content.startswith(bytes.fromhex("89504e470d0a1a0a"))
+    jpeg=content.startswith(bytes.fromhex("ffd8ff"))
+    if not png and not jpeg:
+        raise HTTPException(415,"Only PNG and JPEG profile photos are supported.")
+    ext=".png" if png else ".jpg"
+    folder=UPLOAD_DIR/"avatars"
+    folder.mkdir(parents=True,exist_ok=True,mode=0o700)
+    key=uuid4().hex+ext
+    filepath=folder/key
+    with filepath.open("xb") as handle:
+        handle.write(content)
+    filepath.chmod(0o600)
+    row=own_profile(db,user)
+    old=row.photo_key
+    row.photo_key=key
+    db.commit()
+    if old:
+        (folder/Path(old).name).unlink(missing_ok=True)
+    return {"has_photo":True}
+
+
+@app.get("/me/photo")
+def my_photo(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    row=db.scalar(select(EmployeeProfile).where(EmployeeProfile.employee_id==user.id))
+    if not row or not row.photo_key:
+        raise HTTPException(404,"No profile photo")
+    path=UPLOAD_DIR/"avatars"/Path(row.photo_key).name
+    if not path.is_file():
+        raise HTTPException(404,"Profile photo is unavailable")
+    return FileResponse(path,media_type="image/png" if path.suffix==".png" else "image/jpeg",
+                        headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"})
+
 
 @app.get("/dashboard")
 def dashboard(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
-    total = db.scalar(select(func.count()).select_from(Employee).where(Employee.status == "active")) if user.role in ("super_admin", "admin", "hr", "accountant") else None
-    pending = db.scalar(select(func.count()).select_from(Leave).where(Leave.status == "pending")) if user.role in ("super_admin", "admin", "hr") else None
-    active_projects = db.scalar(select(func.count()).select_from(Project).where(Project.status == "active"))
-    mine = db.scalar(select(func.count()).select_from(Leave).where(Leave.employee_id == user.id, Leave.status == "pending"))
-    return {"employees": total, "pending_leaves": pending, "active_projects": active_projects, "my_pending_leaves": mine}
+    from .project_management import ProjectDetail
+    privileged = user.role in ("super_admin","admin","hr")
+    total = db.scalar(select(func.count()).select_from(Employee).where(Employee.status=="active")) if privileged else None
+    pending = db.scalar(select(func.count()).select_from(Leave).where(Leave.status=="pending")) if privileged else None
+    query=select(func.count()).select_from(Project).where(Project.status=="active")
+    if not privileged:
+        query=query.join(ProjectDetail,ProjectDetail.project_id==Project.id).where(ProjectDetail.sourced_by_id==user.id)
+    active_projects=db.scalar(query)
+    mine=db.scalar(select(func.count()).select_from(Leave).where(Leave.employee_id==user.id,Leave.status=="pending"))
+    return {"employees":total,"pending_leaves":pending,"active_projects":active_projects,"my_pending_leaves":mine}
+
+
 
 def as_employee_out(db: Session, employee: Employee) -> EmployeeOut:
     profile = db.scalar(select(EmployeeProfile).where(EmployeeProfile.employee_id == employee.id))
@@ -435,6 +518,12 @@ def attendance_status(user: Employee = Depends(current_user), db: Session = Depe
 
 @app.post("/attendance/punch", response_model=AttendanceOut)
 def punch(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
+    # Calls from /time/punch can pass an approved verified geographic location.
+    # The legacy route must not bypass an enabled office geofence.
+    from .time_tracking import TimePolicy
+    active_policy=db.scalar(select(TimePolicy).where(TimePolicy.location=="all"))
+    if active_policy and active_policy.geo_required and not db.info.get("geo_verified"):
+        raise HTTPException(403,detail={"field":"location","message":"Use the verified GPS attendance button."})
     # One active punch state per user, even with simultaneous clicks/browser tabs.
     db.execute(select(func.pg_advisory_xact_lock(93001,user.id)))
     open_shift = db.scalar(select(Attendance).where(Attendance.employee_id == user.id, Attendance.punch_out.is_(None)).order_by(Attendance.id.desc()))
@@ -486,7 +575,11 @@ def review_leave(leave_id: int, body: StatusIn, user: Employee = Depends(require
 
 @app.get("/projects", response_model=list[ProjectOut])
 def projects(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
-    return db.scalars(select(Project).order_by(Project.id.desc())).all()
+    from .project_management import ProjectDetail
+    query=select(Project).order_by(Project.id.desc())
+    if user.role not in ("super_admin","admin","hr"):
+        query=query.join(ProjectDetail,ProjectDetail.project_id==Project.id).where(ProjectDetail.sourced_by_id==user.id)
+    return db.scalars(query).all()
 
 @app.post("/projects", response_model=ProjectOut, status_code=201)
 def add_project(body: ProjectIn, user: Employee = Depends(require("admin", "hr")), db: Session = Depends(db_session)):
@@ -510,6 +603,10 @@ def assign(body: AssignmentIn, user: Employee = Depends(require("admin", "hr")),
 
 @app.get("/projects/{project_id}/team", response_model=list[EmployeeOut])
 def project_team(project_id: int, user: Employee = Depends(current_user), db: Session = Depends(db_session)):
+    from .project_management import ProjectDetail
+    detail=db.get(ProjectDetail,project_id)
+    if user.role not in ("super_admin","admin","hr") and (not detail or detail.sourced_by_id!=user.id):
+        raise HTTPException(404,"Project not found")
     if not db.get(Project, project_id):
         raise HTTPException(404, "Project not found")
     return db.scalars(select(Employee).join(Assignment, Assignment.employee_id == Employee.id).where(Assignment.project_id == project_id)).all()
@@ -546,7 +643,7 @@ def change_bonus(bonus_id: int, body: StatusIn, user: Employee = Depends(require
 @app.get("/appraisals", response_model=list[AppraisalOut])
 def appraisals(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
     query = select(Appraisal).order_by(Appraisal.id.desc())
-    if user.role not in ("admin", "hr"):
+    if user.role not in ("super_admin", "admin", "hr"):
         query = query.where(Appraisal.employee_id == user.id)
     return db.scalars(query).all()
 
@@ -558,6 +655,38 @@ def add_appraisal(body: AppraisalIn, user: Employee = Depends(require("admin", "
     db.commit()
     db.refresh(row)
     return row
+
+
+class SelfPasswordChange(BaseModel):
+    current_password: str | None = None
+    new_password: str = Field(min_length=12,max_length=128)
+
+
+def validate_new_password(value: str):
+    if not all((re.search(r"[A-Z]",value),re.search(r"[a-z]",value),
+                re.search(r"[0-9]",value),re.search(r"[^A-Za-z0-9]",value))):
+        raise HTTPException(422,"Use uppercase, lowercase, number and special character.")
+
+
+@app.post("/auth/change-password")
+def change_my_password(body: SelfPasswordChange,response:Response,
+                       user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    if not user.must_change_password and (
+        not body.current_password or not passwords.verify(body.current_password,user.password_hash)):
+        raise HTTPException(401,"Current password is incorrect")
+    validate_new_password(body.new_password)
+    if passwords.verify(body.new_password,user.password_hash):
+        raise HTTPException(422,"Choose a new password different from your previous one.")
+    user.password_hash=passwords.hash(body.new_password)
+    user.must_change_password=False
+    db.commit()
+    response.delete_cookie(COOKIE_NAME,path="/",secure=COOKIE_SECURE,httponly=True,samesite="lax")
+    return {"message":"Password successfully changed. Please sign in again with your new password."}
+
+
+@app.get("/auth/my-status")
+def my_auth_status(user:Employee=Depends(current_user)):
+    return {"must_change_password":user.must_change_password}
 
 
 @app.post("/auth/logout")
@@ -733,6 +862,9 @@ async def stop_bonus_reconciler():
             pass
         _bonus_sync_task=None
 
+from .time_tracking import router as time_tracking_router  # noqa: E402
+app.include_router(time_tracking_router)
+
 from .bonus_policy import router as bonus_policy_router  # noqa: E402
 app.include_router(bonus_policy_router)
 
@@ -768,3 +900,22 @@ async def stop_probation_sync():
         except asyncio.CancelledError:
             pass
         _probation_task = None
+
+# New salary/expense tables are registered before application startup.
+from .payroll import router as payroll_router  # noqa: E402
+app.include_router(payroll_router)
+
+from .people_operations import router as people_operations_router  # noqa: E402
+app.include_router(people_operations_router)
+
+from .security import router as security_router  # noqa: E402
+app.include_router(security_router)
+
+from .performance_growth import router as performance_growth_router  # noqa: E402
+app.include_router(performance_growth_router)
+
+from .performance_extensions import router as performance_extensions_router  # noqa: E402
+app.include_router(performance_extensions_router)
+
+from .people_ops_extensions import router as people_ops_extensions_router  # noqa: E402
+app.include_router(people_ops_extensions_router)

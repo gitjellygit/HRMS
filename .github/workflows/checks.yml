@@ -1,7 +1,7 @@
 name: HRMS checks
 on:
   push:
-    branches: [feature/hrms-mvp, feature/employee-core-1-10, feature/leave-management-11-22, feature/projects-redesign, feature/project-bonus-attendance-fy, feature/bonus-policy-sidebar, feature/hrms-employee-lifecycle-ux, main]
+    branches: [feature/hrms-mvp, feature/employee-core-1-10, feature/leave-management-11-22, feature/projects-redesign, feature/project-bonus-attendance-fy, feature/bonus-policy-sidebar, feature/hrms-employee-lifecycle-ux, feature/employee-role-security-and-experience, feature/attendance-time-23-30-and-motion, feature/payroll-peopleops-31-45, feature/performance-growth-36-38, main]
   pull_request:
     branches: [main, feature/hrms-mvp, feature/employee-core-1-10, feature/leave-management-11-22, feature/projects-redesign]
 jobs:
@@ -46,6 +46,18 @@ jobs:
           assert '/policies/records' in paths
           assert '/core/employees/{employee_id}/deactivate' in paths
           assert '/employees/generate-code' in paths
+          assert '/people/onboarding' in paths
+          assert '/security/mfa/setup' in paths
+          assert '/people/analytics' in paths
+          assert '/people/announcements' in paths
+          assert '/payroll/runs' in paths
+          assert '/payroll/my-payslips' in paths
+          assert '/performance/goals' in paths
+          assert '/performance/reviews' in paths
+          assert '/performance/plans' in paths
+          assert '/time/shifts' in paths
+          assert '/time/requests' in paths
+          assert '/time/timesheets' in paths
           print('Validated',len(paths),'API routes')
           PY
       - name: Employee Core integration smoke test
@@ -56,7 +68,7 @@ jobs:
           ADMIN_PASSWORD: test-admin-password-12345
           CORS_ORIGINS: http://localhost:3000
           UPLOAD_DIR: /tmp/hrms-ci-uploads
-        run: PYTHONPATH=backend pytest -q backend/tests/test_core.py backend/tests/test_leave.py backend/tests/test_projects.py backend/tests/test_hrux.py
+        run: PYTHONPATH=backend pytest -q backend/tests/test_core.py backend/tests/test_leave.py backend/tests/test_projects.py backend/tests/test_hrux.py backend/tests/test_role_security.py backend/tests/test_time_tracking.py backend/tests/test_pay_people.py backend/tests/test_mfa.py backend/tests/test_performance.py
   frontend:
     runs-on: ubuntu-latest
     defaults:

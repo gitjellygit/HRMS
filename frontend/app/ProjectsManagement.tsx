@@ -72,10 +72,14 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
  async function save(event:React.FormEvent){
   event.preventDefault();
   const found=validate(draft);
-  if(number&&!/^JG-P-[0-9]{4,9}$/i.test(number.trim())){setError("Project number must follow JG-P-0001 format.");return}
+  const focusInvalid=(id?:string)=>window.requestAnimationFrame(()=>{
+   const element=id?window.document.getElementById(id):window.document.querySelector<HTMLElement>(".project-page [aria-invalid='true']");
+   element?.scrollIntoView({block:"center",behavior:"smooth"});element?.focus();
+  });
+  if(number&&!/^JG-P-[0-9]{4,9}$/i.test(number.trim())){setError("Project number must follow JG-P-0001 format.");focusInvalid("proj-number");return}
   if(overrideBonus&&draft.bonus_amount_inr==="")found.bonus_amount_inr="Enter a bonus or disable the override.";
   setErrors(found);setError("");
-  if(Object.keys(found).length){setError("Please fix the highlighted fields.");return}
+  if(Object.keys(found).length){setError("Please fix the highlighted fields.");focusInvalid(Object.keys(found)[0]==="sourced_by_id"?"proj-sourced":"proj-"+Object.keys(found)[0]);return}
   setBusy(true);
   try{
    const res=await fetch(api+"/project-management/projects",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({...draft,name:draft.name.trim(),client:draft.client.trim(),rate:Number(draft.rate),project_number:number.trim(),sourced_by_id:Number(draft.sourced_by_id),bonus_amount_inr:overrideBonus?Number(draft.bonus_amount_inr):null})});
@@ -137,7 +141,7 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
    <div className="employee-editor-top"><div><button className="employee-back" onClick={()=>setOpen(false)}><ArrowLeft size={16}/> Project directory</button><h2>Create a project</h2><p>Complete the client and engagement details. Fields marked * are required.</p></div><button className="employee-icon-button" onClick={()=>setOpen(false)} aria-label="Close"><X size={18}/></button></div>
    <form onSubmit={save} noValidate>
     <div className="employee-group"><div className="employee-group-head"><BriefcaseBusiness size={18}/><div><h3>Project information</h3><p>Identify the project and client</p></div></div><div className="employee-form-grid">
-      <div className="employee-field"><label>Project number</label><div className="employee-code-row"><input aria-label="Project number (editable)" value={number} placeholder="JG-P-0001" onChange={e=>setNumber(e.target.value.toUpperCase())}/><button type="button" disabled={numberBusy} onClick={refreshNumber}><RefreshCw size={14}/> {numberBusy?"Generating…":"Generate"}</button></div><span className="field-help">Click Generate to advance to the next series number, or override it manually. Duplicates are rejected.</span></div>
+      <div className="employee-field"><label>Project number</label><div className="employee-code-row"><input id="proj-number" aria-label="Project number (editable)" value={number} placeholder="JG-P-0001" onChange={e=>setNumber(e.target.value.toUpperCase())}/><button type="button" disabled={numberBusy} onClick={refreshNumber}><RefreshCw size={14}/> {numberBusy?"Generating…":"Generate"}</button></div><span className="field-help">Click Generate to advance to the next series number, or override it manually. Duplicates are rejected.</span></div>
       {field("name","Project name",{required:true,placeholder:"e.g. Java Modernization"})}
       {field("client","Client name",{required:true,placeholder:"e.g. Acme Corporation"})}
       {field("candidate_name","Candidate name",{placeholder:"e.g. Employee or consultant name"})}

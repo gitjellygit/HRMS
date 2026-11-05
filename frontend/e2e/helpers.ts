@@ -12,8 +12,7 @@ export function users(): Persona[] {
 }
 export async function login(page: Page, user: Persona) {
   await page.goto('/');
-  // Cross-role workflows can navigate while a previous logout request is still
-  // settling. Always ensure the prior session has ended before signing in.
+  // Preserve the post-logout login guard from main when switching QA personas.
   const email=page.locator('input[name="email"]');
   if(!(await email.isVisible())){
     const signOut=page.locator('.sidebar nav').getByRole('button',{name:'Sign out'});
@@ -25,16 +24,16 @@ export async function login(page: Page, user: Persona) {
   await page.locator('input[name="password"]').fill(TEST_PASSWORD);
   await page.getByRole('button', { name: /sign in/i }).click();
   await expect(page.locator('.sidebar .brand')).toBeVisible();
-  await expect(page.locator('.top .user')).toContainText(user.name);
+  await expect(page.locator('.hrms-user-meta')).toContainText(user.name);
 }
 export async function navigate(page: Page, label: string) {
   await page.locator('.sidebar nav').getByRole('button', { name: label, exact: true }).click();
   await expect(page.locator('.content h1.title')).toHaveText(label);
 }
 export const NAV = [
-  'Overview', 'Employees', 'Attendance', 'Leave requests', 'Projects',
+  'Overview', 'Employees', 'Attendance', 'Time & shifts', 'Leave requests', 'Projects',
   'Bonuses', 'Appraisals', 'HR overview', 'Policies', 'Organization',
-  'Org chart', 'My profile', 'Profile approvals', 'Bulk data & expiries',
+  'Org chart', 'My profile', 'Profile requests', 'Bulk data & expiries',
 ] as const;
 export function permitted(role: string): Set<string> {
   const hiddenHR = ['HR overview', 'Policies', 'Organization', 'Bulk data & expiries'];
@@ -42,6 +41,6 @@ export function permitted(role: string): Set<string> {
   const all = new Set<string>(NAV);
   if (!['super_admin', 'admin', 'hr'].includes(role)) hiddenHR.forEach(x => all.delete(x));
   if (!['super_admin', 'admin', 'hr', 'accountant'].includes(role)) hiddenEmployee.forEach(x => all.delete(x));
-  if (!['super_admin', 'admin', 'hr', 'manager', 'employee'].includes(role)) all.delete('Profile approvals');
+  if (!['super_admin', 'admin', 'hr'].includes(role)) all.delete('Profile requests');
   return all;
 }
