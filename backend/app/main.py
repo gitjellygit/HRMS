@@ -922,3 +922,6 @@ app.include_router(people_ops_extensions_router)
 
 from .project_finance import router as project_finance_router  # noqa: E402
 app.include_router(project_finance_router)
+
+from .governance import router as governance_router  # noqa: E402
+app.include_router(governance_router)
