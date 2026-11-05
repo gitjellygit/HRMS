@@ -119,6 +119,6 @@ def complete(task_id:int,data:CompleteIn,user:Employee=Depends(current_user),db:
         raise HTTPException(403,"This exit task is not assigned to you")
     if row.status=="completed":raise HTTPException(409,"Task has already been completed")
     row.status="completed";row.completion_note=data.note.strip();row.completed_by=user.id
-    audit(db,user,"exit",row.exit_id,"task_completed: "+row.title)
+    audit(db,user,"exit",row.exit_id,"task_completed",row.title)
     db.commit()
     return {"id":row.id,"status":"completed"}
