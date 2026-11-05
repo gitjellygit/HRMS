@@ -69,7 +69,7 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
      <div className="policy-summary"><span>Milestone</span><strong>{policy?.milestone_days??30} completed calendar days</strong><span>Bonus creation</span><strong>Planned · pending approval</strong></div>
      <div className="policy-actions"><button className="employee-primary" disabled={saving||!policy}>{saving?"Saving…":"Save policy"}</button></div>
     </form>
-   </div>
+   </div>}
    <section className="policy-records">
     <div className="employee-title-row"><div><h3>Company policy register</h3><p>Publish and maintain HR policy documents and effective dates.</p></div>{["super_admin","admin","hr"].includes(user.role)&&<button type="button" className="employee-primary" onClick={()=>setAdding(v=>!v)}><Plus size={16}/> {adding?"Close":"Add policy"}</button>}</div>
     {adding&&<form className="policy-record-form" onSubmit={createRecord}>
@@ -79,6 +79,12 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
       <label className="employee-field">Effective date<input type="date" required value={effectiveDate} onChange={e=>setEffectiveDate(e.target.value)}/></label>
      </div>
      <label className="employee-field">Policy details<textarea rows={5} minLength={20} maxLength={10000} value={policyDescription} required placeholder="Write the policy and its conditions…" onChange={e=>setPolicyDescription(e.target.value)}/></label>
+     <fieldset className="policy-audience"><legend>Who can view this policy?</legend>
+      <label><input type="checkbox" checked={audience.length===0} onChange={()=>setAudience([])}/> All employees</label>
+      <div className="policy-audience-list">{staff.filter(p=>p.status!=="inactive").map(p=><label key={p.id}>
+       <input type="checkbox" checked={audience.includes(p.id)} onChange={e=>setAudience(old=>e.target.checked?[...old,p.id]:old.filter(id=>id!==p.id))}/>{p.name}</label>)}</div>
+      <small>Select one or more employees to restrict visibility. Otherwise, everyone can view it.</small>
+     </fieldset>
      <div className="employee-form-footer"><button type="button" className="employee-cancel" onClick={()=>setAdding(false)}>Cancel</button><button className="employee-primary" disabled={policyBusy}>{policyBusy?"Creating…":"Create policy"}</button></div>
     </form>}
     <div className="policy-record-list">{records.length?records.map(r=><details key={r.id} className="policy-record"><summary><strong>{r.title}</strong><span>{r.category} · Effective {r.effective_date}</span></summary><p>{r.description}</p>
