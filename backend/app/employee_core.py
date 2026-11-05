@@ -144,6 +144,15 @@ class MasterIn(BaseModel):
     aadhaar: str = Field(default="", max_length=12)
     uan: str = Field(default="", max_length=12)
 
+    @field_validator("emergency_phone")
+    @classmethod
+    def validate_emergency_phone(cls,value:str)->str:
+        value=value.strip()
+        digits=re.sub(r"[\\s()\\-]","",value)
+        if value and (not re.fullmatch(r"\\+?[0-9]{7,15}",digits)):
+            raise ValueError("Emergency contact number must contain 7–15 digits and may start with +.")
+        return value
+
     @field_validator("pan")
     @classmethod
     def pan_format(cls, value: str) -> str:
