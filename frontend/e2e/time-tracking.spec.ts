@@ -20,8 +20,8 @@ test('employee can request WFH and manager can approve it',async({page})=>{
  const reason='Remote sprint planning QA '+Date.now();
  await page.locator('[name=reason]').fill(reason);
  await page.getByRole('button',{name:'Send for manager approval'}).click();
- await expect(page.locator('.motion-feedback')).toContainText('Request sent');
- await expect(page.locator('.time-list')).toContainText(reason);
+ await expect(page.locator('.motion-feedback').last()).toContainText('Request sent');
+ await expect(page.locator('.time-list').first()).toContainText(reason);
  await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
  await login(page,persona('manager'));
  await navigate(page,'Time & shifts');
@@ -29,7 +29,7 @@ test('employee can request WFH and manager can approve it',async({page})=>{
  const row=page.locator('.time-list>div').filter({hasText:reason});
  await expect(row).toBeVisible();
  await row.getByRole('button',{name:'Approve'}).click();
- await expect(page.locator('.motion-feedback')).toContainText('approved');
+ await expect(page.locator('.motion-feedback').last()).toContainText('approved');
 });
 
 test('HR creates a shift and assigns a roster',async({page})=>{
@@ -39,12 +39,12 @@ test('HR creates a shift and assigns a roster',async({page})=>{
  const unique='QA shift '+Date.now();
  await page.locator('.time-form [name=name]').fill(unique);
  await page.getByRole('button',{name:'Create shift'}).click();
- await expect(page.locator('.time-list')).toContainText(unique);
+ await expect(page.locator('.time-list').first()).toContainText(unique);
  const id=String((await (await page.request.get(API_URL+'/time/shifts')).json()).find((s:{name:string})=>s.name===unique).id);
  await page.locator('[name=employee_id]').selectOption(String(persona('developer_a').id));
  await page.locator('[name=shift_id]').selectOption(id);
  await page.getByRole('button',{name:'Assign shift'}).click();
- await expect(page.locator('.motion-feedback')).toContainText('Roster saved');
+ await expect(page.locator('.motion-feedback').last()).toContainText('Roster saved');
 });
 
 test('employee can save and submit a timesheet',async({page})=>{
@@ -55,7 +55,7 @@ test('employee can save and submit a timesheet',async({page})=>{
  await page.locator('[name=task]').fill(task);
  await page.locator('[name=hours]').fill('2.5');
  await page.getByRole('button',{name:'Save hours'}).click();
- await expect(page.locator('.time-list')).toContainText(task);
+ await expect(page.locator('.time-list').first()).toContainText(task);
  const row=page.locator('.time-list>div').filter({hasText:task});
  await row.getByRole('button',{name:'Submit'}).click();
  await expect(row).toContainText('submitted');
