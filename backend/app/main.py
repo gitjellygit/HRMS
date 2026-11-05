@@ -916,3 +916,6 @@ app.include_router(performance_growth_router)
 
 from .performance_extensions import router as performance_extensions_router  # noqa: E402
 app.include_router(performance_extensions_router)
+
+from .people_ops_extensions import router as people_ops_extensions_router  # noqa: E402
+app.include_router(people_ops_extensions_router)
