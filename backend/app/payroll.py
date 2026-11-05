@@ -340,7 +340,7 @@ def pdf_payslip(line_id:int,user:Employee=Depends(current_user),db:Session=Depen
     labels=[("Gross monthly earnings",row.gross),("Approved loss of pay",row.lop_amount),
         ("Employee PF",row.pf),("Employee ESI",row.esi),("Professional tax",row.pt),
         ("TDS",row.tds),("Other deductions (including configured items)",row.other_deductions)]
-    labels.extend((("Additional "+("earning" if x.kind=="earning" else "deduction")+": "+x.title,x.amount) for x in components)
+    labels.extend((("Additional "+("earning" if x.kind=="earning" else "deduction")+": "+x.title,x.amount) for x in components))
     y=693
     for name,amount in labels:
         if y<180:
