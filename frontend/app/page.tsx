@@ -205,12 +205,7 @@ export default function Home() {
       <button type="button" onClick={()=>changeTheme(theme==="light"?"dark":"light")}>{theme==="light"?"Switch to dark mode":"Switch to light mode"}</button>
       <label className="hrms-photo-change">Change profile photo<input type="file" accept="image/png,image/jpeg" onChange={e=>{void uploadAvatar(e.target.files?.[0]);setProfileMenu(false)}}/></label>
     </div>}
-    <div hidden>
-    <label className="hrms-avatar-button" title="Upload profile photo" aria-label="Upload profile photo">
-      {hasPhoto?<img src={API+"/me/photo?v="+avatarVersion} alt={user.name+" profile"}/>:<span>{user.name.trim().split(/\\s+/).map(x=>x[0]).slice(0,2).join("").toUpperCase()}</span>}
-      <input type="file" accept="image/png,image/jpeg" onChange={e=>void uploadAvatar(e.target.files?.[0])}/>
-    </label>
-    <div className="hrms-user-meta"><strong>{user.name}</strong><small>{user.role}</small></div></div>
+    <div className="hrms-user-meta"><strong>{user.name}</strong><small>{user.role}</small></div>
   </div></div></div>{error&&<div className="error" role="alert">{error}</div>}{success&&<div className="app-global-success" role="status">{success}<button type="button" onClick={()=>setSuccess("")} aria-label="Dismiss">×</button></div>}
     {section==="notifications"?<NotificationCenter api={API} viewAll onNavigate={setSection} onBack={()=>setSection("dashboard")}/> :section==="governance"?<GovernancePanel api={API} user={user}/> :section==="finance"?<FinanceWorkspace api={API} user={user}/> :section==="performance"?<PerformanceWorkspace api={API} user={user}/> :section==="payroll"?<PayrollWorkspace api={API} user={user}/> :section==="people"?<PeopleOpsWorkspace api={API} user={user}/> :section==="time"?<TimeWorkspace api={API} user={user}/> :section==="policies"?<CompanyPolicies api={API} user={user}/>:section==="projects"?<ProjectsManagement api={API} canCreate={Boolean(canHR)}/>:section==="leaves"?<LeaveWorkspace api={API} user={user}/>:section==="hrdesk"?<HRDesk api={API}/>:section==="employees"?<EmployeeManagement api={API} canCreate={Boolean(canHR)} currentRole={user.role} onOpenEmployee={id=>{setSelectedEmployeeId(id);setSection("employee-record")}}/>:
     ["employee-record","organization","orgchart","profile","approvals","bulk"].includes(section)?
