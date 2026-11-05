@@ -400,6 +400,10 @@ def review_exit(exit_id:int,body:ExitUpdate,user:Employee=Depends(current_user),
     if not row:raise HTTPException(404)
     if row.status in ("settled","rejected"):raise HTTPException(409)
     if body.status=="settled":
+        from .people_ops_extensions import ExitClearance
+        approved=set(db.scalars(select(ExitClearance.kind).where(ExitClearance.exit_id==exit_id)).all())
+        if not {"assets","it","finance"}.issubset(approved):
+            raise HTTPException(422,"Documented asset, IT and Finance clearance approvals are required before settlement.")
         if not all((body.clearance_assets,body.clearance_it,body.clearance_finance)):
             raise HTTPException(422,"Asset, IT and Finance clearance are all required.")
         if body.final_settlement_inr is None:
