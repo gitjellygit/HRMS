@@ -121,7 +121,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
   </div>}
   {tab==="announcements"&&<div className="ops-columns">
    <section className="employee-surface"><h3><Send size={17}/> Announcements and policies</h3>
-    {hr&&<div className="jellygit-template-download"><BrandIllustration asset="welcome-card-template" alt="Welcome to the Team card design" className="jellygit-template-art"/><div><strong>New-joiner announcement design</strong><p className="muted">Download the editable-design reference and personalize the name, role, department and date in Canva before publishing.</p><a href="/assets/welcome-card-template.webp" download="jellygit-welcome-template.webp">Download card template</a></div></div>}
+    {hr&&<div className="jellygit-template-download"><BrandIllustration asset="welcome-card-template" alt="Welcome to the Team card design" className="jellygit-template-art"/><div><strong>New-joiner announcement design</strong><p className="muted">This exported card is a visual reference. Edit the original Canva design to replace the sample text before publishing.</p><a href="/assets/welcome-card-template.webp" download="jellygit-welcome-template.webp">Download card template</a></div></div>}
     {hr&&<form className="ops-form" onSubmit={e=>{e.preventDefault();void submit("/announcements",{
       title:draft.title,body:draft.body,requires_ack:!!draft.requires_ack},"Announcement published.")}}>
       {input("title","Title",true)}
