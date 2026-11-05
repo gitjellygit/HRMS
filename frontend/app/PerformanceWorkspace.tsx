@@ -1,4 +1,5 @@
 "use client";
+import {explainError} from "./formErrors";
 import {useEffect,useState} from "react";
 import GrowthExtensions from "./GrowthExtensions";
 
@@ -30,7 +31,7 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
    body:body===undefined?undefined:JSON.stringify(body)
   });
   const data=await response.json().catch(()=>null);
-  if(!response.ok)throw Error(typeof data?.detail==="string"?data.detail:"Unable to save. Please review the details.");
+  if(!response.ok)throw Error(explainError(data,response.status));
   return data;
  }
  async function refresh(){
