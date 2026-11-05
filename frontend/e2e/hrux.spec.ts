@@ -48,6 +48,7 @@ test('HR can add company policy and view it in the register',async({page})=>{
       approve:true,reason:'Approved for controlled QA onboarding policy.'}})).status()).toBe(200);
   }finally{await admin.dispose()}
   await page.reload();
+  await navigate(page,'Policies');
   await expect(page.locator('.policy-record-list')).toContainText(title);
 });
 
