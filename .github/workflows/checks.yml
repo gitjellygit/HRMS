@@ -70,7 +70,7 @@ jobs:
           ADMIN_PASSWORD: test-admin-password-12345
           CORS_ORIGINS: http://localhost:3000
           UPLOAD_DIR: /tmp/hrms-ci-uploads
-        run: PYTHONPATH=backend pytest -q backend/tests/test_core.py backend/tests/test_leave.py backend/tests/test_projects.py backend/tests/test_hrux.py backend/tests/test_role_security.py backend/tests/test_time_tracking.py backend/tests/test_pay_people.py backend/tests/test_mfa.py backend/tests/test_performance.py backend/tests/test_finance_governance.py backend/tests/test_finance_pricing_salary_components.py backend/tests/test_notification_center.py backend/tests/test_billing_pilot_ux.py
+        run: PYTHONPATH=backend pytest -q backend/tests/test_core.py backend/tests/test_leave.py backend/tests/test_projects.py backend/tests/test_hrux.py backend/tests/test_role_security.py backend/tests/test_time_tracking.py backend/tests/test_pay_people.py backend/tests/test_mfa.py backend/tests/test_performance.py backend/tests/test_finance_governance.py backend/tests/test_finance_pricing_salary_components.py backend/tests/test_notification_center.py backend/tests/test_billing_pilot_ux.py backend/tests/test_pilot_policy_exit.py
   frontend:
     runs-on: ubuntu-latest
     defaults:
