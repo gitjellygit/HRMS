@@ -18,6 +18,8 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
  const [expenses,setExpenses]=useState<Row[]>([]);
  const [claims,setClaims]=useState<Row[]>([]);
  const [chosen,setChosen]=useState("");
+ const [components,setComponents]=useState<Row[]>([]);
+ const [component,setComponent]=useState({code:"",title:"",kind:"earning",amount:"",effective_from:today(),active:true});
  const [salary,setSalary]=useState<Row>({basic:"",hra:"",allowances:"",other_deductions:"",effective_from:today()});
  const [statutory,setStatutory]=useState<Row>({pf_employee_monthly:"",esi_employee_monthly:"",professional_tax_monthly:"",
   tds_monthly:"",gratuity_employer_provision:"",effective_from:today()});
@@ -51,6 +53,10 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
   setStatutory(t?{...t}:{pf_employee_monthly:"",esi_employee_monthly:"",professional_tax_monthly:"",tds_monthly:"",
     gratuity_employer_provision:"",effective_from:today()});
  },[chosen,structures,rules]);
+ useEffect(()=>{
+   if(!chosen){setComponents([]);return}
+   void call("/components?employee_id="+chosen).then(setComponents).catch(()=>setComponents([]));
+ },[chosen,api]);
  function clear(){setError("");setMessage("");setFieldError("")}
  async function submit(fn:()=>Promise<unknown>,success:string){
   clear();setBusy(true);
@@ -91,6 +97,25 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
       onChange={e=>setStatutory(v=>({...v,effective_from:e.target.value}))}/></label>
      <button className="employee-primary" disabled={!chosen||busy}>Save statutory amounts</button>
     </form></section>
+   {hr&&<section className="employee-surface"><h3>Additional earnings and deductions</h3>
+    <p className="field-help">Add custom monthly salary components. They appear in payroll calculations, published payslips and new offers using the salary breakdown placeholder.</p>
+    <form className="ops-form" onSubmit={e=>{e.preventDefault();if(!chosen){setError("Select an employee first.");return}
+      void submit(async()=>{await call("/components","PUT",{...component,employee_id:Number(chosen),amount:Number(component.amount)});
+        setComponents(await call("/components?employee_id="+chosen));
+      },"Salary component saved.")}}>
+     <label>Unique code<input placeholder="shift_bonus" pattern="[a-z][a-z0-9_]{1,34}" required value={component.code} onChange={e=>setComponent(v=>({...v,code:e.target.value}))}/></label>
+     <label>Display label<input placeholder="Shift allowance" minLength={2} required value={component.title} onChange={e=>setComponent(v=>({...v,title:e.target.value}))}/></label>
+     <label>Item type<select value={component.kind} onChange={e=>setComponent(v=>({...v,kind:e.target.value}))}><option value="earning">Earning / allowance / bonus</option><option value="deduction">Deduction / tax adjustment</option></select></label>
+     <label>Monthly amount (INR)<input type="number" min="0" step=".01" required value={component.amount} onChange={e=>setComponent(v=>({...v,amount:e.target.value}))}/></label>
+     <label>Effective date<input type="date" required value={component.effective_from} onChange={e=>setComponent(v=>({...v,effective_from:e.target.value}))}/></label>
+     <label className="ops-check"><input type="checkbox" checked={component.active} onChange={e=>setComponent(v=>({...v,active:e.target.checked}))}/>Active item</label>
+     <button className="employee-primary" disabled={!chosen||busy}>Save salary item</button>
+    </form>
+    <div className="ops-table">{components.map(c=><div className="ops-row" key={c.code}>
+      <strong>{c.title}</strong><span>{c.code} · {c.kind} · {cash(c.amount)} · {c.active?"active":"inactive"}</span>
+      <button type="button" className="employee-cancel" onClick={()=>setComponent({code:c.code,title:c.title,kind:c.kind,amount:String(c.amount),effective_from:c.effective_from,active:c.active})}>Edit</button>
+    </div>)}{!components.length&&<p className="muted">No additional salary items configured.</p>}</div>
+   </section>}
   </div>}
   {tab==="runs"&&finance&&<section className="employee-surface">
    <h3>Monthly payroll processing</h3><p className="field-help">Draft → separate HR approver → publish payslips. No funds or statutory returns are transferred.</p>
