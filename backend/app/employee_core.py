@@ -148,8 +148,8 @@ class MasterIn(BaseModel):
     @classmethod
     def validate_emergency_phone(cls,value:str)->str:
         value=value.strip()
-        digits=re.sub(r"[\\s()\\-]","",value)
-        if value and (not re.fullmatch(r"\\+?[0-9]{7,15}",digits)):
+        digits=re.sub(r"[\s()-]","",value)
+        if value and (not re.fullmatch(r"\+?[0-9]{7,15}",digits)):
             raise ValueError("Emergency contact number must contain 7–15 digits and may start with +.")
         return value
 
