@@ -58,6 +58,22 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
    if(!isHR)setRecords(previous=>[data,...previous]);setAdding(false);setPolicyTitle("");setPolicyDescription("");setAudience([]);setSaved(isHR?"Policy submitted for admin approval (#"+data.id+").":"Company policy created successfully.");
   }catch(err){setError((err as Error).message)}finally{setPolicyBusy(false)}
  }
+ async function uploadAttachment(policyId:number){
+  if(!document){setError("Policy attachment: choose a PDF file first.");return}
+  if(!document.name.toLowerCase().endsWith(".pdf")||document.type!=="application/pdf"){setError("Policy attachment: choose a PDF document.");return}
+  if(document.size>5*1024*1024){setError("Policy attachment: file must be 5 MB or smaller.");return}
+  setUploading(policyId);setError("");setSaved("");
+  try{
+   const data=new FormData();data.set("document",document);
+   const response=await fetch(api+"/policies/records/"+policyId+"/attachments",{method:"POST",credentials:"include",body:data});
+   const json=await response.json().catch(()=>null);
+   if(!response.ok)throw Error(explainError(json,response.status));
+   const list=await fetch(api+"/policies/records",{credentials:"include"});
+   if(list.ok)setRecords(await list.json());
+   setSaved("Policy PDF attached successfully.");setDocument(null);
+  }catch(e){setError((e as Error).message)}
+  finally{setUploading(null)}
+ }
  return <div className="policy-page">
   <section className="employee-surface"><div className="core-head"><Settings2 size={21}/><div><h2>Company policies</h2><p>Centralized HR settings used across onboarding and project workflows.</p></div></div>
    {error&&<div className="error" role="alert">{error}</div>}
