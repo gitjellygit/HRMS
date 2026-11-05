@@ -203,6 +203,19 @@ def test_exit_clearance_and_notification_outbox():
         rejected=c.post(f"/people/exits/{xid}/review",headers=ORIGIN,json={
           "status":"settled","final_settlement_inr":"15000.00","clearance_assets":False})
         assert rejected.status_code==422
+        approved=c.post(f"/people/exits/{xid}/review",headers=ORIGIN,json={"status":"approved"})
+        assert approved.status_code==200,approved.text
+        allocated=c.post("/people/assets",headers=ORIGIN,json={
+            "employee_id":one,"name":"QA allocated laptop","serial_number":"QA-LAP-"+str(xid)})
+        assert allocated.status_code==201,allocated.text
+        a_id=allocated.json()["id"]
+        assert c.post(f"/people/exits/{xid}/clearances",headers=ORIGIN,json={
+            "kind":"assets","note":"Returned all assigned assets."}).status_code==409
+        assert c.post(f"/people/assets/{a_id}/return",headers=ORIGIN).status_code==200
+        for kind in ("assets","it","finance"):
+            cleared=c.post(f"/people/exits/{xid}/clearances",headers=ORIGIN,json={
+                "kind":kind,"note":"QA clearance verified for "+kind})
+            assert cleared.status_code==201,cleared.text
         settled=c.post(f"/people/exits/{xid}/review",headers=ORIGIN,json={
           "status":"settled","final_settlement_inr":"15000.00",
           "clearance_assets":True,"clearance_it":True,"clearance_finance":True})
