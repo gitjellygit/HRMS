@@ -241,7 +241,7 @@ def create_offer(body:OfferIn,user:Employee=Depends(current_user),db:Session=Dep
                           f"Other deductions: INR {base.other_deductions}/month"])
     for item in effective_components(db,emp.id,body.joining_date):
         breakdown.append(f"{item.title} ({item.kind}): INR {item.amount}/month")
-    content=content.replace("{{salary_breakdown}}","\\n".join(breakdown) if breakdown else "Salary breakdown pending HR review")
+    content=content.replace("{{salary_breakdown}}","\n".join(breakdown) if breakdown else "Salary breakdown pending HR review")
     for key,value in (("employee_name",emp.name),("job_title",body.title),
             ("annual_ctc",str(body.annual_ctc)),("joining_date",body.joining_date.isoformat())):
         content=content.replace("{{"+key+"}}",value)
