@@ -35,7 +35,7 @@ test("accountant can see sourced placements, configure recipient and prepare inv
    billing_address:"QA example address",billing_day:15,payment_terms_days:14}});
  expect(contacts.status()).toBe(200);
  await page.getByRole("tab",{name:"Invoice ledger"}).click();
- await page.getByLabel("Project").selectOption(String(id));
+ await page.getByRole("combobox",{name:"Project",exact:true}).selectOption(String(id));
  await page.getByLabel("Project start date").fill(daysAgo(3));
  await page.getByLabel("Project end date").fill(today());
  await page.getByLabel("Billable units (verified hours, days or milestones)").fill("10");
