@@ -228,6 +228,20 @@ def create_offer(body:OfferIn,user:Employee=Depends(current_user),db:Session=Dep
     emp=db.get(Employee,body.employee_id);templ=db.get(OfferTemplate,body.template_id)
     if not emp or not templ or not templ.active:raise HTTPException(422,"Choose a valid employee and active offer template.")
     content=templ.content
+    # Offer templates may include {{salary_breakdown}} to show the reviewed items
+    # that exist when the offer is generated. Sent offers remain immutable snapshots.
+    from .payroll_components import effective_components
+    from .payroll import SalaryStructure
+    base=db.get(SalaryStructure,emp.id)
+    breakdown=[]
+    if base and base.effective_from<=body.joining_date:
+        breakdown.extend([f"Basic salary: INR {base.basic}/month",
+                          f"HRA: INR {base.hra}/month",
+                          f"Other allowances: INR {base.allowances}/month",
+                          f"Other deductions: INR {base.other_deductions}/month"])
+    for item in effective_components(db,emp.id,body.joining_date):
+        breakdown.append(f"{item.title} ({item.kind}): INR {item.amount}/month")
+    content=content.replace("{{salary_breakdown}}","\\n".join(breakdown) if breakdown else "Salary breakdown pending HR review")
     for key,value in (("employee_name",emp.name),("job_title",body.title),
             ("annual_ctc",str(body.annual_ctc)),("joining_date",body.joining_date.isoformat())):
         content=content.replace("{{"+key+"}}",value)
