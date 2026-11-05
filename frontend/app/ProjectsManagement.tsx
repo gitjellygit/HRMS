@@ -1,5 +1,5 @@
-import BrandIllustration from "./BrandIllustration";
 "use client";
+import BrandIllustration from "./BrandIllustration";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, BriefcaseBusiness, BadgeCheck, CircleDollarSign, FileText, Plus, RefreshCw, Search, Users, X } from "lucide-react";
 
