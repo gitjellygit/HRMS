@@ -37,7 +37,7 @@ export default function GrowthExtensions({api,user}:{api:string;user:{id:number;
  },[api,user.id]);
  async function save(fn:()=>Promise<unknown>,messageText:string){
   setError("");setMessage("");
-  try{await fn();await refresh();setTitle("");setDescription("");setMessage(messageText)}
+  try{await fn();await refresh();setTitle("");setDescription("");if(messageText)setMessage(messageText)}
   catch(e){setError((e as Error).message)}
  }
  const selected=manage?Number(employee):user.id;
