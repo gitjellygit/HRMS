@@ -1,13 +1,16 @@
 """Centralized HR policy defaults for project sourcing incentives."""
 from decimal import Decimal
+import secrets
+import json
 from typing import Literal
 from datetime import datetime, timezone, date
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
-from sqlalchemy import Numeric, String, DateTime, Date, Text, Integer, select
+from sqlalchemy import Numeric, String, DateTime, Date, Text, Integer, ForeignKey, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from .main import Base, Employee, current_user, db_session
+from .main import Base, Employee, current_user, db_session, UPLOAD_DIR
+from fastapi.responses import FileResponse
 
 router=APIRouter(prefix="/policies",tags=["Company Policies"])
 
@@ -59,7 +62,16 @@ class CompanyPolicyRecord(Base):
     effective_date:Mapped[date]=mapped_column(Date)
     active:Mapped[bool]=mapped_column(default=True)
     created_by:Mapped[int]=mapped_column(Integer)
+    audience_ids:Mapped[str]=mapped_column(Text,default="[]",server_default="[]")
     created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=lambda:datetime.now(timezone.utc))
+
+class PolicyAttachment(Base):
+    __tablename__="company_policy_attachments"
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    policy_id:Mapped[int]=mapped_column(ForeignKey("company_policy_records.id"),index=True)
+    filename:Mapped[str]=mapped_column(String(180))
+    storage_key:Mapped[str]=mapped_column(String(110))
+    uploaded_by:Mapped[int]=mapped_column(ForeignKey("employees.id"))
 
 class PolicyRecordIn(BaseModel):
     title:str=Field(min_length=3,max_length=150)
@@ -67,6 +79,7 @@ class PolicyRecordIn(BaseModel):
     description:str=Field(min_length=20,max_length=10000)
     effective_date:date
     active:bool=True
+    audience_ids:list[int]=Field(default_factory=list,max_length=1000)
 
 @router.get("/records")
 def list_company_policies(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
