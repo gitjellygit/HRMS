@@ -251,3 +251,57 @@ def test_invoice_rejects_future_date_and_zero_quantity():
            **base,"issue_date":(today+timedelta(days=1)).isoformat()}).status_code==422
         assert c.post("/finance/invoices",headers=ORIGIN,json={
            **base,"period_end":(today+timedelta(days=1)).isoformat()}).status_code==422
+
+def test_scheduled_hourly_project_requires_verified_units_before_draft():
+    with TestClient(app) as c:
+        admin,hr,one,other=seed(c)
+        p=setup_project(c,one,days_back=12)
+        billing(c,p,recipient="vendor",day=today.day if today.day<=28 else 15,
+                end_date=today if today.day>28 else None)
+        scheduled=c.post("/finance/schedules/run",headers=ORIGIN,json={
+            "as_of":today.isoformat(),"project_id":p})
+        assert scheduled.status_code==200,scheduled.text
+        work=scheduled.json()["tasks_created"]
+        assert len(work)==1 and scheduled.json()["created"]==[]
+        task_id=work[0]["id"]
+        # The scheduler must not silently charge calendar days as hours.
+        assert c.get("/finance/invoices?project_id="+str(p)).json()==[]
+        tasks=c.get("/finance/reviews")
+        assert tasks.status_code==200 and any(t["id"]==task_id for t in tasks.json())
+        switch(c,"payroll.person.qa@example.org")
+        assert c.get("/finance/reviews").status_code==403
+        assert c.post(f"/finance/reviews/{task_id}/invoice",headers=ORIGIN,json={
+            "quantity":40}).status_code==403
+        switch(c)
+        invalid=c.post(f"/finance/reviews/{task_id}/invoice",headers=ORIGIN,json={
+            "quantity":0})
+        assert invalid.status_code==422
+        converted=c.post(f"/finance/reviews/{task_id}/invoice",headers=ORIGIN,json={
+            "quantity":40,"tax_rate_pct":0})
+        assert converted.status_code==201,converted.text
+        assert Decimal(str(converted.json()["subtotal"]))==Decimal("5000.00")
+        assert converted.json()["source"]=="schedule_reviewed"
+        assert c.post(f"/finance/reviews/{task_id}/invoice",headers=ORIGIN,json={
+            "quantity":40}).status_code==409
+        again=c.post("/finance/schedules/run",headers=ORIGIN,json={
+            "as_of":today.isoformat(),"project_id":p})
+        assert again.status_code==200 and again.json()["tasks_created"]==[]
+
+def test_welcome_orientation_is_idempotent_and_employee_only_sees_own_steps():
+    with TestClient(app) as c:
+        admin,hr,one,other=seed(c)
+        r=c.post(f"/people/onboarding/orientation/{one}",headers=ORIGIN)
+        assert r.status_code==200 and r.json()["total_steps"]==7
+        second=c.post(f"/people/onboarding/orientation/{one}",headers=ORIGIN)
+        assert second.status_code==200 and second.json()["created"]==0
+        switch(c,"payroll.person.qa@example.org")
+        progress=c.get(f"/people/onboarding/orientation/{one}")
+        assert progress.status_code==200,progress.text
+        assert progress.json()["total"]==7 and progress.json()["completed"]==0
+        assert c.get(f"/people/onboarding/orientation/{other}").status_code==403
+        task=progress.json()["steps"][0]["id"]
+        done=c.post(f"/people/onboarding/{task}/complete",headers=ORIGIN)
+        assert done.status_code==200,done.text
+        newer=c.get(f"/people/onboarding/orientation/{one}").json()
+        assert newer["completed"]==1 and 14<=newer["progress_pct"]<=15
+        assert c.post(f"/people/onboarding/orientation/{other}",headers=ORIGIN).status_code==403
