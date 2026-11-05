@@ -8,7 +8,7 @@ test('employee overview loads without an insufficient-permissions banner',async(
  await login(page,person('developer_a'));
  await expect(page.locator('main.content')).toBeVisible();
  await expect(page.locator('main.content > .error')).toHaveCount(0);
- await expect(page.getByText('Recent attendance')).toBeVisible();
+ await expect(page.locator('details.overview-attendance-collapse > summary')).toContainText('Recent attendance');
  await expect(page.getByRole('button',{name:'Profile requests'})).toHaveCount(0);
 });
 

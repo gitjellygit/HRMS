@@ -17,9 +17,9 @@ test("notification bell shows announcements, supports read/archive and historica
  await expect(bell).toBeVisible();
  await bell.click();
  await expect(page.getByRole("dialog",{name:"Recent notifications"}).getByText(title)).toBeVisible();
- await page.getByRole("dialog",{name:"Recent notifications"}).getByRole("button",{name:title}).click();
+ await page.getByRole("dialog",{name:"Recent notifications"}).locator(".notification-item-title").filter({hasText:title}).click();
  await expect(page.getByRole("dialog",{name:"Recent notifications"})).toContainText("employee-pilot announcement");
- await page.getByRole("dialog",{name:"Recent notifications"}).getByRole("button",{name:"Archive "+title}).click();
+ await page.getByRole("dialog",{name:"Recent notifications"}).getByRole("button",{name:"Archive "+title,exact:true}).click();
  await expect(page.getByRole("dialog",{name:"Recent notifications"}).getByText(title)).toHaveCount(0);
  await page.getByRole("dialog",{name:"Recent notifications"}).getByRole("button",{name:"See all notifications"}).click();
  await expect(page.getByRole("heading",{name:"All notifications"})).toBeVisible();
