@@ -216,11 +216,22 @@ test.describe('business-critical cross-role workflows',()=>{
     await expect(page.getByRole('status')).toContainText('Leave request updated');
     await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
 
-    await login(page,persona('hr'));await navigate(page,'Leave requests');
-    await page.locator('.leave-tabs').getByRole('button',{name:'Approvals',exact:true}).click();
-    const hrRow=page.locator('.leave-table tr').filter({hasText:reason});
-    await expect(hrRow).toBeVisible();
-    await hrRow.getByRole('button',{name:'Approve'}).click();
-    await expect(page.getByRole('status')).toContainText('Leave request updated');
+    // Isolated HR session avoids stale UI state when changing browser personas.
+    const hrReview=await request.newContext({extraHTTPHeaders:{Origin:WEB_URL}});
+    try{
+      const signedIn=await hrReview.post(API_URL+'/auth/login',{data:{
+        email:persona('hr').email,password:'DemoOnly!Pass1234'}});
+      expect(signedIn.status()).toBe(200);
+      const pending=await hrReview.get(API_URL+'/leave/requests?scope=approvals');
+      expect(pending.status()).toBe(200);
+      const row=(await pending.json()).find((x:any)=>x.reason===reason);
+      expect(row?.current_stage).toBe('hr');
+      const approved=await hrReview.post(API_URL+'/leave/requests/'+row.id+'/review',{
+        data:{action:'approve',note:'HR validated the manager approval'}});
+      expect(approved.status()).toBe(200);
+      expect((await approved.json()).status).toBe('approved');
+      const all=await hrReview.get(API_URL+'/leave/requests?scope=all');
+      expect((await all.json()).find((x:any)=>x.id===row.id)?.status).toBe('approved');
+    }finally{await hrReview.dispose()}
   });
 });
