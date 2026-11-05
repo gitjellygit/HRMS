@@ -81,21 +81,65 @@ class PolicyRecordIn(BaseModel):
     active:bool=True
     audience_ids:list[int]=Field(default_factory=list,max_length=1000)
 
+
+def visible_policy(row:CompanyPolicyRecord,user:Employee)->bool:
+    if user.role in HR_ROLES:return True
+    if not row.active:return False
+    targets=json.loads(row.audience_ids or "[]")
+    return not targets or user.id in targets
+
+def record_json(db:Session,row:CompanyPolicyRecord):
+    attachments=db.scalars(select(PolicyAttachment).where(PolicyAttachment.policy_id==row.id)).all()
+    return {"id":row.id,"title":row.title,"category":row.category,
+            "description":row.description,"effective_date":row.effective_date,"active":row.active,
+            "audience_ids":json.loads(row.audience_ids or "[]"),
+            "attachments":[{"id":a.id,"name":a.filename} for a in attachments]}
+
 @router.get("/records")
 def list_company_policies(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
-    if user.role not in HR_ROLES:
-        raise HTTPException(403,"HR access required")
     rows=db.scalars(select(CompanyPolicyRecord).order_by(CompanyPolicyRecord.id.desc())).all()
-    return [{"id":r.id,"title":r.title,"category":r.category,"description":r.description,
-             "effective_date":r.effective_date,"active":r.active,"created_at":r.created_at} for r in rows]
+    return [record_json(db,r) for r in rows if visible_policy(r,user)]
 
 @router.post("/records",status_code=201)
 def create_company_policy(body:PolicyRecordIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     if user.role not in ("super_admin","admin"):
         raise HTTPException(403,"Admin approval required; HR must submit a governance request")
+    if body.audience_ids:
+        ids=set(db.scalars(select(Employee.id).where(
+            Employee.id.in_(body.audience_ids),Employee.status=="active")).all())
+        if ids!=set(body.audience_ids):raise HTTPException(422,"Select active employees for policy visibility")
     row=CompanyPolicyRecord(title=body.title.strip(),category=body.category,
                             description=body.description.strip(),effective_date=body.effective_date,
-                            active=body.active,created_by=user.id)
+                            active=body.active,audience_ids=json.dumps(body.audience_ids),created_by=user.id)
     db.add(row);db.commit();db.refresh(row)
-    return {"id":row.id,"title":row.title,"category":row.category,
-            "description":row.description,"effective_date":row.effective_date,"active":row.active}
+    return record_json(db,row)
+
+@router.post("/records/{policy_id}/attachments",status_code=201)
+async def upload_policy_document(policy_id:int,document:UploadFile=File(...),
+                                 user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    if user.role not in HR_ROLES:raise HTTPException(403,"Only HR may attach policy documents")
+    row=db.get(CompanyPolicyRecord,policy_id)
+    if not row:raise HTTPException(404,"Publish the policy before attaching a document")
+    payload=await document.read(5*1024*1024+1)
+    if len(payload)>5*1024*1024:raise HTTPException(413,"Policy document must be under 5 MB")
+    if not payload.startswith(b"%PDF-") or not (document.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(422,"Choose a valid PDF policy document")
+    UPLOAD_DIR.mkdir(parents=True,exist_ok=True,mode=0o700)
+    key="policy-"+secrets.token_hex(20)+".pdf"
+    with (UPLOAD_DIR/key).open("xb") as file:file.write(payload)
+    attachment=PolicyAttachment(policy_id=policy_id,filename=(document.filename or "policy.pdf")[:180],
+                                storage_key=key,uploaded_by=user.id)
+    db.add(attachment);db.commit();db.refresh(attachment)
+    return {"id":attachment.id,"name":attachment.filename}
+
+@router.get("/records/{policy_id}/attachments/{attachment_id}")
+def get_policy_document(policy_id:int,attachment_id:int,user:Employee=Depends(current_user),
+                        db:Session=Depends(db_session)):
+    row=db.get(CompanyPolicyRecord,policy_id)
+    if not row or not visible_policy(row,user):raise HTTPException(404,"Policy document not found")
+    attachment=db.get(PolicyAttachment,attachment_id)
+    if not attachment or attachment.policy_id!=policy_id:raise HTTPException(404,"Policy document not found")
+    path=UPLOAD_DIR/attachment.storage_key
+    if not path.is_file():raise HTTPException(404,"The document file is missing from storage")
+    return FileResponse(path,media_type="application/pdf",filename=attachment.filename,
+                        headers={"Cache-Control":"private, no-store"})
