@@ -2,7 +2,7 @@
 from datetime import date, timedelta
 from fastapi.testclient import TestClient
 from app.main import app
-from test_pay_people import seed, login, PASS, ORIGIN
+from test_pay_people import seed, create, login, PASS, ORIGIN
 
 def switch(client,email,password=PASS):
     client.post("/auth/logout",headers=ORIGIN)
@@ -11,6 +11,7 @@ def switch(client,email,password=PASS):
 def test_accountant_single_save_and_hr_only_deactivation():
     with TestClient(app) as c:
         admin,hr,employee,other=seed(c)
+        accountant=create(c,"payroll.accountant.qa@example.org","Payroll Accountant","accountant",admin)
         project=c.post("/project-management/projects",headers=ORIGIN,json={
             "name":"QA Weekly Billing Project","client":"Finance Test Client",
             "engagement_type":"c2c","rate":"78.00","currency":"USD","rate_unit":"hour",
@@ -49,7 +50,7 @@ def test_accountant_single_save_and_hr_only_deactivation():
             "active":False,"end_date":None,"reason":"Client project engagement completed"})
         assert end.status_code==200,end.text
         assert end.json()["status"]=="inactive"
-        assert c.get("/project-management/projects").json()[0]["status"]=="inactive"
+        assert next(x for x in c.get("/project-management/projects").json() if x["id"]==pid)["status"]=="inactive"
         switch(c,"payroll.accountant.qa@example.org")
         blocked=c.put(f"/finance/projects/{pid}/configuration",headers=ORIGIN,json={
             "recipient_name":"QA Billing Account","billing_frequency":"monthly",
