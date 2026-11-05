@@ -51,7 +51,7 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
   const charge=(row.charges||[]).find((x:Row)=>x.recipient_type===(p.recipient_type||"client"));
   setPricingMode(charge?.pricing_mode||"fixed_rate");
   setPricingValue(String(charge?.pricing_value??row.rate??""));
-  setPricingTax(String(charge?.tax_rate_pct??0));
+  setPricingTax(String(charge?.tax_rate_pct??0));setTax(String(charge?.tax_rate_pct??0));
   setPeriodStart(row.start_date||today());setPeriodEnd(today());setEndDate(p.end_date||"");
  },[selected,projects]);
  async function save(fn:()=>Promise<any>,messageText:string){
@@ -60,9 +60,7 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
   catch(e){setError((e as Error).message)}
   finally{setBusy(false)}
  }
- const row=projects.find(p=>String(p.id)===selected);
  const chosen=projects.find(p=>String(p.id)===selected);
- const selectedCharge=(chosen?.charges||[]).find((x:Row)=>x.recipient_type===billing.recipient_type);
  const effectiveRate=pricingMode==="percentage"?Number(chosen?.rate||0)*Number(pricingValue||0)/100:Number(pricingValue||0);
  const estimatedTotal=effectiveRate*Number(quantity||0)*(1+Number(pricingTax||0)/100);
  const field=(key:string,label:string,type="text")=><label key={key}>{label}<input type={type} value={billing[key]??""}
@@ -84,7 +82,7 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
     <form className="form" onSubmit={e=>{e.preventDefault();void save(()=>call("/projects/"+chosen.id+"/billing","PUT",{
        ...billing,billing_day:billing.billing_day===""?null:Number(billing.billing_day),
        payment_terms_days:Number(billing.payment_terms_days),end_date:billing.end_date||null}),"Billing contact and schedule updated.")}}>
-     <label>Invoice recipient<select value={billing.recipient_type} onChange={e=>setBilling(v=>({...v,recipient_type:e.target.value}))}>
+     <label>Invoice recipient<select value={billing.recipient_type} onChange={e=>{const type=e.target.value;setBilling(v=>({...v,recipient_type:type}));const c=(chosen?.charges||[]).find((x:Row)=>x.recipient_type===type);setPricingMode(c?.pricing_mode||"fixed_rate");setPricingValue(String(c?.pricing_value??chosen?.rate??""));setPricingTax(String(c?.tax_rate_pct??0));setTax(String(c?.tax_rate_pct??0))}}>
        <option value="client">Client</option><option value="vendor">Vendor</option><option value="candidate">Candidate</option>
       </select></label>
      {field("recipient_name","Billing recipient name")}{field("recipient_email","Invoice email","email")}
