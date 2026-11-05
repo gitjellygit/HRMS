@@ -2,10 +2,11 @@
 import {useEffect,useState} from "react";
 import {ClipboardCheck,Send,LifeBuoy,UserRoundX,BarChart3,Bell,ShieldCheck,FileSignature} from "lucide-react";
 import FeedbackMotion from "./FeedbackMotion";
+import PeopleOpsExtras from "./PeopleOpsExtras";
 type Row=Record<string,any>;
-type Area="offers"|"onboarding"|"announcements"|"helpdesk"|"exit"|"analytics"|"notifications"|"audit";
+type Area="offers"|"onboarding"|"announcements"|"helpdesk"|"exit"|"analytics"|"notifications"|"audit"|"assets";
 const areas:[Area,string][]=[["offers","Offer letters"],["onboarding","Onboarding"],["announcements","Announcements"],["helpdesk","Helpdesk"],["exit","Exit management"],
- ["analytics","Analytics"],["notifications","Notifications"],["audit","Audit & security"]];
+ ["analytics","Analytics"],["notifications","Notifications"],["audit","Audit & security"],["assets","Assets & clearances"]];
 const today=()=>new Date().toISOString().slice(0,10);
 export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:number;name:string;role:string}}){
  const hr=["super_admin","admin","hr"].includes(user.role);
@@ -193,6 +194,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
    })}</div>
    <h3>My notification queue</h3><div className="ops-table">{notifications.map(n=><div className="ops-row" key={n.id}><strong>{n.subject}</strong><span>{n.channel} · {n.status}</span><small>{n.body}</small></div>)}</div>
   </section>}
+  {tab==="assets"&&<PeopleOpsExtras api={api} user={user}/>}
   {tab==="audit"&&hr&&<section className="employee-surface"><h3><ShieldCheck size={17}/> HR change audit</h3>
    <p className="field-help">Append-only event records for new People Operations workflows. Existing legacy endpoints need an expanded audit migration.</p>
    <div className="ops-table">{audits.map(a=><div className="ops-row" key={a.id}><strong>{a.kind} · {a.action}</strong><span>Object #{a.object_id} · Actor #{a.actor_id}</span><small>{String(a.created_at||"").slice(0,19)}</small></div>)}</div>
