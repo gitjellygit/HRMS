@@ -54,7 +54,7 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
    payment_terms_days:String(b.payment_terms_days??15),
    billing_frequency:b.billing_frequency||"monthly",
    rate_unit:charge?.rate_unit||p.rate_unit||"hour",
-   invoice_rate:String(charge?.pricing_value??p.rate??""),
+   invoice_rate:String(charge?.pricing_mode==="percentage"?Number(p.rate||0)*Number(charge.pricing_value)/100:charge?.pricing_value??p.rate??""),
    tax_rate_pct:String(charge?.tax_rate_pct??0)
   });
   setExpandedId(p.id);setSelected(String(p.id));setNotice(null);
