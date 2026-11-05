@@ -23,7 +23,7 @@ test("accountant can see sourced placements, configure recipient and prepare inv
  await page.locator(".sidebar nav").getByRole("button",{name:"Sign out"}).click();
  await login(page,role("accountant"));
  await navigate(page,"Finance & invoicing");
- await expect(page.getByRole("heading",{name:"Projects available for finance"})).toBeVisible();
+ await expect(page.getByRole("heading",{name:"Project billing"})).toBeVisible();
  const row=(await page.request.get(API_URL+"/finance/projects")).json();
  expect((await row).some((p:{id:number})=>p.id===id)).toBeTruthy();
  const denied=await page.request.put(API_URL+"/finance/projects/"+id+"/lifecycle",{headers:origin,
@@ -36,9 +36,9 @@ test("accountant can see sourced placements, configure recipient and prepare inv
  expect(contacts.status()).toBe(200);
  await page.getByRole("tab",{name:"Invoice ledger"}).click();
  await page.locator(".finance-workspace form select").first().selectOption(String(id));
- await page.getByLabel("Project start date").fill(daysAgo(3));
- await page.getByLabel("Project end date").fill(today());
- await page.getByLabel("Billable units (verified hours, days or milestones)").fill("10");
+ await page.getByLabel("Billing period starts").fill(daysAgo(3));
+ await page.getByLabel("Billing period ends").fill(today());
+ await page.getByLabel("Verified billable quantity").fill("10");
  await page.getByRole("button",{name:"Create invoice draft"}).click();
  await expect(page.getByRole("status")).toContainText("Invoice draft created");
  const invoices=await (await page.request.get(API_URL+"/finance/invoices?project_id="+id)).json();
