@@ -63,7 +63,7 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
    {error&&<div className="error" role="alert">{error}</div>}
    {saved&&<FeedbackMotion type="success" compact message={saved}/>}
    {isHR&&<label className="employee-field">Business reason for admin approval<textarea minLength={10} required value={approvalReason} onChange={e=>setApprovalReason(e.target.value)} placeholder="Explain why this policy change is needed"/></label>}
-   <div className="policy-card"><div className="policy-card-head"><CircleDollarSign size={20}/><div><h3>Project sourcing incentive</h3><p>Default milestone bonus for employees who source projects.</p></div></div>
+   {["super_admin","admin","hr"].includes(user.role)&&<div className="policy-card"><div className="policy-card-head"><CircleDollarSign size={20}/><div><h3>Project sourcing incentive</h3><p>Default milestone bonus for employees who source projects.</p></div></div>
     <form className="policy-form" onSubmit={submit}>
      <div className="employee-field"><label htmlFor="default-bonus">Company default bonus (INR)</label><input id="default-bonus" value={amount} aria-invalid={Boolean(error&&error.includes("INR"))} type="number" min="0" max="100000000" step="0.01" onChange={e=>setAmount(e.target.value)} required/><span className="field-help">Applies to newly created projects, unless an employee-specific amount or project override is supplied.</span></div>
      <div className="policy-summary"><span>Milestone</span><strong>{policy?.milestone_days??30} completed calendar days</strong><span>Bonus creation</span><strong>Planned · pending approval</strong></div>
@@ -71,7 +71,7 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
     </form>
    </div>
    <section className="policy-records">
-    <div className="employee-title-row"><div><h3>Company policy register</h3><p>Publish and maintain HR policy documents and effective dates.</p></div><button type="button" className="employee-primary" onClick={()=>setAdding(v=>!v)}><Plus size={16}/> {adding?"Close":"Add policy"}</button></div>
+    <div className="employee-title-row"><div><h3>Company policy register</h3><p>Publish and maintain HR policy documents and effective dates.</p></div>{["super_admin","admin","hr"].includes(user.role)&&<button type="button" className="employee-primary" onClick={()=>setAdding(v=>!v)}><Plus size={16}/> {adding?"Close":"Add policy"}</button>}</div>
     {adding&&<form className="policy-record-form" onSubmit={createRecord}>
      <div className="employee-form-grid">
       <label className="employee-field">Policy title<input value={policyTitle} onChange={e=>setPolicyTitle(e.target.value)} minLength={3} maxLength={150} required placeholder="e.g. Remote work policy"/></label>
