@@ -67,7 +67,7 @@ def apply(db,row):
     if row.kind=="company_policy":
         p=PolicyRecordIn.model_validate(data)
         db.add(CompanyPolicyRecord(title=p.title,category=p.category,description=p.description,
-              effective_date=p.effective_date,active=p.active,created_by=row.submitted_by))
+              effective_date=p.effective_date,active=p.active,audience_ids=json.dumps(p.audience_ids),created_by=row.submitted_by))
     elif row.kind=="bonus_policy":
         p=BonusPolicyIn.model_validate(data)
         x=db.get(CompanyPolicy,"default_project_bonus_inr")
