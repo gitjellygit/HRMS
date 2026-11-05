@@ -245,7 +245,8 @@ def run_schedule(body:ScheduleIn,user:Employee=Depends(current_user),db:Session=
         raise HTTPException(403,"Historical schedule runs require admin")
     q=select(ProjectBilling).where(ProjectBilling.billing_day.is_not(None))
     if body.project_id is not None:q=q.where(ProjectBilling.project_id==body.project_id)
-    created=[];skipped=[]
+    created=[];skipped=[];tasks_created=[]
+    from .billing_reviews import BillableReview, create_review
     for c in db.scalars(q).all():
         p=db.get(Project,c.project_id);d=db.get(ProjectDetail,c.project_id)
         if not p or not d or not d.start_date or p.status!="active" or c.stopped_at:
@@ -257,23 +258,21 @@ def run_schedule(body:ScheduleIn,user:Employee=Depends(current_user),db:Session=
         if body.as_of>d.start_date and ((body.as_of.day==c.billing_day) or (end and body.as_of==end)):
             prior=db.scalar(select(func.max(ClientInvoice.period_end)).where(
                 ClientInvoice.project_id==p.id,ClientInvoice.recipient_type==c.recipient_type))
-            start=max(d.start_date,prior+timedelta(days=1) if prior else d.start_date)
+            other=db.scalar(select(func.max(BillableReview.period_end)).where(BillableReview.project_id==p.id))
+            last=max([x for x in (prior,other) if x is not None],default=None)
+            start=max(d.start_date,last+timedelta(days=1) if last else d.start_date)
             period_end=min(body.as_of,end) if end else body.as_of
             if start>period_end:
                 skipped.append({"project_id":p.id,"reason":"nothing to bill"});continue
-            try:
-                if d.rate_unit!="day":
-                    skipped.append({"project_id":p.id,"reason":"Approved billable quantity required for "+d.rate_unit+" rates; create a manual draft"})
-                    continue
-                # Day-based rates can be billed per service calendar day; accountant must review before sending.
-                quantity=Decimal((period_end-start).days+1)
-                x=create_row(db,user,p,d,c,start,period_end,quantity,Decimal("0"),body.as_of,"schedule")
-                db.commit();created.append(invoice_view(x,body.as_of))
-            except HTTPException as exc:
-                db.rollback();skipped.append({"project_id":p.id,"reason":exc.detail})
+            task=create_review(db,user,p.id,start,period_end,body.as_of)
+            if task:
+                db.commit()
+                tasks_created.append(task)
+            else:
+                skipped.append({"project_id":p.id,"reason":"review already exists"})
         else:
             skipped.append({"project_id":p.id,"reason":"not scheduled today or already ended"})
-    return {"as_of":body.as_of,"created":created,"skipped":skipped,"email_sent":False}
+    return {"as_of":body.as_of,"created":created,"tasks_created":tasks_created,"skipped":skipped,"email_sent":False}
 
 @router.post("/invoices/{invoice_id}/status")
 def change_status(invoice_id:int,body:InvoiceStatusIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
