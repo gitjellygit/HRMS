@@ -57,7 +57,7 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
    invoice_rate:String(charge?.pricing_mode==="percentage"?Number(p.rate||0)*Number(charge.pricing_value)/100:charge?.pricing_value??p.rate??""),
    tax_rate_pct:String(charge?.tax_rate_pct??0)
   });
-  setExpandedId(p.id);setSelected(String(p.id));setNotice(null);
+  setExpandedId(p.id);setSelected(String(p.id));setTax(String(charge?.tax_rate_pct??0));setNotice(null);
  }
  const chosen=projects.find(p=>String(p.id)===selected);
  const effectiveRate=Number(billing.invoice_rate||chosen?.rate||0);
@@ -92,6 +92,7 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
   if(payload.recipient_name.length<2){setNotice({kind:"error",text:"Enter the billing recipient name."});return}
   await save(()=>call("/projects/"+project.id+"/configuration","PUT",payload),
    "Billing details, invoice amount and schedule saved for "+(project.project_number||project.name)+".");
+  setTax(String(billing.tax_rate_pct));
  }
  return <div className="ops-area finance-workspace finance-premium">
   <p className="muted">Configure billing, prepare invoice drafts and track payments. Creating an invoice does not send an email.</p>
