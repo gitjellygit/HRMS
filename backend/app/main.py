@@ -339,6 +339,10 @@ def initialize():
         connection.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false"))
         connection.execute(text("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS availability VARCHAR(25) NOT NULL DEFAULT 'available'"))
         connection.execute(text("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS photo_key VARCHAR(80) NOT NULL DEFAULT ''"))
+    # Additive local upgrade. Use reviewed migrations for production.
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE finance_project_billing ADD COLUMN IF NOT EXISTS billing_frequency VARCHAR(20) NOT NULL DEFAULT 'monthly'"))
+        connection.execute(text("ALTER TABLE finance_project_charges ADD COLUMN IF NOT EXISTS rate_unit VARCHAR(20) NOT NULL DEFAULT 'hour'"))
     email = os.environ.get("ADMIN_EMAIL")
     passwd = os.environ.get("ADMIN_PASSWORD")
     if email and passwd and len(passwd) >= 12:
