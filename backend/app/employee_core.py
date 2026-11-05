@@ -199,7 +199,7 @@ class DecisionIn(BaseModel):
 
 class LifecycleIn(BaseModel):
     event: Literal["probation", "confirmed", "transferred", "promoted", "exited"]
-    note: str = Field(default="", max_length=500)
+    note: str = Field(min_length=10, max_length=500)
     effective_date: date = Field(default_factory=date.today)
 
 
