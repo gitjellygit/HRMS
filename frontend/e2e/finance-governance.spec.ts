@@ -36,9 +36,9 @@ test("accountant can see sourced placements, configure recipient and prepare inv
  expect(contacts.status()).toBe(200);
  await page.getByRole("tab",{name:"Invoice ledger"}).click();
  await page.getByLabel("Project").selectOption(String(id));
- await page.getByLabel("Service start").fill(daysAgo(3));
- await page.getByLabel("Service end").fill(today());
- await page.getByLabel("Units billed").fill("10");
+ await page.getByLabel("Project start date").fill(daysAgo(3));
+ await page.getByLabel("Project end date").fill(today());
+ await page.getByLabel("Billable units (verified hours, days or milestones)").fill("10");
  await page.getByRole("button",{name:"Create invoice draft"}).click();
  await expect(page.getByRole("status")).toContainText("Invoice draft created");
  const invoices=await (await page.request.get(API_URL+"/finance/invoices?project_id="+id)).json();
