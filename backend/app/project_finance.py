@@ -185,6 +185,8 @@ def set_billing(project_id:int,body:BillingIn,user:Employee=Depends(current_user
         c=ProjectBilling(project_id=project_id,updated_by=user.id)
         db.add(c)
     if c.stopped_at is not None:raise HTTPException(409,"Inactive project billing is locked")
+    if user.role not in HR and c.end_date!=body.end_date:
+        raise HTTPException(403,"Only HR can alter a project end date")
     for k,v in body.model_dump().items():
         setattr(c,k,"" if v is None and k=="recipient_email" else v)
     c.updated_by=user.id
@@ -260,7 +262,10 @@ def run_schedule(body:ScheduleIn,user:Employee=Depends(current_user),db:Session=
             if start>period_end:
                 skipped.append({"project_id":p.id,"reason":"nothing to bill"});continue
             try:
-                # One billable unit per service day; finance may adjust draft manually by voiding and recreating.
+                if d.rate_unit!="day":
+                    skipped.append({"project_id":p.id,"reason":"Approved billable quantity required for "+d.rate_unit+" rates; create a manual draft"})
+                    continue
+                # Day-based rates can be billed per service calendar day; accountant must review before sending.
                 quantity=Decimal((period_end-start).days+1)
                 x=create_row(db,user,p,d,c,start,period_end,quantity,Decimal("0"),body.as_of,"schedule")
                 db.commit();created.append(invoice_view(x,body.as_of))
