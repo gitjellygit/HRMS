@@ -910,3 +910,6 @@ app.include_router(people_operations_router)
 
 from .security import router as security_router  # noqa: E402
 app.include_router(security_router)
+
+from .people_ops_extensions import router as people_ops_extensions_router  # noqa: E402
+app.include_router(people_ops_extensions_router)
