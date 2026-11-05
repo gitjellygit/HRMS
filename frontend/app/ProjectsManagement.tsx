@@ -47,7 +47,9 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
  const [bonusPreview,setBonusPreview]=useState<{bonus_amount_inr:number;source:string}|null>(null);
  const [overrideBonus,setOverrideBonus]=useState(false);
  const [employees,setEmployees]=useState<{id:number;name:string;employee_code:string;status:string}[]>([]);
- const [team,setTeam]=useState<{project:Project;people:{name:string}[]}|null>(null);
+ const [statusProject,setStatusProject]=useState<Project|null>(null);
+ const [statusReason,setStatusReason]=useState("");
+ const [statusBusy,setStatusBusy]=useState(false);
  const load=useCallback(async()=>{
   setLoading(true);
   try{
@@ -120,16 +122,26 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
    await load();
   }catch(e){setError((e as Error).message)}finally{setBusy(false)}
  }
- async function showTeam(project:Project){
+ async function updateProjectStatus(event:React.FormEvent){
+  event.preventDefault();
+  if(!statusProject||statusReason.trim().length<10){setError("Please provide a reason of at least 10 characters.");return}
+  setStatusBusy(true);setError("");setNotice("");
   try{
-   const res=await fetch(api+"/projects/"+project.id+"/team",{credentials:"include"});
-   if(!res.ok)throw Error("Could not load assigned employees.");
-   setTeam({project,people:await res.json()});
+   const response=await fetch(api+"/finance/projects/"+statusProject.id+"/lifecycle",{
+    method:"PUT",credentials:"include",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({active:statusProject.status!=="active",reason:statusReason.trim(),end_date:null})});
+   const value=await response.json().catch(()=>({}));
+   if(!response.ok)throw Error(typeof value.detail==="string"?value.detail:"Unable to change project status.");
+   setNotice("Project "+(statusProject.project_number||statusProject.name)+
+    (value.status==="active"?" reactivated successfully.":" deactivated successfully.")+" Reason saved in the audit trail.");
+   setStatusProject(null);setStatusReason("");await load();
   }catch(e){setError((e as Error).message)}
+  finally{setStatusBusy(false)}
  }
  return <div className="project-page">
   {error&&<div className="error" role="alert">{error}</div>}
-  {notice&&<div className="employee-success" role="status"><BadgeCheck size={18}/>{notice}</div>}
+  {notice&&<div className="project-save-toast" role="status"><BadgeCheck size={18}/>{notice}
+   <button type="button" aria-label="Dismiss notification" onClick={()=>setNotice("")}><X size={15}/></button></div>}
   {!open?<><div className="employee-metrics">
    <div className="employee-metric"><BriefcaseBusiness size={20}/><span>Total projects</span><strong>{projects.length}</strong></div>
    <div className="employee-metric"><BadgeCheck size={20}/><span>Active projects</span><strong>{projects.filter(p=>p.status==="active").length}</strong></div>
@@ -137,7 +149,9 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
   </div><section className="employee-surface">
    <div className="employee-title-row"><div><h2>Project directory</h2><p>Client engagements, placement details and commercial terms.</p></div>{canCreate&&<button className="employee-primary" onClick={start}><Plus size={16}/> Add project</button>}</div>
    <div className="employee-filters"><div className="employee-search"><Search size={17}/><input aria-label="Search projects" value={search} onChange={e=>setSearch(e.target.value.toLowerCase())} placeholder="Search project, number, client or vendor…"/></div><select aria-label="Filter projects by type" value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All engagement types</option>{types.map(([value,label])=><option value={value} key={value}>{label}</option>)}</select><button className="employee-icon-button" aria-label="Refresh" onClick={load}><RefreshCw size={17}/></button></div>
-   <div className="table-wrap"><table className="project-table"><thead><tr><th>Project</th><th>Client / Candidate</th><th>Engagement</th><th>Rate</th><th>Vendor / Prime vendor</th><th>Sourced by</th><th>30-day bonus</th><th>Status</th><th>Team</th></tr></thead><tbody>{shown.map(p=><tr key={p.id}><td><div className="project-main"><strong>{p.name}</strong><small>{p.project_number||"Legacy project"}</small></div></td><td><strong>{p.client||"—"}</strong><small>{p.candidate_name||"No candidate assigned"}</small></td><td>{types.find(x=>x[0]===p.engagement_type)?.[1]||"—"}</td><td className="project-rate">{money(p)}</td><td><strong>{p.vendor_name||"—"}</strong><small>{p.prime_vendor_name?"Prime: "+p.prime_vendor_name:"No prime vendor"}</small></td><td>{employees.find(e=>e.id===p.sourced_by_id)?.name||"Not assigned"}</td><td><div className="project-bonus"><strong>{p.bonus_amount_inr?"₹"+Number(p.bonus_amount_inr).toLocaleString("en-IN"):"—"}</strong><small>{p.bonus_eligible_on?"Eligible "+p.bonus_eligible_on:"Not configured"} · {p.bonus_status.replace("_"," ")}</small>{canCreate&&p.bonus_status==="eligible"&&<button className="employee-link" disabled={busy} onClick={()=>awardBonus(p)}>Award bonus</button>}</div></td><td><span className={"pill "+p.status}>{p.status}</span></td><td><button className="employee-link" onClick={()=>showTeam(p)}>View team</button></td></tr>)}</tbody></table>{loading?<div className="empty">Loading projects…</div>:!shown.length?<div className="empty jellygit-empty-state"><BrandIllustration asset="empty-folder-state" alt="" className="jellygit-empty-art"/><p>No matching projects found.</p></div>:null}</div><div className="employee-count">Showing {shown.length} of {projects.length} projects</div>
+   <div className="table-wrap"><table className="project-table"><thead><tr><th>Project</th><th>Client / Candidate</th><th>Engagement</th><th>Rate</th><th>Vendor / Prime vendor</th><th>Sourced by</th><th>30-day bonus</th><th>Status</th><th>Action</th></tr></thead><tbody>{shown.map(p=><tr key={p.id}><td><div className="project-main"><strong>{p.name}</strong><small>{p.project_number||"Legacy project"}</small></div></td><td><strong>{p.client||"—"}</strong><small>{p.candidate_name||"No candidate assigned"}</small></td><td>{types.find(x=>x[0]===p.engagement_type)?.[1]||"—"}</td><td className="project-rate">{money(p)}</td><td><strong>{p.vendor_name||"—"}</strong><small>{p.prime_vendor_name?"Prime: "+p.prime_vendor_name:"No prime vendor"}</small></td><td>{employees.find(e=>e.id===p.sourced_by_id)?.name||"Not assigned"}</td><td><div className="project-bonus"><strong>{p.bonus_amount_inr?"₹"+Number(p.bonus_amount_inr).toLocaleString("en-IN"):"—"}</strong><small>{p.bonus_eligible_on?"Eligible "+p.bonus_eligible_on:"Not configured"} · {p.bonus_status.replace("_"," ")}</small>{canCreate&&p.bonus_status==="eligible"&&<button className="employee-link" disabled={busy} onClick={()=>awardBonus(p)}>Award bonus</button>}</div></td><td><span className={"pill "+p.status}>{p.status}</span></td><td>{canCreate?<button type="button" className="project-status-action" disabled={busy||statusBusy}
+  onClick={()=>{setStatusProject(p);setStatusReason("");setNotice("");setError("")}}>
+  {p.status==="active"?"Deactivate":"Reactivate"}</button>:<span className="muted">—</span>}</td></tr>)}</tbody></table>{loading?<div className="empty">Loading projects…</div>:!shown.length?<div className="empty jellygit-empty-state"><BrandIllustration asset="empty-folder-state" alt="" className="jellygit-empty-art"/><p>No matching projects found.</p></div>:null}</div><div className="employee-count">Showing {shown.length} of {projects.length} projects</div>
   </section></>:<section className="employee-surface employee-editor">
    <div className="employee-editor-top"><div><button className="employee-back" onClick={()=>setOpen(false)}><ArrowLeft size={16}/> Project directory</button><h2>Create a project</h2><p>Complete the client and engagement details. Fields marked * are required.</p></div><button className="employee-icon-button" onClick={()=>setOpen(false)} aria-label="Close"><X size={18}/></button></div>
    <form onSubmit={save} noValidate>
@@ -172,6 +186,30 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
     <div className="employee-form-footer"><button type="button" className="employee-cancel" onClick={()=>setOpen(false)}>Cancel</button><button className="employee-primary" disabled={busy}>{busy?"Saving…":"Save project"}</button></div>
    </form>
   </section>}
-  {team&&<div className="employee-modal-backdrop"><div className="employee-modal" role="dialog" aria-modal="true" aria-label={"Assigned team for "+team.project.name}><div className="employee-title-row"><div><h2>{team.project.name}</h2><p>Assigned team members</p></div><button className="employee-icon-button" onClick={()=>setTeam(null)} aria-label="Close"><X size={18}/></button></div>{team.people.length?<div className="project-team-list">{team.people.map((p,i)=><div key={i}>{p.name}</div>)}</div>:<p className="muted">No team members assigned.</p>}</div></div>}
+  {statusProject&&<div className="employee-modal-backdrop">
+   <div className="employee-modal project-status-modal" role="dialog" aria-modal="true"
+    aria-label={(statusProject.status==="active"?"Deactivate ":"Reactivate ")+statusProject.name}>
+    <div className="employee-title-row"><div><h2>{statusProject.status==="active"?"Deactivate project":"Reactivate project"}</h2>
+     <p>{statusProject.project_number||statusProject.name} · {statusProject.name}</p></div>
+     <button type="button" className="employee-icon-button" aria-label="Close" onClick={()=>setStatusProject(null)}><X size={18}/></button>
+    </div>
+    <p className="muted">{statusProject.status==="active"
+     ?"Ending this project immediately prevents new invoices. Previous invoices stay in the ledger."
+     :"Reactivating permits new billing drafts. Review billing settings after reactivation."}</p>
+    <form onSubmit={updateProjectStatus} className="project-status-form">
+     <label>Reason for status change <span className="required">*</span>
+      <textarea required minLength={10} maxLength={500} rows={4} autoFocus
+       placeholder="Explain why the project is ending or being reactivated…"
+       value={statusReason} onChange={e=>setStatusReason(e.target.value)}/>
+     </label>
+     <div className="project-status-actions">
+      <button type="button" className="employee-cancel" onClick={()=>setStatusProject(null)}>Cancel</button>
+      <button type="submit" className="employee-primary" disabled={statusBusy||statusReason.trim().length<10}>
+       {statusBusy?"Saving…":statusProject.status==="active"?"Confirm deactivation":"Confirm reactivation"}
+      </button>
+     </div>
+    </form>
+   </div>
+  </div>}
  </div>;
 }
