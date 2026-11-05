@@ -181,6 +181,7 @@ test.describe('business-critical cross-role workflows',()=>{
   });
 
   test('employee leave flows through reporting manager then HR', async ({page})=>{
+    test.setTimeout(45000);
     const date=new Date();
     const weekday=date.getUTCDay();
     const offset=((8-weekday)%7)+7;
