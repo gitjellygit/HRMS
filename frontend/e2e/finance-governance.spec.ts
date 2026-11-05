@@ -75,7 +75,7 @@ test("accountant can save a weekly invoice rate in a single action and expand th
  await navigate(page,"Finance & invoicing");
  await page.getByRole("button",{name:new RegExp(row.project_number)}).click();
  const expanded=page.locator(".finance-expanded-row");
- await expect(expanded.getByText("Billing settings")).toBeVisible();
+ await expect(expanded.getByRole("heading",{name:/Billing settings/})).toBeVisible();
  await expect(page.locator(".finance-selected-row + .finance-expanded-row")).toHaveCount(1);
  await expanded.getByRole("textbox",{name:"Billing recipient name"}).fill("QA Billing Client");
  await expanded.getByRole("textbox",{name:"Billing email"}).fill("candidate.billing@example.org");
