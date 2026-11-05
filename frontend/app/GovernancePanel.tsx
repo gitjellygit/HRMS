@@ -1,4 +1,5 @@
 "use client";
+import {explainError} from "./formErrors";
 import {useEffect,useState} from "react";
 type Row=Record<string,any>;
 export default function GovernancePanel({api,user}:{api:string;user:{id:number;role:string}}){
@@ -20,7 +21,7 @@ export default function GovernancePanel({api,user}:{api:string;user:{id:number;r
     method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({approve,reason:notes[id]||""})});
    const j=await r.json().catch(()=>({}));
-   if(!r.ok)throw Error(typeof j.detail==="string"?j.detail:"Approval failed");
+   if(!r.ok)throw Error(explainError(j,r.status));
    setMessage("Change #"+id+" "+(approve?"approved and applied":"rejected")+".");
    await load();
   }catch(e){setError((e as Error).message)}
