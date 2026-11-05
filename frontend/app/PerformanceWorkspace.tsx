@@ -1,5 +1,6 @@
 "use client";
 import {useEffect,useState} from "react";
+import GrowthExtensions from "./GrowthExtensions";
 
 type Person={id:number;role:string;name:string};
 type RecordRow=Record<string,any>;
@@ -48,7 +49,7 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
   finally{setBusy(false)}
  }
  const editable=canAssign?employee:user.id;
- return <section className="panel">
+ return <><section className="panel">
   <h2>Performance & growth</h2>
   <p className="muted">Track individual goals, self and manager reviews, and development plans.</p>
   <div className="time-tabs" role="tablist">{([["goals","Goals & KRAs"],["reviews","Appraisal cycles"],["development","Development plans"]] as const).map(([key,label])=>
@@ -115,5 +116,5 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
      <option value="planned">Planned</option><option value="in_progress">In progress</option><option value="completed">Completed</option>
     </select></label></div>)}
   </>}
- </section>;
+ </section><GrowthExtensions api={api} user={user}/></>;
 }
