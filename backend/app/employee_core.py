@@ -482,6 +482,8 @@ def create_full_employee(body: EmployeeCreateIn, user: Employee = Depends(requir
         raise HTTPException(409, detail={"field":"email","message":"This email is already registered."})
     validate_relationships(db, -1, body.master)
     # A selected department ID is the source of truth for the employee's department.
+    if account.role not in ("admin","super_admin") and not body.master.manager_id:
+        raise HTTPException(422,detail={"field":"manager_id","message":"A reporting manager is required for every new employee."})
     if body.master.department_id is not None:
         department = db.get(OrgUnit, body.master.department_id)
         account = account.model_copy(update={"department": department.name})
@@ -653,13 +655,14 @@ def reset_employee_password(employee_id:int,body:TemporaryPasswordIn,user:Employ
     # Force representative character classes for the password policy.
     temporary="A9!a"+temporary
     target.password_hash=passwords.hash(temporary)
+    target.must_change_password=True
     db.add(LifecycleEvent(employee_id=employee_id,event="password_reset",
                           note="HR-issued temporary password: "+body.reason.strip(),
                           effective_date=date.today(),performed_by=user.id))
     db.commit()
     # No password in logs, DB or email; return once to authorized caller.
-    return {"employee_id":employee_id,"temporary_password":temporary,"must_change_on_login":False,
-            "message":"Share securely; existing sessions have been invalidated."}
+    return {"employee_id":employee_id,"temporary_password":temporary,"must_change_on_login":True,
+            "message":"Share securely. The employee must change it on the next login."}
 
 
 def sync_probation_periods(db:Session)->int:

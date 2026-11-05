@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import FeedbackMotion from "./FeedbackMotion";
 import { ArrowLeft, BadgeCheck, BriefcaseBusiness, FileUp, IdCard, Plus, RefreshCw, Search, ShieldCheck, Users, X } from "lucide-react";
 
 type OrgUnit={id:number;kind:string;name:string;code:string};
@@ -73,6 +74,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
  const [actionKind,setActionKind]=useState<"deactivate"|"reset"|null>(null);
  const [actionReason,setActionReason]=useState("");
  const [tempPassword,setTempPassword]=useState("");
+ const [copied,setCopied]=useState(false);
  const [actionBusy,setActionBusy]=useState(false);
  const load=useCallback(async()=>{
   setLoading(true);
@@ -139,9 +141,15 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
  async function submit(event:React.FormEvent<HTMLFormElement>){
   event.preventDefault();
   const found=validate(draft);
+  const focusFirst=(field?:string)=>window.requestAnimationFrame(()=>{
+   const target=(field?window.document.getElementById(field==="manager_id"?"core-manager":field==="department"?"emp-department":"emp-"+field):null)
+     ||window.document.querySelector<HTMLElement>(".employee-editor [aria-invalid='true']");
+   target?.scrollIntoView({block:"center",behavior:"smooth"});target?.focus();
+  });
   if(!master.department_id||!units.some(u=>u.kind==="department"&&String(u.id)===master.department_id))found.department="Select a department from the list.";
+  if(!["admin","super_admin"].includes(draft.role)&&!master.manager_id){setFailure("Select a reporting manager before saving the employee.");setErrors({...found,manager_id:"Required for leave approvals"} as Errors);focusFirst("manager_id");return;}
   setErrors(found);setFailure("");setMessage("");
-  if(Object.keys(found).length){setFailure("Please correct the highlighted fields before saving.");return;}
+  if(Object.keys(found).length){setFailure("Please correct the highlighted fields before saving.");focusFirst(Object.keys(found)[0]);return;}
   setSaving(true);
   try{
    const payload=draft;
@@ -151,7 +159,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
    const result=await response.json().catch(()=>({}));
    if(!response.ok){
     const detail=ApiError(result.detail);
-    if(detail.field)setErrors({[detail.field]:detail.message});
+    if(detail.field){setErrors({[detail.field]:detail.message});focusFirst(detail.field)}
     throw Error(detail.message);
    }
    let note=`${result.name} added successfully as ${result.employee_code}.`;
@@ -164,7 +172,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
   }catch(err){setFailure((err as Error).message)}finally{setSaving(false)}
  }
  function beginAction(employee:Employee,kind:"deactivate"|"reset"){
-  setSelectedAction(employee);setActionKind(kind);setActionReason("");setTempPassword("");setFailure("");
+  setSelectedAction(employee);setActionKind(kind);setActionReason("");setTempPassword("");setCopied(false);setFailure("");
  }
  async function commitAction(){
   if(!selectedAction||!actionKind)return;
@@ -212,7 +220,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
  }
  return <div className="employee-page">
   {failure&&!open&&<div className="error" role="alert">{failure}</div>}
-  {message&&<div className="employee-success" role="status"><BadgeCheck size={18}/>{message}</div>}
+  {message&&<FeedbackMotion type={message.includes("added successfully")?"congrats":"success"} compact message={message}/>}
   {!open?<><div className="employee-metrics">
    <div className="employee-metric"><Users size={20}/><span>Total employees</span><strong>{employees.length}</strong></div>
    <div className="employee-metric"><BadgeCheck size={20}/><span>Active employees</span><strong>{employees.filter(e=>e.status==="active").length}</strong></div>
@@ -276,7 +284,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
       {field("employment_type","Employment type",{choices:["Full time","Part time","Contract","Intern"]})}
       {field("role","System access",{choices:currentRole==="admin"||currentRole==="super_admin"?["employee","manager","hr","accountant","super_admin"]:["employee","manager","hr","accountant"]})}
       {field("work_location","Work location",{placeholder:"e.g. Noida · Hybrid"})}
-      <div className="employee-field"><label htmlFor="core-manager">Reporting manager</label><select id="core-manager" value={master.manager_id||""} onChange={e=>setMaster(v=>({...v,manager_id:e.target.value}))}><option value="">No reporting manager</option>{employees.filter(e=>e.status==="active").map(e=><option key={e.id} value={e.id}>{e.name} · {e.employee_code||e.id}</option>)}</select><span className="field-help">Used for future approval routing</span></div>
+      <div className="employee-field"><label htmlFor="core-manager">Reporting manager <span className="required">*</span></label><select id="core-manager" aria-invalid={Boolean((errors as Record<string,string>).manager_id)} required={!["admin","super_admin"].includes(draft.role)} value={master.manager_id||""} onChange={e=>setMaster(v=>({...v,manager_id:e.target.value}))}><option value="">Select a reporting manager</option>{employees.filter(e=>e.status==="active"&&["admin","super_admin","hr","manager"].includes(e.role)).map(e=><option key={e.id} value={e.id}>{e.name} · {e.employee_code||e.id}</option>)}</select>{(errors as Record<string,string>).manager_id?<span className="field-error">{(errors as Record<string,string>).manager_id}</span>:<span className="field-help">Required for leave approvals and reporting hierarchy.</span>}</div>
       <div className="employee-field"><label htmlFor="core-hod">Second-level manager / HOD</label><select id="core-hod" value={master.hod_id||""} onChange={e=>setMaster(v=>({...v,hod_id:e.target.value}))}><option value="">Optional HOD</option>{employees.filter(e=>e.status==="active").map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
       {(["designation","grade","branch","cost_center"] as const).map(kind=><div key={kind} className="employee-field"><label htmlFor={"org-"+kind}>{kind.replace("_"," ").replace(/^./,c=>c.toUpperCase())} unit</label><select id={"org-"+kind} value={master[kind+"_id"]||""} onChange={e=>{const selected=units.find(u=>String(u.id)===e.target.value);setMaster(v=>({...v,[kind+"_id"]:e.target.value}));if(selected&&kind==="designation")edit("designation",selected.name)}}><option value="">Not assigned</option>{units.filter(u=>u.kind===kind).map(u=><option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}</select></div>)}
      </div>
@@ -297,7 +305,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
   {selectedAction&&actionKind&&<div className="employee-modal-backdrop"><div className="employee-modal" role="dialog" aria-modal="true" aria-label={actionKind==="reset"?"Reset employee password":"Deactivate employee"}>
    <div className="employee-title-row"><div><h2>{actionKind==="reset"?"Reset password":"Deactivate employee"}</h2><p>{selectedAction.name} · {selectedAction.employee_code||"Employee"}</p></div><button className="employee-icon-button" onClick={()=>{setSelectedAction(null);setActionKind(null);setTempPassword("")}} aria-label="Close"><X size={18}/></button></div>
    {failure&&<p className="field-error" role="alert">{failure}</p>}
-   {tempPassword?<div className="employee-temporary-password"><p>Temporary password (shown once):</p><code>{tempPassword}</code><button className="employee-cancel" onClick={()=>navigator.clipboard.writeText(tempPassword)}>Copy securely</button><p>Existing sessions are invalidated. Ask the employee to change this password immediately.</p></div>:<>
+   {tempPassword?<div className="employee-temporary-password"><FeedbackMotion type="success" compact message="Temporary password issued successfully."/><p>Temporary password (shown once):</p><code>{tempPassword}</code><button className="employee-cancel" onClick={async()=>{try{await navigator.clipboard.writeText(tempPassword);setCopied(true)}catch{setFailure("Copy failed. Please use a secure manual transfer.")}}}>{copied?"Copied successfully":"Copy securely"}</button><p>Existing sessions are invalidated. The employee must set a new password on their next login.</p></div>:<>
     <label className="employee-field">Reason (required, 10+ characters)<textarea value={actionReason} maxLength={500} rows={3} onChange={e=>setActionReason(e.target.value)} placeholder={actionKind==="deactivate"?"Explain why access is being deactivated":"Reason for credential reset"}/></label>
     <div className="employee-form-footer"><button className="employee-cancel" onClick={()=>setSelectedAction(null)}>Cancel</button><button className="employee-primary" disabled={actionBusy||actionReason.trim().length<10} onClick={commitAction}>{actionBusy?"Saving…":actionKind==="deactivate"?"Confirm deactivation":"Issue temporary password"}</button></div>
    </>}

@@ -10,26 +10,36 @@ import PunchControl from "./PunchControl";
 import BonusSummary from "./BonusSummary";
 import CompanyPolicies from "./CompanyPolicies";
 import AttendanceByDay from "./AttendanceByDay";
+import ChangePassword from "./ChangePassword";
+import OverviewAttendance from "./OverviewAttendance";
+import TimeWorkspace from "./TimeWorkspace";
+import PayrollWorkspace from "./PayrollWorkspace";
+import PeopleOpsWorkspace from "./PeopleOpsWorkspace";
+import PerformanceWorkspace from "./PerformanceWorkspace";
 import { LayoutDashboard, Users, Clock3, CalendarDays, BriefcaseBusiness, Wallet, Award, LogOut, GitBranch, Building2, UserRound, ShieldCheck, FileDown, ClipboardList, Settings2 } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 type Employee = { id:number; name:string; email:string; role:string; designation:string; department:string; joining_date:string; status:string };
-type User = Employee;
+type User = Employee & {must_change_password?:boolean};
 type Entry = Record<string, any>;
 const sections = [
   { id:"dashboard",label:"Overview",Icon:LayoutDashboard },
   { id:"employees",label:"Employees",Icon:Users },
   { id:"attendance",label:"Attendance",Icon:Clock3 },
+  { id:"time",label:"Time & shifts",Icon:FileDown },
+  { id:"payroll",label:"Payroll & expenses",Icon:Wallet },
+  { id:"people",label:"People operations",Icon:ClipboardList },
   { id:"leaves",label:"Leave requests",Icon:CalendarDays },
   { id:"projects",label:"Projects",Icon:BriefcaseBusiness },
   { id:"bonuses",label:"Bonuses",Icon:Wallet },
   { id:"appraisals",label:"Appraisals",Icon:Award },
+  { id:"performance",label:"Performance & growth",Icon:Award },
   { id:"hrdesk",label:"HR overview",Icon:ClipboardList },
   { id:"policies",label:"Policies",Icon:Settings2 },
   { id:"organization",label:"Organization",Icon:Building2 },
   { id:"orgchart",label:"Org chart",Icon:GitBranch },
   { id:"profile",label:"My profile",Icon:UserRound },
-  { id:"approvals",label:"Profile approvals",Icon:ShieldCheck },
+  { id:"approvals",label:"Profile requests",Icon:ShieldCheck },
   { id:"bulk",label:"Bulk data & expiries",Icon:FileDown },
 ];
 export default function Home() {
@@ -44,13 +54,18 @@ export default function Home() {
   const [fields,setFields] = useState<Entry>({});
   const [error,setError] = useState("");
   const [loading,setLoading] = useState(false);
+  const [passwordNotice,setPasswordNotice]=useState("");
+  const [presence,setPresence]=useState("available");
+  const [hasPhoto,setHasPhoto]=useState(false);
+  const [avatarVersion,setAvatarVersion]=useState(0);
+  const [attendanceVersion,setAttendanceVersion]=useState(0);
   const canHR = user?.role === "super_admin" || user?.role === "admin" || user?.role === "hr";
   const canFinance = canHR || user?.role === "accountant";
   const canSeeEmployees = canFinance;
   const visible = sections.filter(s=>{
     if(["employees","bonuses"].includes(s.id)&&!canSeeEmployees)return false;
     if(["organization","bulk","hrdesk","policies"].includes(s.id)&&!canHR)return false;
-    if(s.id==="approvals"&&!(canHR||user?.role==="employee"||user?.role==="manager"))return false;
+    if(s.id==="approvals"&&!canHR)return false;
     return true;
   });
   async function request(path:string,method="GET",body?:Entry) {
@@ -61,17 +76,37 @@ export default function Home() {
   async function refresh(id=section) {
     try {
       setError("");
-      const [data,people] = await Promise.all([
-        request(id==="dashboard"?"/dashboard":"/"+id),
-        user && ["super_admin","admin","hr","accountant"].includes(user.role)?request("/employees"):Promise.resolve([])
-      ]);
+      const data=await request(id==="dashboard"?"/dashboard":"/"+id);
+      const people=user && ["super_admin","admin","hr","accountant"].includes(user.role)
+        ?await request("/employees").catch(()=>[]) : [];
       if(id==="dashboard")setStats(data);else setRows(data);
       setEmployees(people);
     } catch(e){setError((e as Error).message);}
   }
   useEffect(()=>{request("/me").then(setUser).catch(()=>{}).finally(()=>setReady(true));},[]);
-  useEffect(()=>{if(user&&!["organization","orgchart","profile","approvals","bulk","employee-record","hrdesk","leaves","projects","policies"].includes(section))refresh(section);},[user,section]);
-  async function logout(){try{await request("/auth/logout","POST");}finally{setUser(null);setRows([]);}}
+  useEffect(()=>{
+    if(!user||user.must_change_password)return;
+    fetch(API+"/me/presence",{credentials:"include"}).then(r=>r.ok?r.json():null).then(v=>{if(v){setPresence(v.status);setHasPhoto(v.has_photo)}}).catch(()=>{});
+  },[user]);
+  useEffect(()=>{if(user&&!user.must_change_password&&!["organization","orgchart","profile","approvals","bulk","employee-record","hrdesk","leaves","projects","policies","performance","payroll","people","time"].includes(section))refresh(section);},[user,section]);
+  async function logout(){try{await request("/auth/logout","POST");}finally{setUser(null);setRows([]);setSection("dashboard");}}
+  async function changePresence(status:string){
+   try{await request("/me/presence","PUT",{status});setPresence(status)}catch(e){setError((e as Error).message)}
+  }
+  async function uploadAvatar(file:File|undefined){
+   if(!file)return;
+   if(file.size>2*1024*1024){setError("Choose a PNG/JPEG image under 2 MB.");return}
+   const body=new FormData();body.append("photo",file);
+   try{
+    const response=await fetch(API+"/me/photo",{method:"POST",credentials:"include",body});
+    if(!response.ok)throw Error("Could not upload profile photo.");
+    setHasPhoto(true);setAvatarVersion(v=>v+1);
+   }catch(e){setError((e as Error).message)}
+  }
+  function completePasswordChange(){
+   setPasswordNotice("Password successfully changed. Please sign in again using your new password.");
+   setUser(null);setRows([]);setSection("dashboard");
+  }
   async function submit(e:React.FormEvent<HTMLFormElement>){
     e.preventDefault();setLoading(true);setError("");
     const fd=new FormData(e.currentTarget);const data=Object.fromEntries(fd.entries());
@@ -145,14 +180,22 @@ export default function Home() {
     return "—";
   }
   if(!ready)return <div className="login-wrap">Loading workspace…</div>;
-  if(!user)return <Login api={API} onLogin={setUser}/>;
-  return <div className="shell"><aside className="sidebar"><div className="brand">Jelly<span>Git</span> HRMS</div><nav className="menu">{visible.map(({id,label,Icon})=><button key={id} onClick={()=>{setSection(id);setForm(false);setError("")}} className={section===id?"active":""}><Icon size={18}/>{label}</button>)}<button onClick={logout}><LogOut size={18}/>Sign out</button></nav></aside><main className="content"><div className="top"><div><h1 className="title">{section==="employee-record"?"Employee master record":sections.find(s=>s.id===section)?.label}</h1><div className="muted">Your team, in one place</div></div><div className="user"><b>{user.name}</b><br/><span className="muted">{user.role}</span></div></div>{error&&<div className="error">{error}</div>}
-    {section==="policies"?<CompanyPolicies api={API}/>:section==="projects"?<ProjectsManagement api={API} canCreate={Boolean(canHR)}/>:section==="leaves"?<LeaveWorkspace api={API} user={user}/>:section==="hrdesk"?<HRDesk api={API}/>:section==="employees"?<EmployeeManagement api={API} canCreate={Boolean(canHR)} currentRole={user.role} onOpenEmployee={id=>{setSelectedEmployeeId(id);setSection("employee-record")}}/>:
+  if(!user)return <Login api={API} onLogin={u=>{setPasswordNotice("");setUser(u)}} initialNotice={passwordNotice}/>;
+  if(user.must_change_password)return <ChangePassword api={API} required onComplete={completePasswordChange}/>;
+  return <div className="shell"><aside className="sidebar"><div className="brand">Jelly<span>Git</span> HRMS</div><nav className="menu">{visible.map(({id,label,Icon})=><button key={id} onClick={()=>{setSection(id);setForm(false);setError("")}} className={section===id?"active":""}><Icon size={18}/>{label}</button>)}<button onClick={logout}><LogOut size={18}/>Sign out</button></nav></aside><main className="content"><div className="top"><div><h1 className="title">{section==="employee-record"?"Employee master record":sections.find(s=>s.id===section)?.label}</h1><div className="muted">Your team, in one place</div></div><div className="hrms-user-widget">
+    <label className="hrms-avatar-button" title="Upload profile photo" aria-label="Upload profile photo">
+      {hasPhoto?<img src={API+"/me/photo?v="+avatarVersion} alt={user.name+" profile"}/>:<span>{user.name.trim().split(/\\s+/).map(x=>x[0]).slice(0,2).join("").toUpperCase()}</span>}
+      <input type="file" accept="image/png,image/jpeg" onChange={e=>void uploadAvatar(e.target.files?.[0])}/>
+    </label>
+    <div className="hrms-user-meta"><strong>{user.name}</strong><small>{user.role}</small><select aria-label="My availability" value={presence} onChange={e=>void changePresence(e.target.value)}>{[["available","Available"],["busy","Busy"],["away","Away"],["do_not_disturb","Do not disturb"]].map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></div>
+  </div></div>{error&&<div className="error">{error}</div>}
+    {section==="performance"?<PerformanceWorkspace api={API} user={user}/> :section==="payroll"?<PayrollWorkspace api={API} user={user}/> :section==="people"?<PeopleOpsWorkspace api={API} user={user}/> :section==="time"?<TimeWorkspace api={API} user={user}/> :section==="policies"?<CompanyPolicies api={API}/>:section==="projects"?<ProjectsManagement api={API} canCreate={Boolean(canHR)}/>:section==="leaves"?<LeaveWorkspace api={API} user={user}/>:section==="hrdesk"?<HRDesk api={API}/>:section==="employees"?<EmployeeManagement api={API} canCreate={Boolean(canHR)} currentRole={user.role} onOpenEmployee={id=>{setSelectedEmployeeId(id);setSection("employee-record")}}/>:
     ["employee-record","organization","orgchart","profile","approvals","bulk"].includes(section)?
       <CoreWorkspace api={API} mode={(section==="employee-record"?"profile":section==="organization"?"organization":section==="orgchart"?"orgchart":section==="profile"?"profile":section==="approvals"?"approvals":"bulk")}
         user={user as any} employeeId={section==="employee-record"?selectedEmployeeId:null}
-        onBack={section==="employee-record"?()=>{setSection("employees");setSelectedEmployeeId(null)}:undefined}/>:
-    section==="dashboard"?<><div className="grid">{[["Team members",stats.employees??"—"],["Active projects",stats.active_projects??0],["Leave approvals",stats.pending_leaves??"—"],["My pending requests",stats.my_pending_leaves??0]].map(([name,value])=><div className="card" key={name}><div className="muted">{name}</div><h3>{value}</h3></div>)}</div><section className="panel"><h2>Quick actions</h2><p className="muted">Punch in or out, submit a leave request, or check your current work.</p><div className="actions"><PunchControl api={API} onChanged={()=>refresh("dashboard")}/><button className="secondary" onClick={()=>{setSection("leaves");setForm(true)}}>Request leave</button><button className="secondary" onClick={()=>setSection("projects")}>View projects</button>{canHR&&<button className="secondary" onClick={()=>setSection("employees")}>Manage employees</button>}</div></section><BonusSummary api={API}/>{canSeeEmployees&&<section className="panel"><div className="section-head"><div><h2>Recently added employees</h2><p className="muted" style={{fontSize:13,marginBottom:0}}>Latest employee accounts created in HRMS</p></div><button className="secondary" onClick={()=>setSection("employees")}>View all</button></div>{employees.length?<div className="table-wrap"><table><thead><tr><th>Employee</th><th>ID</th><th>Designation</th><th>Department</th><th>Status</th></tr></thead><tbody>{employees.slice(0,5).map(e=><tr key={e.id}><td><strong>{e.name}</strong><div className="muted" style={{fontSize:12}}>{e.email}</div></td><td>{(e as Employee & {employee_code?:string}).employee_code||"—"}</td><td>{e.designation||"—"}</td><td>{e.department||"—"}</td><td><span className={"pill "+e.status}>{e.status}</span></td></tr>)}</tbody></table></div>:<div className="empty">No employees added yet.</div>}</section>}</>:<section className="panel"><div className="section-head"><h2>{sections.find(s=>s.id===section)?.label}</h2><div className="actions">{section==="attendance"&&<PunchControl api={API} onChanged={()=>refresh("attendance")}/>}{(section==="leaves"|| (canHR && ["employees","projects","bonuses","appraisals"].includes(section)))&&<button className="primary" onClick={()=>setForm(!form)}>{form?"Cancel":"+ Add new"}</button>}</div></div>
+        onBack={section==="employee-record"?()=>{setSection("employees");setSelectedEmployeeId(null)}:undefined}
+        onPasswordChanged={completePasswordChange}/>:
+    section==="dashboard"?<><div className="grid">{[["Team members",stats.employees??"—"],["Active projects",stats.active_projects??0],["Leave approvals",stats.pending_leaves??"—"],["My pending requests",stats.my_pending_leaves??0]].map(([name,value])=><div className="card" key={name}><div className="muted">{name}</div><h3>{value}</h3></div>)}</div><section className="panel"><h2>Quick actions</h2><p className="muted">Punch in or out, submit a leave request, or check your current work.</p><div className="overview-quick-actions"><PunchControl api={API} onChanged={()=>{setAttendanceVersion(v=>v+1);void refresh("dashboard")}}/><div className="overview-shortcuts"><button className="secondary" onClick={()=>{setSection("leaves");setForm(true)}}>Request leave</button><button className="secondary" onClick={()=>setSection("projects")}>View projects</button>{canHR&&<button className="secondary" onClick={()=>setSection("employees")}>Manage employees</button>}</div></div></section><OverviewAttendance api={API} refreshKey={attendanceVersion}/><BonusSummary api={API}/>{canSeeEmployees&&<section className="panel"><div className="section-head"><div><h2>Recently added employees</h2><p className="muted" style={{fontSize:13,marginBottom:0}}>Latest employee accounts created in HRMS</p></div><button className="secondary" onClick={()=>setSection("employees")}>View all</button></div>{employees.length?<div className="table-wrap"><table><thead><tr><th>Employee</th><th>ID</th><th>Designation</th><th>Department</th><th>Status</th></tr></thead><tbody>{employees.slice(0,5).map(e=><tr key={e.id}><td><strong>{e.name}</strong><div className="muted" style={{fontSize:12}}>{e.email}</div></td><td>{(e as Employee & {employee_code?:string}).employee_code||"—"}</td><td>{e.designation||"—"}</td><td>{e.department||"—"}</td><td><span className={"pill "+e.status}>{e.status}</span></td></tr>)}</tbody></table></div>:<div className="empty">No employees added yet.</div>}</section>}</>:<section className="panel"><div className="section-head"><h2>{sections.find(s=>s.id===section)?.label}</h2><div className="actions">{section==="attendance"&&<PunchControl api={API} onChanged={()=>refresh("attendance")}/>}{(section==="leaves"|| (canHR && ["employees","projects","bonuses","appraisals"].includes(section)))&&<button className="primary" onClick={()=>setForm(!form)}>{form?"Cancel":"+ Add new"}</button>}</div></div>
     {form&&formMap[section]&&<form className="form" onSubmit={submit}>{formMap[section].map(([key,label,type])=><label key={key}>{label}{type==="role"?<select name={key} required>{["employee","hr","accountant","admin"].map(r=><option key={r}>{r}</option>)}</select>:type==="leave"?<select name={key} required>{["Annual","Sick","Casual","Unpaid"].map(r=><option key={r}>{r}</option>)}</select>:type==="employee"?<select name={key} required><option value="">Select employee</option>{employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select>:type==="rating"?<select name={key} required>{[1,2,3,4,5].map(r=><option key={r}>{r}</option>)}</select>:<input name={key} type={type||"text"} required={["name","email","password","leave_type","start_date","end_date","employee_id","amount","period","rating"].includes(key)} min={type==="number"?"0.01":undefined} step={type==="number"?"0.01":undefined}/>}</label>)}{section==="employees"&&<label className="wide">Employee document (PDF/JPEG/PNG, max 5 MB)<input type="file" name="document" accept=".pdf,.png,.jpg,.jpeg"/></label>}<button className="primary wide" disabled={loading}>Save</button></form>}
     {section==="attendance"?<AttendanceByDay records={rows as {id:number;employee_id:number;punch_in:string;punch_out:string|null}[]}/>:<div className="table-wrap"><table><thead><tr>{headings[section].map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map(row=><tr key={row.id}>{headings[section].map(h=><td key={h}>{cell(row,h)}</td>)}</tr>)}</tbody></table>{rows.length===0&&<div className="empty">No records yet. Add your first record to get started.</div>}</div>}</section>}
   </main></div>;

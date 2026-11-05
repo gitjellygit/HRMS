@@ -62,6 +62,7 @@ test.describe('employee management & UI validation', () => {
     await page.locator('input[placeholder="e.g. Software Engineer"]').fill('QA Associate');
     const departmentValue=await page.locator('#emp-department option').nth(1).getAttribute('value');
     await page.locator('#emp-department').selectOption(departmentValue!);
+    await page.locator('#core-manager').selectOption(String(persona('manager').id));
     await page.locator('input[placeholder="Create a strong password"]').fill('DemoOnly!Pass1234');
     await page.getByRole('button',{name:'Save employee'}).click();
     await expect(page.getByRole('status')).toContainText('added successfully');
@@ -196,6 +197,7 @@ test.describe('business-critical cross-role workflows',()=>{
     const managerRow=page.locator('.leave-table tr').filter({hasText:reason});
     await expect(managerRow).toBeVisible();
     await managerRow.getByRole('button',{name:'Approve'}).click();
+    await expect(page.getByRole('status')).toContainText('Leave request updated');
     await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
 
     await login(page,persona('hr'));await navigate(page,'Leave requests');

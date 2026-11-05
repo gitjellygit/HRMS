@@ -1,5 +1,6 @@
 "use client";
 import {useEffect,useState} from "react";
+import FeedbackMotion from "./FeedbackMotion";
 import {Settings2, ShieldCheck, CircleDollarSign, Info, CheckCircle2, Plus} from "lucide-react";
 
 type ProjectPolicy={default_project_bonus_inr:number;currency:string;milestone_days:number;award_status:string};
@@ -26,7 +27,7 @@ export default function CompanyPolicies({api}:{api:string}){
  async function submit(e:React.FormEvent){
   e.preventDefault();setSaved("");setError("");
   const n=Number(amount);
-  if(amount===""||!Number.isFinite(n)||n<0||n>100000000){setError("Enter a valid INR amount from 0 to 100,000,000.");return}
+  if(amount===""||!Number.isFinite(n)||n<0||n>100000000){setError("Enter a valid INR amount from 0 to 100,000,000.");window.document.getElementById("default-bonus")?.focus();return}
   setSaving(true);
   try{
    const r=await fetch(api+"/policies/project-bonus",{method:"PUT",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({default_project_bonus_inr:n})});
@@ -51,10 +52,10 @@ export default function CompanyPolicies({api}:{api:string}){
  return <div className="policy-page">
   <section className="employee-surface"><div className="core-head"><Settings2 size={21}/><div><h2>Company policies</h2><p>Centralized HR settings used across onboarding and project workflows.</p></div></div>
    {error&&<div className="error" role="alert">{error}</div>}
-   {saved&&<div className="employee-success" role="status"><CheckCircle2 size={17}/>{saved}</div>}
+   {saved&&<FeedbackMotion type="success" compact message={saved}/>}
    <div className="policy-card"><div className="policy-card-head"><CircleDollarSign size={20}/><div><h3>Project sourcing incentive</h3><p>Default milestone bonus for employees who source projects.</p></div></div>
     <form className="policy-form" onSubmit={submit}>
-     <div className="employee-field"><label htmlFor="default-bonus">Company default bonus (INR)</label><input id="default-bonus" value={amount} type="number" min="0" max="100000000" step="0.01" onChange={e=>setAmount(e.target.value)} required/><span className="field-help">Applies to newly created projects, unless an employee-specific amount or project override is supplied.</span></div>
+     <div className="employee-field"><label htmlFor="default-bonus">Company default bonus (INR)</label><input id="default-bonus" value={amount} aria-invalid={Boolean(error&&error.includes("INR"))} type="number" min="0" max="100000000" step="0.01" onChange={e=>setAmount(e.target.value)} required/><span className="field-help">Applies to newly created projects, unless an employee-specific amount or project override is supplied.</span></div>
      <div className="policy-summary"><span>Milestone</span><strong>{policy?.milestone_days??30} completed calendar days</strong><span>Bonus creation</span><strong>Planned · pending approval</strong></div>
      <div className="policy-actions"><button className="employee-primary" disabled={saving||!policy}>{saving?"Saving…":"Save policy"}</button></div>
     </form>

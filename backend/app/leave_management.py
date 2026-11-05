@@ -390,20 +390,25 @@ def upcoming_approvers(db: Session,row: LeaveRequest)->list[int]:
 def financial_year_hr_overview(fy: int=Query(default=fy_start_year(date.today()),ge=2020,le=2100),
                                user: Employee=Depends(hr_only),db: Session=Depends(db_session)):
     from .main import Attendance
+    from .employee_core import EmployeeCore
     staff=db.scalars(select(Employee).order_by(Employee.name)).all()
     kinds=db.scalars(select(LeavePolicy.leave_type).where(LeavePolicy.active.is_(True))).all()
     ongoing=set(db.scalars(select(Attendance.employee_id).where(Attendance.punch_out.is_(None))).all())
     pending=db.scalar(select(func.count()).select_from(LeaveRequest).where(LeaveRequest.status=="pending"))
     result=[]
     for person in staff:
-        result.append({"id":person.id,"name":person.name,"department":person.department,
+        core=db.get(EmployeeCore,person.id)
+        result.append({"id":person.id,"name":person.name,"manager_id":core.manager_id if core else None,"department":person.department,
                        "role":person.role,"status":person.status,"joining_date":person.joining_date,
                        "currently_checked_in":person.id in ongoing,
                        "leave_balances":[balance(db,person.id,fy,kind) for kind in kinds]})
     return {"fy":fy,"fy_label":f"FY {fy}-{str(fy+1)[-2:]}",
             "headcount":sum(1 for x in staff if x.status=="active"),
             "currently_checked_in":len(ongoing),
-            "pending_leave_requests":pending or 0,"employees":result}
+            "pending_leave_requests":pending or 0,
+            "unassigned_managers":sum(1 for person in result if person["status"]=="active"
+                and person["role"] not in ("super_admin","admin") and not person["manager_id"]),
+            "employees":result}
 
 
 @router.get("/policies")

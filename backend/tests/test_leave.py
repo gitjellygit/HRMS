@@ -24,8 +24,9 @@ def test_leave_workflow():
     with TestClient(app) as c:
         admin=c.post("/auth/login",json={"email":"admin@example.com","password":"test-admin-password-12345"})
         assert admin.status_code==200,admin.text
+        admin_id=c.get("/me").json()["id"]
         manager=c.post("/core/employees",headers=ORIGIN,
-            json={"account":account("Leave Manager","leave.manager@example.org","manager"),"master":{}})
+            json={"account":account("Leave Manager","leave.manager@example.org","manager"),"master":{"manager_id":admin_id}})
         assert manager.status_code==201,manager.text
         manager_id=manager.json()["id"]
         employee=c.post("/core/employees",headers=ORIGIN,json={

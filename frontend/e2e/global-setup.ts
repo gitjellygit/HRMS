@@ -9,6 +9,7 @@ export const USERS_FILE = resolve(E2E_DIR, 'users.json');
 
 type Persona = { key: string; name: string; department: string; code: string; role: string; designation: string; email: string; id: number; };
 const SEEDS = [
+  ['manager', 'Neha Manager', 'Bench Sales', 'BSA', 'manager', 'Bench Sales Manager'],
   ['sales_a', 'Aarav Sales', 'Bench Sales', 'BSA', 'employee', 'Bench Sales Executive'],
   ['sales_b', 'Ishita Sales', 'Bench Sales', 'BSA', 'employee', 'Bench Sales Executive'],
   ['sales_c', 'Kabir Sales', 'Bench Sales', 'BSA', 'employee', 'Bench Sales Executive'],
@@ -16,7 +17,6 @@ const SEEDS = [
   ['developer_b', 'Rohan Developer', 'Engineering', 'ENG', 'employee', 'Software Developer'],
   ['hr', 'Meera Humanresources', 'Human Resources', 'HR', 'hr', 'HR Specialist'],
   ['accountant', 'Dev Accountant', 'Finance', 'FIN', 'accountant', 'Accountant'],
-  ['manager', 'Neha Manager', 'Bench Sales', 'BSA', 'manager', 'Bench Sales Manager'],
 ] as const;
 
 async function required(context: APIRequestContext, url: string, options: Parameters<APIRequestContext['post']>[1]) {
@@ -51,6 +51,7 @@ export default async function setup(_config: FullConfig) {
     departments[department] = unit.id;
   }
   const users: Persona[] = [];
+  const adminId=(await (await admin.get(API_URL+"/me")).json()).id;
   for (const [key, name, department, code, role, designation] of SEEDS) {
     const email = 'qa.' + key + '.' + token + '@example.org';
     const result = await required(admin, '/core/employees', {
@@ -59,18 +60,11 @@ export default async function setup(_config: FullConfig) {
           name, email, role, designation, department, joining_date: '2026-04-01',
           password: TEST_PASSWORD, employee_code: '', employment_type: 'Full time',
         },
-        master: { department_id: departments[department] },
+        master: { department_id: departments[department],
+          manager_id:key==='manager'?adminId:users.find(person=>person.key==='manager')?.id },
       },
     });
     users.push({ key, name, department: department + ' QA ' + token, code, role, designation, email, id: result.id });
-  }
-  // Route Bench Sales approvals to their actual reporting manager.
-  const manager = users.find(person => person.key === 'manager')!;
-  for (const sales of users.filter(person => person.key.startsWith('sales_'))) {
-    const update = await admin.put(API_URL + '/core/employees/' + sales.id, {
-      data: { manager_id: manager.id, department_id: departments['Bench Sales'] },
-    });
-    if (!update.ok()) throw Error('Could not assign sales reporting manager: ' + (await update.text()).slice(0, 350));
   }
   await admin.dispose();
   writeFileSync(USERS_FILE, JSON.stringify({ users, token }, null, 2), { mode: 0o600 });

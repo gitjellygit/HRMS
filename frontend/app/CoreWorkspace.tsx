@@ -1,5 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import ChangePassword from "./ChangePassword";
+import AccountSecurity from "./AccountSecurity";
 import { ArrowDown, ArrowLeft, BadgeCheck, Building2, CalendarClock, Check, Download, FileDown, FilePlus2, GitBranch, LockKeyhole, Search, ShieldCheck, Upload, UserRound, Users, X } from "lucide-react";
 
 type Person = {id:number;name:string;email:string;employee_code?:string;designation:string;department:string;role:string;status:string;phone?:string;joining_date?:string};
@@ -23,7 +25,7 @@ function errorText(value:any){
  if(Array.isArray(detail)&&detail.length)return detail.map((v:any)=>(v.loc?.slice(-1)[0]||"Field")+": "+String(v.msg||"Invalid value").replace(/^Value error, /,"")).join("; ");
  return "Request could not be completed. Please check the information.";
 }
-export default function CoreWorkspace({api,mode,user,employeeId,onBack}:{api:string;mode:Mode;user:Person;employeeId?:number|null;onBack?:()=>void}){
+export default function CoreWorkspace({api,mode,user,employeeId,onBack,onPasswordChanged}:{api:string;mode:Mode;user:Person;employeeId?:number|null;onBack?:()=>void;onPasswordChanged?:()=>void}){
  const isHR=["super_admin","admin","hr"].includes(user.role);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
@@ -200,7 +202,8 @@ export default function CoreWorkspace({api,mode,user,employeeId,onBack}:{api:str
     <div><span>Probation remaining</span><strong>{person.effective_lifecycle==="probation"?(person.probation_days_remaining??0)+" days":"Completed"}</strong></div>
    </div>
    <h3 className="core-subhead">Reporting & organization</h3>
-   <form onSubmit={saveMaster} className="core-form">
+   {!isHR&&<p className="field-help">HR manages these records. To update your own personal details, submit a profile change request below for approval.</p>}
+   <form onSubmit={saveMaster} className="core-form"><fieldset disabled={!isHR} className="core-readonly-fieldset">
     <div className="employee-form-grid">
      {selectRelation("manager_id","Reporting manager",people.filter(p=>p.id!==target).map(p=>({id:p.id,name:managerLabels[p.id]})))}
      {selectRelation("hod_id","Second-level manager / HOD",people.filter(p=>p.id!==target).map(p=>({id:p.id,name:managerLabels[p.id]})))}
@@ -210,8 +213,9 @@ export default function CoreWorkspace({api,mode,user,employeeId,onBack}:{api:str
     <h3 className="core-subhead">Personal details & emergency contact</h3>
     <div className="employee-form-grid">{fields.filter(([field])=>!sensitive.includes(field)).map(([field,label])=>input(field,label,field==="date_of_birth"?"date":field==="personal_email"?"email":"text"))}</div>
     {isHR&&<><h3 className="core-subhead"><LockKeyhole size={17}/> Restricted HR-only identifiers and bank details</h3><div className="employee-form-grid">{fields.filter(([field])=>sensitive.includes(field)).map(([field,label])=>input(field,label))}</div><div className="core-form-actions"><button disabled={busy} className="employee-primary">Save master record</button></div></>}
-   </form>
+   </fieldset></form>
   </section>
+  {target===user.id&&<><ChangePassword api={api} required={false} onComplete={()=>onPasswordChanged?.()}/><AccountSecurity api={api}/></>}
   <section className="employee-surface"><header className="core-head"><FilePlus2 size={20}/><div><h2>Employee documents</h2><p>Offer letters, ID proofs, certificates and their expiry dates.</p></div></header>
     {isHR&&<form className="core-inline-form" onSubmit={upload}><select value={category} onChange={e=>setCategory(e.target.value)}>{categories.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select><input type="date" aria-label="Document expiry date" value={expiry} onChange={e=>setExpiry(e.target.value)}/><input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={e=>setDocument(e.target.files?.[0]||null)}/><button disabled={busy} className="employee-primary"><Upload size={15}/> Upload</button></form>}
     {documents.length?<div className="table-wrap"><table><thead><tr><th>Document</th><th>Category</th><th>Expiry</th><th>Action</th></tr></thead><tbody>{documents.map(d=><tr key={d.id}><td>{d.name}</td><td>{d.category.replace("_"," ")}</td><td>{d.expiry_date||"—"}</td><td><button className="employee-link" onClick={()=>downloadDoc(d)}>Download</button></td></tr>)}</tbody></table></div>:<div className="empty">No documents uploaded yet.</div>}
