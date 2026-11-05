@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, request } from '@playwright/test';
 import { login, navigate, users } from './helpers';
 import { API_URL, WEB_URL } from '../playwright.config';
 
@@ -143,9 +143,21 @@ test.describe('employee and finance workflows',()=>{
 test.describe('business-critical cross-role workflows',()=>{
   test('HR policy form saves company sourcing bonus through browser CORS', async ({page})=>{
     await login(page,persona('hr'));await navigate(page,'Policies');
+    await page.getByPlaceholder('Explain why this policy change is needed').fill('HR bonus default needs approval for future placements.');
     await page.locator('#default-bonus').fill('10000');
     await page.getByRole('button',{name:'Save policy'}).click();
-    await expect(page.getByRole('status')).toContainText('Company default bonus saved');
+    await expect(page.getByText(/Bonus policy sent for admin approval/)).toBeVisible();
+    const proposals=await (await page.request.get(API_URL+'/governance/requests')).json();
+    const req=proposals.find((r:any)=>r.kind==='bonus_policy'&&r.status==='pending');
+    expect(req).toBeTruthy();
+    const admin=await request.newContext({extraHTTPHeaders:{Origin:WEB_URL}});
+    try{
+      expect((await admin.post(API_URL+'/auth/login',{data:{email:process.env.E2E_ADMIN_EMAIL,
+        password:process.env.E2E_ADMIN_PASSWORD}})).status()).toBe(200);
+      const ok=await admin.post(API_URL+'/governance/requests/'+req.id+'/review',{
+        data:{approve:true,reason:'Reviewed HR sourcing bonus for new placements.'}});
+      expect(ok.status()).toBe(200);
+    }finally{await admin.dispose()}
     const response=await page.request.get(API_URL+'/policies/project-bonus');
     expect(response.ok()).toBeTruthy();
     expect((await response.json()).default_project_bonus_inr).toBe(10000);
@@ -176,11 +188,15 @@ test.describe('business-critical cross-role workflows',()=>{
     const day=date.toISOString().slice(0,10);
     const reason='QA manager routing '+Date.now();
     await login(page,persona('hr'));
-    const policy=await page.request.put(API_URL+'/leave/policies',{
-      headers:{Origin:WEB_URL},
-      data:{leave_type:'casual',annual_days:12,monthly_accrual:0,approval_chain:['manager','hr'],probation_allowed:true,active:true},
-    });
-    expect(policy.status()).toBe(200);
+    const admin=await request.newContext({extraHTTPHeaders:{Origin:WEB_URL}});
+    try{
+      expect((await admin.post(API_URL+'/auth/login',{data:{email:process.env.E2E_ADMIN_EMAIL,
+        password:process.env.E2E_ADMIN_PASSWORD}})).status()).toBe(200);
+      const policy=await admin.put(API_URL+'/leave/policies',{
+        data:{leave_type:'casual',annual_days:12,monthly_accrual:0,
+              approval_chain:['manager','hr'],probation_allowed:true,active:true}});
+      expect(policy.status()).toBe(200);
+    }finally{await admin.dispose()}
     await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
     await login(page,persona('sales_a'));
     await navigate(page,'Leave requests');
