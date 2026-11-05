@@ -343,6 +343,7 @@ def initialize():
     with engine.begin() as connection:
         connection.execute(text("ALTER TABLE finance_project_billing ADD COLUMN IF NOT EXISTS billing_frequency VARCHAR(20) NOT NULL DEFAULT 'monthly'"))
         connection.execute(text("ALTER TABLE finance_project_charges ADD COLUMN IF NOT EXISTS rate_unit VARCHAR(20) NOT NULL DEFAULT 'hour'"))
+        connection.execute(text("ALTER TABLE company_policy_records ADD COLUMN IF NOT EXISTS audience_ids TEXT NOT NULL DEFAULT '[]'"))
     email = os.environ.get("ADMIN_EMAIL")
     passwd = os.environ.get("ADMIN_PASSWORD")
     if email and passwd and len(passwd) >= 12:
