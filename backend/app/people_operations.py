@@ -476,3 +476,42 @@ def audit_log(kind:str|None=None,limit:int=50,user:Employee=Depends(current_user
     return [{"id":r.id,"actor_id":r.actor_id,"kind":r.kind,"object_id":r.object_id,
              "action":r.action,"note":r.note,"created_at":r.created_at}
             for r in db.scalars(q).all()]
+
+ORIENTATION_STEPS=(
+ ("hr","Meet your HR buddy",3),
+ ("document","Complete identity and payroll documents",7),
+ ("it","Set up password and multi-factor authentication",2),
+ ("asset","Receive laptop and company equipment",3),
+ ("induction","Read and acknowledge employee handbook",7),
+ ("induction","Attend leave and attendance walkthrough",5),
+ ("induction","Complete first-week team and project orientation",7),
+)
+
+@router.post("/onboarding/orientation/{employee_id}")
+def start_orientation(employee_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    person=db.get(Employee,employee_id)
+    if not person or person.status!="active":raise HTTPException(422,"Active employee required")
+    existing=set(db.scalars(select(OnboardingTask.title).where(
+        OnboardingTask.employee_id==employee_id)).all())
+    added=0
+    for category,title,days in ORIENTATION_STEPS:
+        if title in existing:continue
+        task=OnboardingTask(employee_id=employee_id,category=category,title=title,
+            due_date=date.today()+timedelta(days=days),assigned_to=employee_id)
+        db.add(task);db.flush();audit(db,user,"orientation",task.id,"created")
+        added+=1
+    db.commit()
+    return {"employee_id":employee_id,"created":added,"total_steps":len(ORIENTATION_STEPS)}
+
+@router.get("/onboarding/orientation/{employee_id}")
+def orientation_status(employee_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    owned(user,employee_id)
+    titles=[x[1] for x in ORIENTATION_STEPS]
+    rows=db.scalars(select(OnboardingTask).where(
+        OnboardingTask.employee_id==employee_id,OnboardingTask.title.in_(titles))).all()
+    completed=sum(x.status=="completed" for x in rows)
+    return {"employee_id":employee_id,"total":len(rows),"completed":completed,
+       "progress_pct":round(100*completed/len(rows),1) if rows else 0,
+       "steps":[{"id":x.id,"title":x.title,"status":x.status,
+                 "due_date":x.due_date} for x in rows]}
