@@ -30,6 +30,7 @@ class ProjectBilling(Base):
     billing_address:Mapped[str]=mapped_column(Text,default="")
     billing_day:Mapped[int|None]=mapped_column(Integer,nullable=True)
     payment_terms_days:Mapped[int]=mapped_column(Integer,default=15)
+    billing_frequency:Mapped[str]=mapped_column(String(20),default="monthly",server_default="monthly")
     end_date:Mapped[date|None]=mapped_column(Date,nullable=True)
     stopped_at:Mapped[date|None]=mapped_column(Date,nullable=True)
     updated_by:Mapped[int]=mapped_column(ForeignKey("employees.id"))
@@ -40,6 +41,7 @@ class ProjectCharge(Base):
     project_id:Mapped[int]=mapped_column(ForeignKey("projects.id"),primary_key=True)
     recipient_type:Mapped[str]=mapped_column(String(24),primary_key=True)
     pricing_mode:Mapped[str]=mapped_column(String(20),default="fixed_rate")
+    rate_unit:Mapped[str]=mapped_column(String(20),default="hour",server_default="hour")
     pricing_value:Mapped[Decimal]=mapped_column(Numeric(14,2))
     tax_rate_pct:Mapped[Decimal]=mapped_column(Numeric(6,2),default=Decimal("0"))
     updated_by:Mapped[int]=mapped_column(ForeignKey("employees.id"))
@@ -48,6 +50,7 @@ class ProjectCharge(Base):
 class ChargeIn(BaseModel):
     recipient_type:Literal["client","vendor","candidate"]
     pricing_mode:Literal["fixed_rate","percentage"]
+    rate_unit:Literal["hour","day","week","month","project"]="hour"
     pricing_value:Decimal=Field(gt=0,le=100000000,decimal_places=2)
     tax_rate_pct:Decimal=Field(default=0,ge=0,le=100,decimal_places=2)
 
@@ -60,7 +63,7 @@ class ChargeIn(BaseModel):
 
 def charge_view(row:ProjectCharge):
     return {"project_id":row.project_id,"recipient_type":row.recipient_type,
-            "pricing_mode":row.pricing_mode,"pricing_value":row.pricing_value,
+            "pricing_mode":row.pricing_mode,"rate_unit":row.rate_unit,"pricing_value":row.pricing_value,
             "tax_rate_pct":row.tax_rate_pct}
 
 def charge_rate(db:Session,project_id:int,recipient_type:str,placement_rate:Decimal)->Decimal:
@@ -117,6 +120,7 @@ class BillingIn(BaseModel):
     billing_address:str=Field(default="",max_length=2000)
     billing_day:int|None=Field(default=None,ge=1,le=28)
     payment_terms_days:int=Field(default=15,ge=0,le=180)
+    billing_frequency:Literal["weekly","biweekly","monthly"]="monthly"
     end_date:date|None=None
 
 class ProjectStateIn(BaseModel):
@@ -175,7 +179,7 @@ def billing_view(p:Project,d:ProjectDetail,profile:ProjectBilling|None):
     data["billing"]=({"recipient_type":profile.recipient_type,"recipient_name":profile.recipient_name,
        "recipient_email":profile.recipient_email,"recipient_phone":profile.recipient_phone,
        "billing_address":profile.billing_address,"billing_day":profile.billing_day,
-       "payment_terms_days":profile.payment_terms_days,"end_date":profile.end_date,
+       "payment_terms_days":profile.payment_terms_days,"billing_frequency":profile.billing_frequency,"end_date":profile.end_date,
        "stopped_at":profile.stopped_at} if profile else None)
     return data
 def audit(db:Session,user:Employee,project_id:int,event:str,note:str=""):
@@ -233,6 +237,7 @@ def save_charge(project_id:int,body:ChargeIn,user:Employee=Depends(current_user)
                           updated_by=user.id,pricing_value=body.pricing_value)
         db.add(row)
     row.pricing_mode=body.pricing_mode
+    row.rate_unit=body.rate_unit
     row.pricing_value=body.pricing_value
     row.tax_rate_pct=body.tax_rate_pct
     row.updated_by=user.id
@@ -241,6 +246,52 @@ def save_charge(project_id:int,body:ChargeIn,user:Employee=Depends(current_user)
     db.commit()
     return charge_view(row) | {"effective_rate":charge_rate(db,project_id,body.recipient_type,Decimal(detail.rate))}
 
+
+class BillingConfigurationIn(BaseModel):
+    """One transactional save for billing contact, cadence and independent invoice rate."""
+    recipient_type:Literal["client","vendor","candidate"]="client"
+    recipient_name:str=Field(min_length=2,max_length=180)
+    recipient_email:EmailStr|None=None
+    recipient_phone:str=Field(default="",max_length=40)
+    billing_address:str=Field(default="",max_length=2000)
+    billing_day:int=Field(ge=1,le=28)
+    payment_terms_days:int=Field(ge=0,le=180)
+    billing_frequency:Literal["weekly","biweekly","monthly"]="monthly"
+    rate_unit:Literal["hour","day","week","month","project"]="hour"
+    invoice_rate:Decimal=Field(gt=0,le=100000000,decimal_places=2)
+    tax_rate_pct:Decimal=Field(ge=0,le=100,decimal_places=2)
+
+
+@router.put("/projects/{project_id}/configuration")
+def save_billing_configuration(project_id:int,body:BillingConfigurationIn,
+                               user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    authorized(user)
+    p,d=project_detail(db,project_id)
+    if p.status!="active":raise HTTPException(409,"Inactive projects cannot be edited")
+    existing=db.get(ProjectBilling,project_id)
+    if existing and existing.stopped_at:raise HTTPException(409,"Project billing has stopped")
+    profile=existing or ProjectBilling(project_id=project_id,updated_by=user.id)
+    if not existing:db.add(profile)
+    for key in ("recipient_type","recipient_name","recipient_email","recipient_phone",
+                "billing_address","billing_day","payment_terms_days","billing_frequency"):
+        value=getattr(body,key)
+        setattr(profile,key,value or "" if key=="recipient_email" else value)
+    profile.updated_by=user.id
+    charge=db.get(ProjectCharge,(project_id,body.recipient_type))
+    if charge is None:
+        charge=ProjectCharge(project_id=project_id,recipient_type=body.recipient_type,
+                             updated_by=user.id,pricing_value=body.invoice_rate)
+        db.add(charge)
+    charge.pricing_mode="fixed_rate"
+    charge.pricing_value=body.invoice_rate
+    charge.rate_unit=body.rate_unit
+    charge.tax_rate_pct=body.tax_rate_pct
+    charge.updated_by=user.id
+    audit(db,user,project_id,"billing_configuration_saved",
+          f"cadence={body.billing_frequency}, rate={body.invoice_rate}/{body.rate_unit}")
+    db.commit()
+    return {"saved":True,"project_id":project_id,"billing_frequency":profile.billing_frequency,
+            "invoice_rate":charge.pricing_value,"rate_unit":charge.rate_unit}
 
 @router.put("/projects/{project_id}/billing")
 def set_billing(project_id:int,body:BillingIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
@@ -323,7 +374,17 @@ def run_schedule(body:ScheduleIn,user:Employee=Depends(current_user),db:Session=
             p.status="inactive";c.stopped_at=c.end_date
             db.commit();skipped.append({"project_id":p.id,"reason":"project ended; schedule disabled"});continue
         end=c.end_date
-        if body.as_of>d.start_date and ((body.as_of.day==c.billing_day) or (end and body.as_of==end)):
+        cadence=c.billing_frequency or "monthly"
+        if cadence=="monthly":
+            scheduled=body.as_of.day==c.billing_day
+        else:
+            # For weekly/biweekly schedules, billing_day represents weekday 1=Mon..7=Sun.
+            anchor=d.start_date
+            weekday=(c.billing_day-1)%7+1
+            days_elapsed=(body.as_of-anchor).days
+            scheduled=(body.as_of.isoweekday()==weekday and
+                       (cadence=="weekly" or days_elapsed//7%2==0))
+        if body.as_of>d.start_date and (scheduled or (end and body.as_of==end)):
             prior=db.scalar(select(func.max(ClientInvoice.period_end)).where(
                 ClientInvoice.project_id==p.id,ClientInvoice.recipient_type==c.recipient_type))
             other=db.scalar(select(func.max(BillableReview.period_end)).where(BillableReview.project_id==p.id))
