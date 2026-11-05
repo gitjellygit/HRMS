@@ -57,7 +57,8 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
   setAllExits(i);setMetrics(j);setNotifications(k);setAudits(l);
   if(hr)setRules(await get("/notification-rules"));
  }
- useEffect(()=>{void refresh()},[api,user.id]);
+ useEffect(()=>{void refresh();if(hr)void fetch(api+"/exit-workflow/templates",{credentials:"include"})
+  .then(r=>r.ok?r.json():[]).then(setExitTemplates).catch(()=>{})},[api,user.id]);
  async function save(fn:()=>Promise<unknown>,msg:string){
   setBusy(true);setError("");setInfo("");
   try{await fn();setInfo(msg);setDraft({});setSelected("");setReply("");await refresh()}
@@ -67,6 +68,40 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
   value={draft[key]??""} onChange={e=>setDraft(v=>({...v,[key]:e.target.value}))}/></label>;
  const emp=(key="employee_id")=><label>Employee<select required value={draft[key]??""} onChange={e=>setDraft(v=>({...v,[key]:e.target.value}))}>
   <option value="">Select employee</option>{staff.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>;
+ async function exitCall(path:string,method="GET",body?:unknown){
+  const response=await fetch(api+"/exit-workflow"+path,{method,credentials:"include",
+   headers:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});
+  const payload=await response.json().catch(()=>null);
+  if(!response.ok)throw Error(explainError(payload,response.status));
+  return payload;
+ }
+ async function initiateExit(e:React.FormEvent){
+  e.preventDefault();
+  await save(async()=>{
+   await exitCall("/cases","POST",{employee_id:Number(exitEmployee),reason:exitReason,
+     notice_days:Number(exitNotice),requested_date:today()});
+   setExitEmployee("");setExitReason("");
+  },"Exit case created. Employee and HR checklist tasks assigned.");
+ }
+ async function addExitTemplate(e:React.FormEvent){
+  e.preventDefault();
+  await save(async()=>{
+   await exitCall("/templates","POST",{title:templateTitle,assignee_role:templateRole,active:true});
+   setExitTemplates(await exitCall("/templates"));setTemplateTitle("");
+  },"Exit checklist task configured.");
+ }
+ async function loadExitTasks(caseId:number){
+  try{
+   const items=await exitCall("/cases/"+caseId+"/tasks");
+   setExitTasks(v=>({...v,[caseId]:items}));
+  }catch(e){setError((e as Error).message)}
+ }
+ async function completeExitTask(caseId:number,taskId:number){
+  await save(async()=>{
+   await exitCall("/tasks/"+taskId+"/complete","POST",{note:exitTaskNotes[taskId]||""});
+   await loadExitTasks(caseId);
+  },"Exit task completed with the audit note.");
+ }
  const submit=(path:string,data:Row,success:string)=>save(()=>call(path,"POST",data),success);
  return <div className="ops-area">
   <p className="ops-intro">Employee lifecycle workflows, approvals, announcements and HR support. Confidential workflows are available only to the employee or authorized HR staff.</p>
