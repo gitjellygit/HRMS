@@ -913,3 +913,6 @@ app.include_router(security_router)
 
 from .performance_growth import router as performance_growth_router  # noqa: E402
 app.include_router(performance_growth_router)
+
+from .performance_extensions import router as performance_extensions_router  # noqa: E402
+app.include_router(performance_extensions_router)
