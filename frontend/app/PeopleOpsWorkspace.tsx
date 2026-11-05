@@ -2,6 +2,7 @@
 import {useEffect,useState} from "react";
 import {ClipboardCheck,Send,LifeBuoy,UserRoundX,BarChart3,Bell,ShieldCheck,FileSignature} from "lucide-react";
 import FeedbackMotion from "./FeedbackMotion";
+import {explainError} from "./formErrors";
 import PeopleOpsExtras from "./PeopleOpsExtras";
 import BrandIllustration,{WelcomeAnimation} from "./BrandIllustration";
 type Row=Record<string,any>;
@@ -29,11 +30,19 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
  const [draft,setDraft]=useState<Row>({});
  const [selected,setSelected]=useState("");
  const [reply,setReply]=useState("");
+ const [exitEmployee,setExitEmployee]=useState("");
+ const [exitReason,setExitReason]=useState("");
+ const [exitNotice,setExitNotice]=useState("30");
+ const [exitTemplates,setExitTemplates]=useState<Row[]>([]);
+ const [templateTitle,setTemplateTitle]=useState("");
+ const [templateRole,setTemplateRole]=useState("hr");
+ const [exitTasks,setExitTasks]=useState<Record<number,Row[]>>({});
+ const [exitTaskNotes,setExitTaskNotes]=useState<Record<number,string>>({});
  async function call(path:string,method="GET",body?:unknown){
   const r=await fetch(api+"/people"+path,{method,credentials:"include",
    headers:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});
   const j=await r.json().catch(()=>({}));
-  if(!r.ok)throw Error(typeof j.detail==="string"?j.detail:j.detail?.message||"Unable to save; review required values.");
+  if(!r.ok)throw Error(explainError(j,r.status));
   return j;
  }
  const get=(path:string)=>call(path).catch(()=>[]);
