@@ -244,3 +244,30 @@ select:disabled{opacity:.65;cursor:not-allowed;background-color:#f3f5f8}
 @media(max-width:980px){.ops-columns{grid-template-columns:1fr}}@media(max-width:620px){.ops-form{grid-template-columns:1fr}.ops-form .wide,.ops-form button{grid-column:1}}
 
 .account-security{margin:18px 0;padding:23px;max-width:680px}.account-security .core-head{display:flex;gap:12px;align-items:center;margin-bottom:13px}.account-security-form{display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-top:15px}.account-security label,.account-totp-secret label{display:grid;gap:6px;font-size:12px;color:#59657d;min-width:220px}.account-security input{min-height:40px;border:1px solid #dce2ed;padding:9px 12px;border-radius:9px}.account-totp-secret{padding:15px;background:#f5f5fc;border:1px solid #e2deef;border-radius:10px;display:grid;gap:12px}.account-totp-secret code{font-size:14px;overflow-wrap:anywhere;user-select:all}.account-totp-secret button{justify-self:start}
+
+
+/* Finance actions: intentionally compact across desktop and mobile. */
+.finance-workspace{gap:15px}
+.finance-workspace h2{font-size:18px;margin:4px 0 8px}
+.finance-workspace h4{font-size:14px;margin:8px 0}
+.finance-workspace .time-tabs{width:max-content;max-width:100%;padding:3px;gap:3px;border:1px solid #e0e6f0;background:#f1f4f8}
+.finance-workspace .time-tabs button{font-size:12px;font-weight:600;padding:7px 12px;min-height:32px;border-radius:7px}
+.finance-workspace button.primary,.finance-workspace button.secondary,.finance-workspace .finance-quiet{
+  width:auto!important;min-height:33px;padding:7px 12px!important;font-size:12px!important;
+  font-weight:650;border-radius:7px;justify-self:start;display:inline-flex;align-items:center;gap:6px}
+.finance-workspace .form button{grid-column:auto!important}
+.finance-workspace .finance-actions{grid-column:1/-1;display:flex;justify-content:flex-start;gap:8px;align-items:center}
+.finance-workspace .finance-header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.finance-workspace .finance-header h3{margin:0}
+.finance-workspace .finance-quiet{border:1px solid #d8dfee;background:#fff;color:#425673}
+.finance-workspace .finance-link{border:0;background:none;padding:3px 0;font-size:13px;font-weight:650;color:#485ec5;text-align:left}
+.finance-workspace .finance-link:hover{text-decoration:underline}
+.finance-workspace .finance-pricing{grid-column:1/-1;margin:14px 0;padding:15px;border:1px solid #e3e9f3;background:#f9fbff;border-radius:10px}
+.finance-workspace .finance-pricing .form{margin-top:12px}
+.finance-workspace .finance-preview{grid-column:1/-1;display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid #e6ebf4;background:#f7f9ff;border-radius:8px;font-size:12px}
+.finance-workspace .finance-preview strong{font-size:16px;color:#344c90}
+.finance-workspace .finance-preview small{width:100%;color:#718098}
+.finance-workspace .table-wrap small{display:block;color:#758097;margin-top:4px}
+.finance-workspace .ops-row .form{width:100%}
+.finance-workspace .ops-row .form label{max-width:320px}
+@media(max-width:700px){.finance-workspace .form{grid-template-columns:1fr}.finance-workspace .finance-header{align-items:flex-start;flex-direction:column}}
