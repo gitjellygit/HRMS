@@ -117,7 +117,17 @@ def preview_employee_bonus(employee_id: int,user: Employee=Depends(manage),db:Se
             "source":source,"can_override":True}
 
 
+def next_persisted_project_number(db: Session) -> str:
+    """Preview based on SAVED projects, never on abandoned form openings."""
+    codes = db.scalars(select(ProjectDetail.project_number)).all()
+    highest = max((int(code[5:]) for code in codes
+                   if code and re.fullmatch(r"JG-P-[0-9]{4,9}", code)), default=0)
+    return f"JG-P-{highest + 1:04d}"
+
+
 def project_number_value(db: Session, supplied: str="") -> str:
+    # Hold an exclusive transaction lock while looking up and inserting the next code.
+    # A preview is not a reservation: only a successful project create consumes a number.
     db.execute(select(func.pg_advisory_xact_lock(74001, 2)))
     code=supplied.strip().upper()
     if code:
@@ -125,26 +135,19 @@ def project_number_value(db: Session, supplied: str="") -> str:
             raise HTTPException(422,detail={"field":"project_number","message":"Use JG-P-0001 format (4–9 digits)."})
         if db.scalar(select(ProjectDetail.project_id).where(ProjectDetail.project_number==code)):
             raise HTTPException(409,detail={"field":"project_number","message":"Project number already exists."})
-        number=int(code[5:])
-        last,called=db.execute(text("SELECT last_value, is_called FROM hrms_project_number_seq")).one()
-        if number>(last if called else last-1):
-            db.execute(text("SELECT setval('hrms_project_number_seq', :n, true)"),{"n":number})
         return code
-    number=db.execute(text("SELECT nextval('hrms_project_number_seq')")).scalar_one()
-    return f"JG-P-{number:04d}"
+    return next_persisted_project_number(db)
 
 
 @router.post("/generate-number")
 def allocate_project_number(user: Employee=Depends(manage),db: Session=Depends(db_session)):
-    code=project_number_value(db)
-    db.commit()
-    return {"project_number":code,"provisional":True}
+    # Backward-compatible endpoint; do not allocate/reserve a code until save.
+    return {"project_number":next_persisted_project_number(db),"provisional":True}
 
 
 @router.get("/next-number")
 def preview_number(user: Employee = Depends(manage), db: Session = Depends(db_session)):
-    number, called = db.execute(text("SELECT last_value, is_called FROM hrms_project_number_seq")).one()
-    return {"project_number":f"JG-P-{(number+1 if called else number):04d}", "provisional":True}
+    return {"project_number":next_persisted_project_number(db),"provisional":True}
 
 
 @router.get("/projects")
