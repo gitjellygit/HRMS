@@ -16,16 +16,23 @@ test('generate employee ID advances sequence and remains editable',async({page})
   await expect(field).toHaveValue('JG-0098');
 });
 
-test('project number can be generated twice or entered manually',async({page})=>{
+test('project number preview does not advance until a project is saved and remains editable',async({page})=>{
   await login(page,qa('hr'));await navigate(page,'Projects');
   await page.getByRole('button',{name:'Add project'}).click();
   const field=page.getByRole('textbox',{name:'Project number (editable)'});
   await expect(field).toHaveValue(/^JG-P-\d{4,}$/);
-  const before=Number((await field.inputValue()).slice(5));
+  const initial=await field.inputValue();
   await page.getByRole('button',{name:'Generate',exact:true}).click();
-  await expect.poll(async()=>Number((await field.inputValue()).slice(5))).toBe(before+1);
+  await expect(field).toHaveValue(initial);
+  await page.getByRole('button',{name:'Generate',exact:true}).click();
+  await expect(field).toHaveValue(initial);
+  await page.getByRole('button',{name:'Project directory'}).click();
+  await page.getByRole('button',{name:'Add project'}).click();
+  await expect(field).toHaveValue(initial);
   await field.fill('JG-P-0098');
   await expect(field).toHaveValue('JG-P-0098');
+  await page.getByRole('button',{name:'Generate',exact:true}).click();
+  await expect(field).toHaveValue(initial);
 });
 
 test('HR can add company policy and view it in the register',async({page})=>{
@@ -77,6 +84,10 @@ test('attendance groups sessions by day and expands/collapses',async({page})=>{
   await summary.click();
   await expect(summary).toHaveAttribute('aria-expanded','true');
   await summary.click();
+  await expect(summary).toHaveAttribute('aria-expanded','false');
+  await expect(group.locator('table')).toHaveCount(0);
+  await summary.click();
+  await expect(summary).toHaveAttribute('aria-expanded','true');
   await expect(group.locator('table')).toBeVisible();
 });
 
