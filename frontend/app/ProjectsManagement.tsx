@@ -37,6 +37,7 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
  const [draft,setDraft]=useState<Draft>({...blank});
  const [errors,setErrors]=useState<Partial<Record<Field,string>>>({});
  const [number,setNumber]=useState("");
+ const [manualNumber,setManualNumber]=useState(false);
  const [numberBusy,setNumberBusy]=useState(false);
  const [busy,setBusy]=useState(false);
  const [loading,setLoading]=useState(true);
@@ -63,13 +64,13 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
  async function refreshNumber(){
   setNumberBusy(true);setError("");
   try{
-   const res=await fetch(api+"/project-management/generate-number",{method:"POST",credentials:"include"});
+   const res=await fetch(api+"/project-management/next-number",{credentials:"include"});
    if(!res.ok)throw Error("Unable to generate the next project number.");
-   const data=await res.json();setNumber(data.project_number);
+   const data=await res.json();setNumber(data.project_number);setManualNumber(false);
   }catch(e){setError((e as Error).message)}finally{setNumberBusy(false)}
  }
  function start(){
-  setBonusPreview(null);setOverrideBonus(false);setOpen(true);setError("");setNotice("");setDraft({...blank});setErrors({});setNumber("");void refreshNumber();
+  setBonusPreview(null);setOverrideBonus(false);setOpen(true);setError("");setNotice("");setDraft({...blank});setErrors({});setNumber("");setManualNumber(false);void refreshNumber();
  }
  function edit(field:Field,value:string){setDraft(d=>({...d,[field]:value}));setErrors(e=>({...e,[field]:undefined}))}
  async function save(event:React.FormEvent){
@@ -85,7 +86,7 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
   if(Object.keys(found).length){setError("Please fix the highlighted fields.");focusInvalid(Object.keys(found)[0]==="sourced_by_id"?"proj-sourced":"proj-"+Object.keys(found)[0]);return}
   setBusy(true);
   try{
-   const res=await fetch(api+"/project-management/projects",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({...draft,name:draft.name.trim(),client:draft.client.trim(),rate:Number(draft.rate),project_number:number.trim(),sourced_by_id:Number(draft.sourced_by_id),bonus_amount_inr:overrideBonus?Number(draft.bonus_amount_inr):null})});
+   const res=await fetch(api+"/project-management/projects",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({...draft,name:draft.name.trim(),client:draft.client.trim(),rate:Number(draft.rate),project_number:manualNumber?number.trim():"",sourced_by_id:Number(draft.sourced_by_id),bonus_amount_inr:overrideBonus?Number(draft.bonus_amount_inr):null})});
    const data=await res.json().catch(()=>({}));
    if(!res.ok){const detail=serverError(data.detail);if(detail.field)setErrors({[detail.field]:detail.message});throw Error(detail.message)}
    setOpen(false);setNotice("Project "+data.project_number+" created successfully.");await load();
@@ -156,7 +157,7 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
    <div className="employee-editor-top"><div><button className="employee-back" onClick={()=>setOpen(false)}><ArrowLeft size={16}/> Project directory</button><h2>Create a project</h2><p>Complete the client and engagement details. Fields marked * are required.</p></div><button className="employee-icon-button" onClick={()=>setOpen(false)} aria-label="Close"><X size={18}/></button></div>
    <form onSubmit={save} noValidate>
     <div className="employee-group"><div className="employee-group-head"><BriefcaseBusiness size={18}/><div><h3>Project information</h3><p>Identify the project and client</p></div></div><div className="employee-form-grid">
-      <div className="employee-field"><label>Project number</label><div className="employee-code-row"><input id="proj-number" aria-label="Project number (editable)" value={number} placeholder="JG-P-0001" onChange={e=>setNumber(e.target.value.toUpperCase())}/><button type="button" disabled={numberBusy} onClick={refreshNumber}><RefreshCw size={14}/> {numberBusy?"Generating…":"Generate"}</button></div><span className="field-help">Click Generate to advance to the next series number, or override it manually. Duplicates are rejected.</span></div>
+      <div className="employee-field"><label>Project number</label><div className="employee-code-row"><input id="proj-number" aria-label="Project number (editable)" value={number} placeholder="JG-P-0001" onChange={e=>{setNumber(e.target.value.toUpperCase());setManualNumber(true)}}/><button type="button" disabled={numberBusy} onClick={refreshNumber}><RefreshCw size={14}/> {numberBusy?"Generating…":"Generate"}</button></div><span className="field-help">Preview based on saved projects. Opening or cancelling this form does not use a number. Edit to override; duplicates are rejected.</span></div>
       {field("name","Project name",{required:true,placeholder:"e.g. Java Modernization"})}
       {field("client","Client name",{required:true,placeholder:"e.g. Acme Corporation"})}
       {field("candidate_name","Candidate name",{placeholder:"e.g. Employee or consultant name"})}
