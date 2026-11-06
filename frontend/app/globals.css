@@ -476,7 +476,7 @@ select:disabled{opacity:.65;cursor:not-allowed;background-color:#f3f5f8}
 .ops-area button.primary:hover{filter:brightness(.95)}
 .ops-area button:focus-visible,.policy-page button:focus-visible,.content button:focus-visible{
  outline:3px solid #9aabea;outline-offset:2px}
-input:invalid:not(:placeholder-shown):not(:focus),select[aria-invalid=true],
+select[aria-invalid=true],
 textarea[aria-invalid=true],input[aria-invalid=true]{
  border-color:#c44949!important;box-shadow:0 0 0 2px #d74f4f12}
 .form label{min-width:0}
@@ -540,3 +540,13 @@ textarea[aria-invalid=true],input[aria-invalid=true]{
 [data-theme="dark"] .hrms-profile-trigger{background:#334160;color:#f0eaff}
 [data-theme="dark"] .sidebar{background:#0c1426}
 @media(max-width:740px){.hrms-profile-menu{right:0}.policy-audience-list{grid-template-columns:1fr}}
+
+/* Validation is submission-driven: untouched required inputs must remain neutral. */
+.leave-workspace .leave-policy-panel .leave-policy-reason{display:grid;gap:8px;max-width:900px;margin:18px 0;color:var(--text-secondary,#526075);font-size:13px;font-weight:650}
+.leave-workspace .leave-policy-panel .leave-policy-reason textarea{width:100%;min-height:76px;resize:vertical;padding:12px;border:1px solid #dce1e9;border-radius:10px;background:var(--surface,#fff);color:inherit;font:inherit;font-weight:400}
+.leave-workspace .leave-policy-panel .leave-policy-choices{margin-top:20px}
+.leave-workspace .leave-policy-panel .leave-form{max-width:none;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end;gap:18px 22px}
+.leave-workspace .leave-policy-panel .leave-form>.employee-primary{justify-self:start;min-width:160px}
+.leave-workspace .leave-policy-panel .leave-inline-check{min-height:44px}
+.leave-workspace .leave-policy-panel .core-head{margin-bottom:14px}
+@media(max-width:750px){.leave-workspace .leave-policy-panel .leave-form{grid-template-columns:minmax(0,1fr)}}
