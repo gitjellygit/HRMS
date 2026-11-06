@@ -124,7 +124,7 @@ export default function Home() {
     e.preventDefault();setLoading(true);setError("");
     const fd=new FormData(e.currentTarget);const data=Object.fromEntries(fd.entries());
     try {
-      if(section==="bonuses"&&!/^\\d{4}-(0[1-9]|1[0-2])$/.test(String(data.period||""))){
+      if(section==="bonuses"&&!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(data.period||""))){
        setError("Period (YYYY-MM): enter a complete year and month, such as 2026-11. You entered "+(data.period||"an empty value")+".");
        document.querySelector<HTMLInputElement>('input[name="period"]')?.focus();return;
       }
