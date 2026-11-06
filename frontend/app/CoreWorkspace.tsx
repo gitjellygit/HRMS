@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ChangePassword from "./ChangePassword";
+import {explainError} from "./formErrors";
 import AccountSecurity from "./AccountSecurity";
 import { ArrowDown, ArrowLeft, BadgeCheck, Building2, CalendarClock, Check, Download, FileDown, FilePlus2, GitBranch, LockKeyhole, Search, ShieldCheck, Upload, UserRound, Users, X } from "lucide-react";
 
@@ -23,7 +24,7 @@ function errorText(value:any){
  if(typeof detail==="string")return detail;
  if(typeof detail?.message==="string")return detail.message;
  if(Array.isArray(detail)&&detail.length)return detail.map((v:any)=>(v.loc?.slice(-1)[0]||"Field")+": "+String(v.msg||"Invalid value").replace(/^Value error, /,"")).join("; ");
- return "Request could not be completed. Please check the information.";
+ return explainError(value);
 }
 export default function CoreWorkspace({api,mode,user,employeeId,onBack,onPasswordChanged}:{api:string;mode:Mode;user:Person;employeeId?:number|null;onBack?:()=>void;onPasswordChanged?:()=>void}){
  const isHR=["super_admin","admin","hr"].includes(user.role);
@@ -165,7 +166,11 @@ export default function CoreWorkspace({api,mode,user,employeeId,onBack,onPasswor
  }
  const managerLabels=useMemo(()=>Object.fromEntries(people.map(p=>[p.id,p.name+" · "+(p.employee_code||p.email)])),[people]);
  function input(field:keyof Core,label:string,type="text"){
-  return <label key={field} className="core-label">{label}<input type={type} value={String(draft[field]||"")} onChange={e=>setDraft(d=>({...d,[field]:e.target.value}))} disabled={!isHR}/></label>;
+  return <label key={field} className="core-label">{label}<input type={field==="emergency_phone"?"tel":type}
+    maxLength={field==="emergency_phone"?20:field==="personal_email"?255:undefined}
+    pattern={field==="emergency_phone"?"[+]?[0-9 ()-]{7,20}":undefined}
+    title={field==="emergency_phone"?"Enter 7 to 15 digits with optional country code":undefined}
+    value={String(draft[field]||"")} onChange={e=>setDraft(d=>({...d,[field]:e.target.value}))} disabled={!isHR}/></label>;
  }
  function selectRelation(field:keyof Core,label:string,options:{id:number;name:string}[]){
   return <label key={field} className="core-label">{label}<select value={String(draft[field]||"")} disabled={!isHR} onChange={e=>setDraft(d=>({...d,[field]:e.target.value?Number(e.target.value):null}))}><option value="">Not assigned</option>{options.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></label>;
@@ -221,7 +226,7 @@ export default function CoreWorkspace({api,mode,user,employeeId,onBack,onPasswor
     {documents.length?<div className="table-wrap"><table><thead><tr><th>Document</th><th>Category</th><th>Expiry</th><th>Action</th></tr></thead><tbody>{documents.map(d=><tr key={d.id}><td>{d.name}</td><td>{d.category.replace("_"," ")}</td><td>{d.expiry_date||"—"}</td><td><button className="employee-link" onClick={()=>downloadDoc(d)}>Download</button></td></tr>)}</tbody></table></div>:<div className="empty">No documents uploaded yet.</div>}
   </section>
   <section className="employee-surface"><header className="core-head"><CalendarClock size={21}/><div><h2>Employee lifecycle</h2><p>Probation, confirmation, transfer, promotion and exit history.</p></div></header>
-   {isHR&&<form className="core-inline-form" onSubmit={lifecycle}><select value={eventType} onChange={e=>setEventType(e.target.value)}>{["probation","confirmed","transferred","promoted","exited"].map(s=><option key={s}>{s}</option>)}</select><input value={eventNote} onChange={e=>setEventNote(e.target.value)} placeholder="Reason or notes" maxLength={500}/><button className="employee-primary" disabled={busy}>Record change</button></form>}
+   {isHR&&<form className="core-inline-form" onSubmit={lifecycle}><select value={eventType} onChange={e=>setEventType(e.target.value)}>{["probation","confirmed","transferred","promoted","exited"].map(s=><option key={s}>{s}</option>)}</select><input value={eventNote} onChange={e=>setEventNote(e.target.value)} placeholder="Required reason (minimum 10 characters)" required minLength={10} maxLength={500}/><button className="employee-primary" disabled={busy||eventNote.trim().length<10}>Record change</button></form>}
    <div className="core-timeline">{history.map((h,i)=><div key={i}><span>{h.date}</span><strong>{h.event.replace("_"," ")}</strong><small>{h.note}</small></div>)}{!history.length&&<div className="empty">No status changes yet.</div>}</div>
   </section>
   {!isHR&&target===user.id&&<section className="employee-surface"><header className="core-head"><ShieldCheck size={21}/><div><h2>Request profile update</h2><p>HR will review sensitive profile edits before applying them.</p></div></header><form className="core-inline-form" onSubmit={submitChange}><select value={changeField} onChange={e=>setChangeField(e.target.value)}>{changes.map(key=><option key={key} value={key}>{key.replace("_"," ")}</option>)}</select><input type={changeField==="date_of_birth"?"date":"text"} value={changeValue} onChange={e=>setChangeValue(e.target.value)} placeholder="Requested new value" required/><button disabled={busy} className="employee-primary">Submit request</button></form></section>}

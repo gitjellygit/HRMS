@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Login from "./Login";
+import {explainError} from "./formErrors";
 import EmployeeManagement from "./EmployeeManagement";
 import CoreWorkspace from "./CoreWorkspace";
 import HRDesk from "./HRDesk";
@@ -61,7 +62,9 @@ export default function Home() {
   const [error,setError] = useState("");
   const [loading,setLoading] = useState(false);
   const [passwordNotice,setPasswordNotice]=useState("");
-  const [presence,setPresence]=useState("available");
+  const [theme,setTheme]=useState<"light"|"dark">("light");
+  const [profileMenu,setProfileMenu]=useState(false);
+  const [success,setSuccess]=useState("");
   const [hasPhoto,setHasPhoto]=useState(false);
   const [avatarVersion,setAvatarVersion]=useState(0);
   const [attendanceVersion,setAttendanceVersion]=useState(0);
@@ -72,15 +75,17 @@ export default function Home() {
     if(["employees","bonuses"].includes(s.id)&&!canSeeEmployees)return false;
     if(s.id==="finance"&&!canFinance)return false;
     if(s.id==="governance"&&!canHR)return false;
-    if(["organization","bulk","hrdesk","policies"].includes(s.id)&&!canHR)return false;
+    if(["organization","bulk","hrdesk"].includes(s.id)&&!canHR)return false;
     if(s.id==="approvals"&&!canHR)return false;
     return true;
   });
   async function request(path:string,method="GET",body?:Entry) {
     const response = await fetch(API+path,{method,credentials:"include",headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});
-    if(!response.ok){ const detail=await response.json().catch(()=>({detail:"Request failed"})); throw Error(typeof detail.detail==="string"?detail.detail:"Please check your input"); }
+    if(!response.ok){ const detail=await response.json().catch(()=>null); throw Error(explainError(detail,response.status)); }
     return response.json();
   }
+  useEffect(()=>{const stored=localStorage.getItem("jellygit-theme");const selected=stored==="dark"?"dark":"light";setTheme(selected);document.documentElement.dataset.theme=selected},[]);
+  function changeTheme(next:"light"|"dark"){setTheme(next);document.documentElement.dataset.theme=next;localStorage.setItem("jellygit-theme",next);setProfileMenu(false)}
   async function refresh(id=section) {
     try {
       setError("");
@@ -94,12 +99,12 @@ export default function Home() {
   useEffect(()=>{request("/me").then(setUser).catch(()=>{}).finally(()=>setReady(true));},[]);
   useEffect(()=>{
     if(!user||user.must_change_password)return;
-    fetch(API+"/me/presence",{credentials:"include"}).then(r=>r.ok?r.json():null).then(v=>{if(v){setPresence(v.status);setHasPhoto(v.has_photo)}}).catch(()=>{});
+    fetch(API+"/me/presence",{credentials:"include"}).then(r=>r.ok?r.json():null).then(v=>{if(v){setHasPhoto(v.has_photo)}}).catch(()=>{});
   },[user]);
   useEffect(()=>{if(user&&!user.must_change_password&&!["organization","orgchart","profile","approvals","bulk","employee-record","hrdesk","leaves","projects","policies","performance","payroll","people","time","finance","governance","notifications"].includes(section))refresh(section);},[user,section]);
   async function logout(){try{await request("/auth/logout","POST");}finally{setUser(null);setRows([]);setSection("dashboard");}}
   async function changePresence(status:string){
-   try{await request("/me/presence","PUT",{status});setPresence(status)}catch(e){setError((e as Error).message)}
+   try{await request("/me/presence","PUT",{status});}catch(e){setError((e as Error).message)}
   }
   async function uploadAvatar(file:File|undefined){
    if(!file)return;
@@ -119,6 +124,16 @@ export default function Home() {
     e.preventDefault();setLoading(true);setError("");
     const fd=new FormData(e.currentTarget);const data=Object.fromEntries(fd.entries());
     try {
+      if(section==="bonuses"&&!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(data.period||""))){
+       setError("Period (YYYY-MM): enter a complete year and month, such as 2026-11. You entered "+(data.period||"an empty value")+".");
+       document.querySelector<HTMLInputElement>('input[name="period"]')?.focus();return;
+      }
+      if(section==="bonuses"&&(!Number.isFinite(Number(data.amount))||Number(data.amount)<=0)){
+       setError("Amount (INR): enter a number greater than zero.");return;
+      }
+      if(section==="leaves"&&String(data.end_date)<String(data.start_date)){
+       setError("Leave end date: choose a date on or after the leave start date.");return;
+      }
       const endpoint=section==="leaves"?"/leaves":section==="employees"?"/employees":section==="projects"?"/projects":section==="bonuses"?"/bonuses":"/appraisals";
       const upload=fd.get("document");
       delete data.document;
@@ -128,12 +143,12 @@ export default function Home() {
         const response=await fetch(API+"/employees/"+result.id+"/documents",{method:"POST",credentials:"include",body:payload});
         if(!response.ok){setError("Employee created but document upload failed. Please retry the upload.");setForm(false);await refresh();return;}
       }
-      setForm(false);setFields({});await refresh();
+      setForm(false);setFields({});await refresh();setSuccess("Saved successfully. Your record has been added.");
     }catch(err){setError((err as Error).message)}finally{setLoading(false)}
   }
   async function action(path:string,body?:Entry){
     setLoading(true);setError("");
-    try{await request(path,body?"PATCH":"POST",body);await refresh();}catch(err){setError((err as Error).message)}finally{setLoading(false)}
+    try{await request(path,body?"PATCH":"POST",body);await refresh();setSuccess("Action completed successfully.");}catch(err){setError((err as Error).message)}finally{setLoading(false)}
   }
   const names:Record<string,string> = Object.fromEntries(employees.map(e=>[String(e.id),e.name]));
   const formMap:Record<string,[string,string,string?][]> = {
@@ -147,7 +162,7 @@ export default function Home() {
     employees:["Name","Email","Department","Designation","Role","Status","Documents"],
     attendance:["Employee","Punch in","Punch out","Hours"],
     leaves:["Employee","Type","From","To","Status","Action"],
-    projects:["Project","Client","Status","Team"],
+    projects:["Project","Client","Status"],
     bonuses:["Employee","Period","Amount","Reason","Status","Action"],
     appraisals:["Employee","Period","Rating","Feedback"]
   };
@@ -179,7 +194,7 @@ export default function Home() {
     if(key==="Status")return <span className={"pill "+row.status}>{row.status}</span>;
     if(key==="Project")return row.name;
     if(key==="Client")return row.client||"—";
-    if(key==="Team")return <button className="secondary" onClick={async()=>{try{const people=await request("/projects/"+row.id+"/team");alert(people.length?people.map((p:Employee)=>p.name).join(", "):"No one assigned yet")}catch(err){setError((err as Error).message)}}}>View team</button>;
+
     if(key==="Period")return row.period;
     if(key==="Amount")return "₹"+Number(row.amount).toLocaleString("en-IN");
     if(key==="Reason")return row.reason;
@@ -191,12 +206,17 @@ export default function Home() {
   if(!user)return <Login api={API} onLogin={u=>{setPasswordNotice("");setUser(u)}} initialNotice={passwordNotice}/>;
   if(user.must_change_password)return <ChangePassword api={API} required onComplete={completePasswordChange}/>;
   return <div className="shell"><aside className="sidebar"><div className="brand">Jelly<span>Git</span> HRMS</div><nav className="menu">{visible.map(({id,label,Icon})=><button key={id} onClick={()=>{setSection(id);setForm(false);setError("")}} className={section===id?"active":""}><Icon size={18}/>{label}</button>)}<button onClick={logout}><LogOut size={18}/>Sign out</button></nav></aside><main className="content"><div className="top"><div><h1 className="title">{section==="employee-record"?"Employee master record":sections.find(s=>s.id===section)?.label}</h1><div className="muted">Your team, in one place</div></div><div className="hrms-header-actions"><NotificationCenter api={API} onNavigate={setSection}/><div className="hrms-user-widget">
-    <label className="hrms-avatar-button" title="Upload profile photo" aria-label="Upload profile photo">
-      {hasPhoto?<img src={API+"/me/photo?v="+avatarVersion} alt={user.name+" profile"}/>:<span>{user.name.trim().split(/\\s+/).map(x=>x[0]).slice(0,2).join("").toUpperCase()}</span>}
-      <input type="file" accept="image/png,image/jpeg" onChange={e=>void uploadAvatar(e.target.files?.[0])}/>
-    </label>
-    <div className="hrms-user-meta"><strong>{user.name}</strong><small>{user.role}</small><select aria-label="My availability" value={presence} onChange={e=>void changePresence(e.target.value)}>{[["available","Available"],["busy","Busy"],["away","Away"],["do_not_disturb","Do not disturb"]].map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></div>
-  </div></div></div>{error&&<div className="error">{error}</div>}
+    <button type="button" className="hrms-profile-trigger" aria-label="Profile and appearance" aria-expanded={profileMenu} onClick={()=>setProfileMenu(v=>!v)}>
+      {hasPhoto?<img src={API+"/me/photo?v="+avatarVersion} alt="Profile"/>:<span>{user.name.trim().split(/\\s+/).map(x=>x[0]).slice(0,2).join("").toUpperCase()}</span>}
+    </button>
+    {profileMenu&&<div className="hrms-profile-menu" role="menu" aria-label="Profile settings">
+      <strong>{user.name}</strong><small>{user.role}</small>
+      <button type="button" onClick={()=>{setSection("profile");setProfileMenu(false)}}>My profile</button>
+      <button type="button" onClick={()=>changeTheme(theme==="light"?"dark":"light")}>{theme==="light"?"Switch to dark mode":"Switch to light mode"}</button>
+      <label className="hrms-photo-change">Change profile photo<input type="file" accept="image/png,image/jpeg" onChange={e=>{void uploadAvatar(e.target.files?.[0]);setProfileMenu(false)}}/></label>
+    </div>}
+    <div className="hrms-user-meta"><strong>{user.name}</strong><small>{user.role}</small></div>
+  </div></div></div>{error&&<div className="error" role="alert">{error}</div>}{success&&<div className="app-global-success" role="status">{success}<button type="button" onClick={()=>setSuccess("")} aria-label="Dismiss">×</button></div>}
     {section==="notifications"?<NotificationCenter api={API} viewAll onNavigate={setSection} onBack={()=>setSection("dashboard")}/> :section==="governance"?<GovernancePanel api={API} user={user}/> :section==="finance"?<FinanceWorkspace api={API} user={user}/> :section==="performance"?<PerformanceWorkspace api={API} user={user}/> :section==="payroll"?<PayrollWorkspace api={API} user={user}/> :section==="people"?<PeopleOpsWorkspace api={API} user={user}/> :section==="time"?<TimeWorkspace api={API} user={user}/> :section==="policies"?<CompanyPolicies api={API} user={user}/>:section==="projects"?<ProjectsManagement api={API} canCreate={Boolean(canHR)}/>:section==="leaves"?<LeaveWorkspace api={API} user={user}/>:section==="hrdesk"?<HRDesk api={API}/>:section==="employees"?<EmployeeManagement api={API} canCreate={Boolean(canHR)} currentRole={user.role} onOpenEmployee={id=>{setSelectedEmployeeId(id);setSection("employee-record")}}/>:
     ["employee-record","organization","orgchart","profile","approvals","bulk"].includes(section)?
       <CoreWorkspace api={API} mode={(section==="employee-record"?"profile":section==="organization"?"organization":section==="orgchart"?"orgchart":section==="profile"?"profile":section==="approvals"?"approvals":"bulk")}
@@ -204,7 +224,7 @@ export default function Home() {
         onBack={section==="employee-record"?()=>{setSection("employees");setSelectedEmployeeId(null)}:undefined}
         onPasswordChanged={completePasswordChange}/>:
     section==="dashboard"?<><div className="grid">{[["Team members",stats.employees??"—"],["Active projects",stats.active_projects??0],["Leave approvals",stats.pending_leaves??"—"],["My pending requests",stats.my_pending_leaves??0]].map(([name,value])=><div className="card" key={name}><div className="muted">{name}</div><h3>{value}</h3></div>)}</div><section className="panel"><h2>Quick actions</h2><p className="muted">Punch in or out, submit a leave request, or check your current work.</p><div className="overview-quick-actions"><PunchControl api={API} onChanged={()=>{setAttendanceVersion(v=>v+1);void refresh("dashboard")}}/><div className="overview-shortcuts"><button className="secondary" onClick={()=>{setSection("leaves");setForm(true)}}>Request leave</button><button className="secondary" onClick={()=>setSection("projects")}>View projects</button>{canHR&&<button className="secondary" onClick={()=>setSection("employees")}>Manage employees</button>}</div></div></section><RoleOverview api={API} role={user.role} onNavigate={setSection} refreshKey={attendanceVersion}/><BonusSummary api={API}/>{canSeeEmployees&&<section className="panel"><div className="section-head"><div><h2>Recently added employees</h2><p className="muted" style={{fontSize:13,marginBottom:0}}>Latest employee accounts created in HRMS</p></div><button className="secondary" onClick={()=>setSection("employees")}>View all</button></div>{employees.length?<div className="table-wrap"><table><thead><tr><th>Employee</th><th>ID</th><th>Designation</th><th>Department</th><th>Status</th></tr></thead><tbody>{employees.slice(0,5).map(e=><tr key={e.id}><td><strong>{e.name}</strong><div className="muted" style={{fontSize:12}}>{e.email}</div></td><td>{(e as Employee & {employee_code?:string}).employee_code||"—"}</td><td>{e.designation||"—"}</td><td>{e.department||"—"}</td><td><span className={"pill "+e.status}>{e.status}</span></td></tr>)}</tbody></table></div>:<div className="empty">No employees added yet.</div>}</section>}</>:<section className="panel"><div className="section-head"><h2>{sections.find(s=>s.id===section)?.label}</h2><div className="actions">{section==="attendance"&&<PunchControl api={API} onChanged={()=>refresh("attendance")}/>}{(section==="leaves"|| (canHR && ["employees","projects","bonuses","appraisals"].includes(section)))&&<button className="primary" onClick={()=>setForm(!form)}>{form?"Cancel":"+ Add new"}</button>}</div></div>
-    {form&&formMap[section]&&<form className="form" onSubmit={submit}>{formMap[section].map(([key,label,type])=><label key={key}>{label}{type==="role"?<select name={key} required>{["employee","hr","accountant","admin"].map(r=><option key={r}>{r}</option>)}</select>:type==="leave"?<select name={key} required>{["Annual","Sick","Casual","Unpaid"].map(r=><option key={r}>{r}</option>)}</select>:type==="employee"?<select name={key} required><option value="">Select employee</option>{employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select>:type==="rating"?<select name={key} required>{[1,2,3,4,5].map(r=><option key={r}>{r}</option>)}</select>:<input name={key} type={type||"text"} required={["name","email","password","leave_type","start_date","end_date","employee_id","amount","period","rating"].includes(key)} min={type==="number"?"0.01":undefined} step={type==="number"?"0.01":undefined}/>}</label>)}{section==="employees"&&<label className="wide">Employee document (PDF/JPEG/PNG, max 5 MB)<input type="file" name="document" accept=".pdf,.png,.jpg,.jpeg"/></label>}<button className="primary wide" disabled={loading}>Save</button></form>}
+    {form&&formMap[section]&&<form className="form" onSubmit={submit} onInvalid={e=>{const field=e.target as HTMLInputElement;setError((field.closest("label")?.textContent||field.name||"Field")+": "+field.validationMessage)}}>{formMap[section].map(([key,label,type])=><label key={key}>{label}{type==="role"?<select name={key} required>{["employee","hr","accountant","admin"].map(r=><option key={r}>{r}</option>)}</select>:type==="leave"?<select name={key} required>{["Annual","Sick","Casual","Unpaid"].map(r=><option key={r}>{r}</option>)}</select>:type==="employee"?<select name={key} required><option value="">Select employee</option>{employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select>:type==="rating"?<select name={key} required>{[1,2,3,4,5].map(r=><option key={r}>{r}</option>)}</select>:<input name={key} type={key==="phone"||key==="emergency_contact"?"tel":type||"text"} pattern={key==="phone"||key==="emergency_contact"?"[+]?[0-9 ()-]{7,20}":key==="period"?"[0-9]{4}-(0[1-9]|1[0-2])":undefined} maxLength={key==="phone"||key==="emergency_contact"?20:undefined} title={key==="period"?"Use YYYY-MM, for example 2026-11":key==="phone"?"Enter 7–15 digits, optionally with country code":undefined} required={["name","email","password","leave_type","start_date","end_date","employee_id","amount","period","rating"].includes(key)} min={type==="number"?"0.01":undefined} step={type==="number"?"0.01":undefined}/>}</label>)}{section==="employees"&&<label className="wide">Employee document (PDF/JPEG/PNG, max 5 MB)<input type="file" name="document" accept=".pdf,.png,.jpg,.jpeg"/></label>}<button className="primary wide" disabled={loading}>Save</button></form>}
     {section==="attendance"?<AttendanceByDay records={rows as {id:number;employee_id:number;punch_in:string;punch_out:string|null}[]}/>:<div className="table-wrap"><table><thead><tr>{headings[section].map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map(row=><tr key={row.id}>{headings[section].map(h=><td key={h}>{cell(row,h)}</td>)}</tr>)}</tbody></table>{rows.length===0&&<div className="empty">No records yet. Add your first record to get started.</div>}</div>}</section>}
   </main></div>;
 }

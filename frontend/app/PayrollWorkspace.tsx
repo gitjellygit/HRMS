@@ -1,4 +1,5 @@
 "use client";
+import {explainError} from "./formErrors";
 import {useEffect,useState} from "react";
 import {BadgeIndianRupee,ReceiptText,FileDown,ShieldCheck} from "lucide-react";
 import FeedbackMotion from "./FeedbackMotion";
@@ -34,7 +35,7 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
   const r=await fetch(api+"/payroll"+path,{method,credentials:"include",headers:{"Content-Type":"application/json"},
    body:body===undefined?undefined:JSON.stringify(body)});
   const j=await r.json().catch(()=>({}));
-  if(!r.ok){const d=j.detail;throw Object.assign(new Error(typeof d==="string"?d:d?.message||"Request could not be processed."),{field:d?.field,employees:d?.employees})}
+  if(!r.ok){const d=j.detail;throw Object.assign(new Error(explainError(j,r.status)),{field:d?.field,employees:d?.employees})}
   return j;
  }
  async function refresh(){

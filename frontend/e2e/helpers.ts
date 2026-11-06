@@ -40,7 +40,7 @@ export const NAV = [
   'Org chart', 'My profile', 'Profile requests', 'Bulk data & expiries',
 ] as const;
 export function permitted(role: string): Set<string> {
-  const hiddenHR = ['HR overview', 'Policies', 'Organization', 'Bulk data & expiries'];
+  const hiddenHR = ['HR overview', 'Organization', 'Bulk data & expiries'];
   const hiddenEmployee = ['Employees', 'Bonuses'];
   const all = new Set<string>(NAV);
   if (!['super_admin', 'admin', 'hr'].includes(role)) hiddenHR.forEach(x => all.delete(x));

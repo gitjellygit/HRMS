@@ -405,7 +405,10 @@ def request_exit(body:ExitIn,user:Employee=Depends(current_user),db:Session=Depe
     row=ExitCase(employee_id=user.id,reason=body.reason,
         requested_date=body.requested_date,notice_days=body.notice_days,
         planned_last_day=body.requested_date+timedelta(days=body.notice_days))
-    db.add(row);db.flush();audit(db,user,"exit",row.id,"requested");db.commit()
+    db.add(row);db.flush()
+    from .exit_workflow import create_tasks
+    create_tasks(db,row)
+    audit(db,user,"exit",row.id,"requested");db.commit()
     return {"id":row.id,"status":row.status,"last_day":row.planned_last_day}
 
 @router.get("/exits")

@@ -51,17 +51,20 @@ test('employees see only their own appraisals',async({page})=>{
  expect((await list.json()).every((p:{employee_id:number})=>p.employee_id===person('developer_a').id)).toBeTruthy();
 });
 
-test('employee can update presence and upload a private profile picture',async({page})=>{
+test('employee can change appearance and upload a private profile picture',async({page})=>{
  await login(page,person('sales_c'));
- const picker=page.getByRole('combobox',{name:'My availability'});
- await picker.selectOption('busy');
- await expect(picker).toHaveValue('busy');
- const status=await page.request.get(API_URL+'/me/presence');
- expect((await status.json()).status).toBe('busy');
+ const trigger=page.getByRole('button',{name:'Profile and appearance'});
+ await trigger.click();
+ await page.getByRole('button',{name:'Switch to dark mode'}).click();
+ await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+ await trigger.click();
+ await page.getByRole('button',{name:'Switch to light mode'}).click();
+ await expect(page.locator('html')).toHaveAttribute('data-theme','light');
  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9zMfSC8AAAAASUVORK5CYII=','base64');
- await page.locator('.hrms-avatar-button input[type="file"]').setInputFiles({
+ await trigger.click();
+ await page.locator('.hrms-photo-change input[type="file"]').setInputFiles({
   name:'qa-avatar.png',mimeType:'image/png',buffer:png});
- await expect(page.locator('.hrms-avatar-button img')).toBeVisible();
+ await expect(page.locator('.hrms-profile-trigger img')).toBeVisible();
  await expect.poll(async()=>(await page.request.get(API_URL+'/me/photo')).status()).toBe(200);
 });
 

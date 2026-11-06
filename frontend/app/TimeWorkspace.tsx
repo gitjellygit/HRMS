@@ -1,4 +1,5 @@
 "use client";
+import {explainError} from "./formErrors";
 import {useCallback,useEffect,useRef,useState} from "react";
 import {Clock3,CalendarDays,MapPin,FileClock,Users,BriefcaseBusiness,Settings2,AlertCircle} from "lucide-react";
 import FeedbackMotion from "./FeedbackMotion";
@@ -41,7 +42,7 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
   if(!res.ok){
    const detail=data.detail;
    const message=typeof detail==="string"?detail:detail?.message||(
-    Array.isArray(detail)?detail.map((e:Row)=>e.msg).join("; "):"Unable to complete the request.");
+    Array.isArray(detail)?detail.map((e:Row)=>e.msg).join("; "):explainError(data,res.status));
    const field=detail?.field||(Array.isArray(detail)?String(detail[0]?.loc?.at(-1)||""):"");
    throw Object.assign(new Error(message),{field});
   }

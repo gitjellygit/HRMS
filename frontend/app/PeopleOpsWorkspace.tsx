@@ -2,6 +2,7 @@
 import {useEffect,useState} from "react";
 import {ClipboardCheck,Send,LifeBuoy,UserRoundX,BarChart3,Bell,ShieldCheck,FileSignature} from "lucide-react";
 import FeedbackMotion from "./FeedbackMotion";
+import {explainError} from "./formErrors";
 import PeopleOpsExtras from "./PeopleOpsExtras";
 import BrandIllustration,{WelcomeAnimation} from "./BrandIllustration";
 type Row=Record<string,any>;
@@ -29,11 +30,19 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
  const [draft,setDraft]=useState<Row>({});
  const [selected,setSelected]=useState("");
  const [reply,setReply]=useState("");
+ const [exitEmployee,setExitEmployee]=useState("");
+ const [exitReason,setExitReason]=useState("");
+ const [exitNotice,setExitNotice]=useState("30");
+ const [exitTemplates,setExitTemplates]=useState<Row[]>([]);
+ const [templateTitle,setTemplateTitle]=useState("");
+ const [templateRole,setTemplateRole]=useState("hr");
+ const [exitTasks,setExitTasks]=useState<Record<number,Row[]>>({});
+ const [exitTaskNotes,setExitTaskNotes]=useState<Record<number,string>>({});
  async function call(path:string,method="GET",body?:unknown){
   const r=await fetch(api+"/people"+path,{method,credentials:"include",
    headers:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});
   const j=await r.json().catch(()=>({}));
-  if(!r.ok)throw Error(typeof j.detail==="string"?j.detail:j.detail?.message||"Unable to save; review required values.");
+  if(!r.ok)throw Error(explainError(j,r.status));
   return j;
  }
  const get=(path:string)=>call(path).catch(()=>[]);
@@ -48,7 +57,8 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
   setAllExits(i);setMetrics(j);setNotifications(k);setAudits(l);
   if(hr)setRules(await get("/notification-rules"));
  }
- useEffect(()=>{void refresh()},[api,user.id]);
+ useEffect(()=>{void refresh();if(hr)void fetch(api+"/exit-workflow/templates",{credentials:"include"})
+  .then(r=>r.ok?r.json():[]).then(setExitTemplates).catch(()=>{})},[api,user.id]);
  async function save(fn:()=>Promise<unknown>,msg:string){
   setBusy(true);setError("");setInfo("");
   try{await fn();setInfo(msg);setDraft({});setSelected("");setReply("");await refresh()}
@@ -58,6 +68,40 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
   value={draft[key]??""} onChange={e=>setDraft(v=>({...v,[key]:e.target.value}))}/></label>;
  const emp=(key="employee_id")=><label>Employee<select required value={draft[key]??""} onChange={e=>setDraft(v=>({...v,[key]:e.target.value}))}>
   <option value="">Select employee</option>{staff.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>;
+ async function exitCall(path:string,method="GET",body?:unknown){
+  const response=await fetch(api+"/exit-workflow"+path,{method,credentials:"include",
+   headers:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});
+  const payload=await response.json().catch(()=>null);
+  if(!response.ok)throw Error(explainError(payload,response.status));
+  return payload;
+ }
+ async function initiateExit(e:React.FormEvent){
+  e.preventDefault();
+  await save(async()=>{
+   await exitCall("/cases","POST",{employee_id:Number(exitEmployee),reason:exitReason,
+     notice_days:Number(exitNotice),requested_date:today()});
+   setExitEmployee("");setExitReason("");
+  },"Exit case created. Employee and HR checklist tasks assigned.");
+ }
+ async function addExitTemplate(e:React.FormEvent){
+  e.preventDefault();
+  await save(async()=>{
+   await exitCall("/templates","POST",{title:templateTitle,assignee_role:templateRole,active:true});
+   setExitTemplates(await exitCall("/templates"));setTemplateTitle("");
+  },"Exit checklist task configured.");
+ }
+ async function loadExitTasks(caseId:number){
+  try{
+   const items=await exitCall("/cases/"+caseId+"/tasks");
+   setExitTasks(v=>({...v,[caseId]:items}));
+  }catch(e){setError((e as Error).message)}
+ }
+ async function completeExitTask(caseId:number,taskId:number){
+  await save(async()=>{
+   await exitCall("/tasks/"+taskId+"/complete","POST",{note:exitTaskNotes[taskId]||""});
+   await loadExitTasks(caseId);
+  },"Exit task completed with the audit note.");
+ }
  const submit=(path:string,data:Row,success:string)=>save(()=>call(path,"POST",data),success);
  return <div className="ops-area">
   <p className="ops-intro">Employee lifecycle workflows, approvals, announcements and HR support. Confidential workflows are available only to the employee or authorized HR staff.</p>
@@ -168,10 +212,38 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
       <label>Request date<input type="date" value={draft.requested_date||today()}
        onChange={e=>setDraft(v=>({...v,requested_date:e.target.value}))}/></label>
       <button className="employee-primary">Request resignation</button></form>}
-    {hr&&<p>Review notice, collect asset/IT/Finance clearance, and enter an independently verified final settlement. This does not send payment.</p>}
+    {hr&&<><p className="muted">Select an employee to begin their exit, then assign the configured employee and HR checklist tasks.</p>
+     <form className="ops-form ops-compact-form" onSubmit={initiateExit}>
+      <label>Employee<select required value={exitEmployee} onChange={e=>setExitEmployee(e.target.value)}>
+       <option value="">Select an active employee</option>{staff.filter(p=>p.status==="active").map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+      </select></label>
+      <label>Notice period (days)<input type="number" required min="0" max="365" value={exitNotice} onChange={e=>setExitNotice(e.target.value)}/></label>
+      <label className="wide">Reason for exit<textarea required minLength={10} rows={3} value={exitReason} onChange={e=>setExitReason(e.target.value)} placeholder="Enter at least ten characters explaining the exit…"/></label>
+      <div className="ops-form-actions"><button className="employee-primary" disabled={busy||!exitEmployee||exitReason.trim().length<10}>Start employee exit</button></div>
+     </form>
+     <details className="employee-surface exit-config-panel"><summary>Configure exit tasks</summary>
+      <p className="muted">These tasks are automatically assigned whenever an exit case is opened. HR tasks go to HR; employee tasks go to the departing employee.</p>
+      <div className="exit-task-list">{exitTemplates.map((x,i)=><p key={i}>{x.title} <small>· {x.assignee_role==="hr"?"HR":"Employee"}</small></p>)}</div>
+      <form className="ops-form ops-compact-form" onSubmit={addExitTemplate}>
+       <label>New task name<input required minLength={5} maxLength={180} value={templateTitle} onChange={e=>setTemplateTitle(e.target.value)} placeholder="e.g. Confirm returned access badge"/></label>
+       <label>Assigned to<select value={templateRole} onChange={e=>setTemplateRole(e.target.value)}><option value="hr">HR team</option><option value="employee">Exiting employee</option></select></label>
+       <div className="ops-form-actions"><button className="employee-primary" disabled={busy||templateTitle.trim().length<5}>Add checklist task</button></div>
+      </form>
+     </details>
+     <p className="muted">Final settlement requires documented asset, IT and Finance clearance. This process does not send a payment.</p>
+    </>}
    </section>
    <section className="employee-surface"><h3>Exit cases</h3><div className="ops-table">{(hr?allExits:exits).map(x=><div className="ops-row" key={x.id}>
-     <strong>Case #{x.id} · {x.status}</strong><span>Employee #{x.employee_id} · Last day {x.planned_last_day}</span><p>{x.reason}</p>
+     <strong>Case #{x.id} · {x.status}</strong><span>{staff.find(p=>p.id===x.employee_id)?.name||"Employee #"+x.employee_id} · Last day {x.planned_last_day}</span><p>{x.reason}</p>
+      <div className="exit-task-controls"><button className="employee-cancel" type="button" onClick={()=>void loadExitTasks(x.id)}>View assigned exit tasks</button>
+       {(exitTasks[x.id]||[]).map(t=><div className="exit-task-entry" key={t.id}>
+        <strong>{t.title}</strong><small>{t.assignee_role==="hr"?"HR task":"Employee task"} · {t.status}</small>
+        {t.status==="pending"&&<><label>Completion note<input placeholder="Explain what was completed" minLength={5} maxLength={1000}
+          value={exitTaskNotes[t.id]||""} onChange={e=>setExitTaskNotes(old=>({...old,[t.id]:e.target.value}))}/></label>
+         <button className="employee-primary" type="button" disabled={busy||(exitTaskNotes[t.id]||"").trim().length<5}
+          onClick={()=>void completeExitTask(x.id,t.id)}>Complete task</button></>}
+       </div>)}
+      </div>
      {hr&&x.status!=="settled"&&x.status!=="rejected"&&<><label>F&F amount<input type="number" min="0" step=".01" value={selected===String(x.id)?draft.amount||"":""}
       onFocus={()=>setSelected(String(x.id))} onChange={e=>setDraft(v=>({...v,amount:e.target.value}))}/></label>
       <button className="employee-primary" onClick={()=>void save(()=>call("/exits/"+x.id+"/review","POST",{

@@ -213,7 +213,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
    <label htmlFor={id}>{label}{options?.required&&<span className="required"> *</span>}</label>
    {options?.choices?<select id={id} value={draft[key]} onChange={e=>edit(key,e.target.value)} aria-invalid={invalid} aria-describedby={invalid?id+"-error":undefined}>
     {options.choices.map(choice=><option key={choice} value={choice}>{choice==="employee"?"Employee":choice==="hr"?"HR Admin":choice==="accountant"?"Accountant":choice==="admin"?"Admin":choice}</option>)}
-   </select>:<input id={id} value={draft[key]} type={options?.type||"text"} maxLength={key==="password"?128:undefined}
+   </select>:<input id={id} value={draft[key]} type={options?.type||"text"} maxLength={key==="password"?128:key==="phone"?20:undefined}
     placeholder={options?.placeholder} onChange={e=>edit(key,e.target.value)} aria-invalid={invalid} aria-describedby={invalid?id+"-error":undefined} autoComplete={key==="password"?"new-password":"off"}/>}
    {invalid?<span id={id+"-error"} className="field-error">{errors[key]}</span>:options?.hint?<span className="field-help">{options.hint}</span>:null}
   </div>;

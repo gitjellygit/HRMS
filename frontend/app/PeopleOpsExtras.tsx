@@ -1,4 +1,5 @@
 "use client";
+import {explainError} from "./formErrors";
 import {useEffect,useState} from "react";
 type Row=Record<string,any>;
 export default function PeopleOpsExtras({api,user}:{api:string;user:{id:number;role:string}}){
@@ -22,7 +23,7 @@ export default function PeopleOpsExtras({api,user}:{api:string;user:{id:number;r
   const r=await fetch(api+"/people"+path,{credentials:"include",method,
    headers:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});
   const j=await r.json().catch(()=>null);
-  if(!r.ok)throw Error(typeof j?.detail==="string"?j.detail:"Request could not be completed");
+  if(!r.ok)throw Error(explainError(j,r.status));
   return j;
  }
  async function reload(){

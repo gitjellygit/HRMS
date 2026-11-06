@@ -73,9 +73,9 @@ test('attendance groups sessions by day and expands/collapses',async({page})=>{
   await page.locator('.punch-control').getByRole('button',{name:'Punch out'}).click();
   await expect(group).toBeVisible();
   const summary=group.getByRole('button').first();
-  await expect(summary).toHaveAttribute('aria-expanded','true');
-  await summary.click();
   await expect(summary).toHaveAttribute('aria-expanded','false');
+  await summary.click();
+  await expect(summary).toHaveAttribute('aria-expanded','true');
   await summary.click();
   await expect(group.locator('table')).toBeVisible();
 });
