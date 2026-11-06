@@ -16,6 +16,13 @@ def test_project_management():
         preview=client.get("/project-management/next-number")
         assert preview.status_code==200,preview.text
         assert preview.json()["project_number"].startswith("JG-P-")
+        # Reopening the create form or clicking Generate must not consume an ID.
+        initial_number=preview.json()["project_number"]
+        for _ in range(3):
+            generated=client.post("/project-management/generate-number",headers=ORIGIN)
+            assert generated.status_code==200,generated.text
+            assert generated.json()["project_number"]==initial_number
+            assert client.get("/project-management/next-number").json()["project_number"]==initial_number
         invalid=client.post("/project-management/projects",headers=ORIGIN,json={"name":"Implementation","client":"","engagement_type":"c2c","rate":80})
         assert invalid.status_code==422
         project=client.post("/project-management/projects",headers=ORIGIN,json={
@@ -29,6 +36,8 @@ def test_project_management():
         assert project.status_code==201,project.text
         data=project.json()
         assert data["project_number"].startswith("JG-P-")
+        assert data["project_number"]==initial_number
+        assert int(client.get("/project-management/next-number").json()["project_number"][5:])==int(initial_number[5:])+1
         assert data["client"]=="Acme Corporation"
         assert data["candidate_name"]=="Alex Engineer"
         assert data["prime_vendor_name"]=="Prime Consulting"
