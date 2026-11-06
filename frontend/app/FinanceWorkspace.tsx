@@ -98,7 +98,7 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
  return <div className="ops-area finance-workspace finance-premium">
   <p className="muted">Configure billing, prepare invoice drafts and track payments. Creating an invoice does not send an email.</p>
   <div className="time-tabs" role="tablist">{([["projects","Project billing"],["invoices","Invoice ledger"],["schedule","Invoice schedule"]] as const).map(([id,title])=>
-   <button key={id} role="tab" aria-selected={tab===id} className={tab===id?"active":""} onClick={()=>{setTab(id);setNotice(null)}}>{title}</button>)}</div>
+   <button key={id} role="tab" aria-selected={tab===id} className={tab===id?"active":""} onClick={()=>{setTab(id);setNotice(null);void refresh().catch(e=>setNotice({kind:"error",text:(e as Error).message}))}}>{title}</button>)}</div>
   {notice&&<div ref={successRef} role={notice.kind==="success"?"status":"alert"} tabIndex={-1}
    className={"finance-toast "+(notice.kind==="success"?"is-success":"is-error")}>
     <BadgeCheck size={19}/><span>{notice.text}</span>
