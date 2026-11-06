@@ -25,12 +25,18 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
  const [document,setDocument]=useState<File|null>(null);
  const [uploading,setUploading]=useState<number|null>(null);
  useEffect(()=>{
-  fetch(api+"/policies/project-bonus",{credentials:"include"})
-  .then(async r=>{if(!r.ok)throw Error("Cannot read company bonus policy.");return r.json()})
-  .then((p:ProjectPolicy)=>{setPolicy(p);setAmount(String(p.default_project_bonus_inr))})
-  .catch(err=>setError((err as Error).message));
+  if(["super_admin","admin","hr"].includes(user.role)){
+   fetch(api+"/policies/project-bonus",{credentials:"include"})
+    .then(async r=>{if(!r.ok)throw Error("Could not load the bonus policy. Refresh or contact HR.");return r.json()})
+    .then((p:ProjectPolicy)=>{setPolicy(p);setAmount(String(p.default_project_bonus_inr))})
+    .catch(err=>setError((err as Error).message));
+   fetch(api+"/core/employees",{credentials:"include"})
+    .then(r=>r.ok?r.json():[])
+    .then((data:{id:number;name:string;status?:string}[])=>setStaff(data))
+    .catch(()=>setError("Employee selection could not load. Refresh before publishing a targeted policy."));
+  }
   fetch(api+"/policies/records",{credentials:"include"}).then(r=>r.ok?r.json():[]).then(setRecords).catch(()=>{});
- },[api]);
+ },[api,user.role]);
  async function submit(e:React.FormEvent){
   e.preventDefault();setSaved("");setError("");
   const n=Number(amount);
@@ -46,7 +52,7 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
  }
  async function createRecord(e:React.FormEvent){
   e.preventDefault();setError("");setSaved("");
-  if(isHR&&approvalReason.trim().length<10){setError("Provide a business reason of at least 10 characters.");return}
+  if(isHR&&approvalReason.trim().length<10){setError("Business reason: explain why this policy is needed (at least 10 characters).");return}
   if(policyTitle.trim().length<3||policyDescription.trim().length<20){setError("Add a title and description of at least 20 characters.");return}
   setPolicyBusy(true);
   try{
