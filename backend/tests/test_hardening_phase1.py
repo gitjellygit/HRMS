@@ -83,3 +83,54 @@ def test_case_insensitive_login_and_reset_email_privacy(monkeypatch):
         assert existing.status_code==200,existing.text
         assert unknown.status_code==200,unknown.text
         assert existing.json()==unknown.json()
+
+
+def test_login_five_failures_lock_and_notify_hr():
+    with TestClient(app) as client:
+        admin,hr,worker,_=seed(client)
+        client.post("/auth/logout",headers=ORIGIN)
+        for number in range(1,6):
+            result=client.post("/auth/login",json={
+                "email":"payroll.person.qa@example.org","password":"Incorrect!Password123"})
+            assert result.status_code==(423 if number==5 else 401),result.text
+        valid=client.post("/auth/login",json={
+            "email":"payroll.person.qa@example.org","password":PASS})
+        assert valid.status_code==423
+        login(client,"admin@example.com","test-admin-password-12345")
+        locks=client.get("/security/login-lockouts")
+        assert locks.status_code==200,locks.text
+        assert any(x["employee_id"]==worker and x["failed_attempts"]==5 for x in locks.json())
+        inbox=client.get("/notification-center").json()["items"]
+        assert any(x["event"]=="security" and "locked" in x["title"].lower() for x in inbox)
+        unlocked=client.post(f"/security/login-lockouts/{worker}/unlock",headers=ORIGIN)
+        assert unlocked.status_code==200,unlocked.text
+        client.post("/auth/logout",headers=ORIGIN)
+        login(client,"payroll.person.qa@example.org")
+
+
+def test_first_login_requires_employee_password_change():
+    with TestClient(app) as client:
+        login(client,"admin@example.com","test-admin-password-12345")
+        admin_id=client.get("/me").json()["id"]
+        new_user=client.post("/core/employees",headers=ORIGIN,json={
+            "account":{"email":"first.login.qa@example.org",
+                       "name":"First Login QA","password":PASS,"role":"employee",
+                       "designation":"QA Specialist","department":"Quality"},
+            "master":{"manager_id":admin_id}})
+        assert new_user.status_code==201,new_user.text
+        client.post("/auth/logout",headers=ORIGIN)
+        first=client.post("/auth/login",json={
+            "email":"first.login.qa@example.org","password":PASS})
+        assert first.status_code==200,first.text
+        assert first.json()["user"]["must_change_password"] is True
+        assert client.get("/dashboard").status_code==403
+        chosen="NewlyChosen!Password789"
+        updated=client.post("/auth/change-password",headers=ORIGIN,
+                            json={"current_password":PASS,"new_password":chosen})
+        assert updated.status_code==200,updated.text
+        assert client.get("/dashboard").status_code==401
+        relogin=client.post("/auth/login",json={
+            "email":"first.login.qa@example.org","password":chosen})
+        assert relogin.status_code==200,relogin.text
+        assert relogin.json()["user"]["must_change_password"] is False
+        assert client.get("/dashboard").status_code==200
