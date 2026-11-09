@@ -63,3 +63,23 @@ def test_invalid_sensitive_change_returns_field_error():
                           json={"field_name":field,"value":invalid})
             assert r.status_code == 422, r.text
             assert r.json()["detail"]["field"] == field
+
+
+def test_case_insensitive_login_and_reset_email_privacy(monkeypatch):
+    from fastapi import HTTPException
+    def broken_mail(*args, **kwargs):
+        raise HTTPException(503, "SMTP unavailable")
+    with TestClient(app) as client:
+        seed(client)
+        client.post("/auth/logout",headers=ORIGIN)
+        upper=client.post("/auth/login",json={
+            "email":"ADMIN@EXAMPLE.COM","password":"test-admin-password-12345"})
+        assert upper.status_code==200,upper.text
+        monkeypatch.setattr("app.main.send_reset_mail",broken_mail)
+        existing=client.post("/auth/forgot-password",json={
+            "email":"payroll.person.qa@example.org"})
+        unknown=client.post("/auth/forgot-password",json={
+            "email":"nonexistent.reset.qa@example.org"})
+        assert existing.status_code==200,existing.text
+        assert unknown.status_code==200,unknown.text
+        assert existing.json()==unknown.json()
