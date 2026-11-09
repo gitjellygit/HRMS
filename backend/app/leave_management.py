@@ -532,7 +532,8 @@ def requests(scope: Literal["mine","team","approvals","all"]="mine",
     if scope=="approvals":
         query=query.where(or_(LeaveRequest.status=="pending",
                               (LeaveRequest.status=="approved") & (LeaveRequest.cancellation_requested.is_(True))))
-    rows=db.scalars(query.limit(500)).all()
+    # Pending approvals must not be hidden behind a pre-filtered newest-500 window.
+    rows=db.scalars(query if scope=="approvals" else query.limit(500)).all()
     if scope=="approvals":
         rows=[r for r in rows if
               (r.status=="approved" and r.cancellation_requested and user.role in ADMIN and r.employee_id!=user.id)
