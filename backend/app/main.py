@@ -494,8 +494,8 @@ def list_employees(user: Employee = Depends(require("admin", "hr", "accountant")
 def create_employee(body: EmployeeIn, user: Employee = Depends(require("admin", "hr")), db: Session = Depends(db_session)):
     if body.role not in ("super_admin", "admin", "hr", "manager", "employee", "accountant"):
         raise HTTPException(422, detail=[{"loc":["body","role"],"msg":"Select a valid access role.","type":"value_error"}])
-    if body.role in ("admin", "super_admin") and user.role not in ("super_admin", "admin"):
-        raise HTTPException(403, "Only Super Admin can create administrators")
+    if body.role in ("admin", "super_admin") and user.role != "super_admin":
+        raise HTTPException(403, "Only Super Admin can create administrator accounts")
     if db.scalar(select(Employee.id).where(func.lower(Employee.email) == str(body.email).lower())):
         raise HTTPException(409, detail={"field":"email","message":"This work email is already registered."})
     profile_fields = {'work_location','employment_type','manager_name','emergency_contact'}
