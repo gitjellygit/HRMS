@@ -68,7 +68,7 @@ test('employee can change appearance and upload a private profile picture',async
  await expect.poll(async()=>(await page.request.get(API_URL+'/me/photo')).status()).toBe(200);
 });
 
-test('HR reset forces password change and successful re-login',async({page})=>{
+test('HR reset reports missing SMTP and new employee must change initial password',async({page})=>{
  await login(page,person('hr'));
  const manager=person('manager').id, unique=Date.now();
  const email='qa.reset.'+unique+'@example.org';
@@ -80,15 +80,19 @@ test('HR reset forces password change and successful re-login',async({page})=>{
  const id=(await c.json()).id;
  const reset=await page.request.post(API_URL+'/core/employees/'+id+'/reset-password',{
   headers:origin,data:{reason:'QA verification of first-login password change'}});
- expect(reset.status()).toBe(200);
- const temp=(await reset.json()).temporary_password;
+ // CI does not configure outgoing SMTP, so the request must fail safely:
+ // HR cannot obtain a plaintext replacement password.
+ expect(reset.status()).toBe(503);
+ const resetBody=await reset.json();
+ expect(JSON.stringify(resetBody)).not.toContain('temporary_password');
  await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
  await page.goto('/');
  await page.locator('input[name="email"]').fill(email);
- await page.locator('input[name="password"]').fill(temp);
+ await page.locator('input[name="password"]').fill('InitialSecret!1234');
  await page.getByRole('button',{name:'Sign in to HRMS'}).click();
  await expect(page.getByRole('heading',{name:'Change your temporary password'})).toBeVisible();
  await expect(page.locator('.sidebar')).toHaveCount(0);
+ await page.getByLabel('Initial password',{exact:true}).fill('InitialSecret!1234');
  await page.getByLabel('New password',{exact:true}).fill('NewUserChoice!7890');
  await page.getByLabel('Confirm new password').fill('NewUserChoice!7890');
  await page.getByRole('button',{name:'Change password and sign out'}).click();

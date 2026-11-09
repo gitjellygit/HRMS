@@ -74,7 +74,7 @@ def test_employee_core_end_to_end():
         assert b"ABCDE1234F" not in exported.content
 
         preview=client.post("/core/employees-import?dry_run=true",headers=ORIGIN,
-              files={"document":("employees.csv",b"name,email,designation,department,role\nPriya Kapoor,priya.kapoor@example.org,QA Engineer,Quality,employee\n","text/csv")})
+              files={"document":("employees.csv",b"name,email,designation,department,role,manager_email\nPriya Kapoor,priya.kapoor@example.org,QA Engineer,Quality,employee,admin@example.com\n","text/csv")})
         assert preview.status_code==200,preview.text
         assert preview.json()["valid"] is True
 

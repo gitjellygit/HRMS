@@ -62,7 +62,10 @@ def test_employee_project_access_and_appraisals():
         assert c.get("/employees").status_code==403
 
 
-def test_force_password_change_after_hr_reset():
+def test_hr_password_reset_sends_link_without_exposing_credentials(monkeypatch):
+    from urllib.parse import urlsplit,parse_qs
+    messages=[]
+    monkeypatch.setattr("app.main.send_reset_mail",lambda email,link: messages.append((email,link)))
     with TestClient(app) as c:
         login(c,"admin@example.com","test-admin-password-12345")
         admin=c.get("/me").json()["id"]
@@ -71,23 +74,19 @@ def test_force_password_change_after_hr_reset():
         reset=c.post("/core/employees/"+str(person)+"/reset-password",
                      headers=ORIGIN,json={"reason":"Password compromised and HR reviewed"})
         assert reset.status_code==200,reset.text
-        assert reset.json()["must_change_on_login"] is True
-        temp=reset.json()["temporary_password"]
+        assert reset.json()["reset_email_sent"] is True
+        assert "temporary_password" not in reset.json()
+        assert messages[0][0]=="credential.person.qa@example.org"
+        token=parse_qs(urlsplit(messages[0][1]).query)["reset"][0]
         c.post("/auth/logout",headers=ORIGIN)
-        response=login(c,"credential.person.qa@example.org",temp)
-        assert response["user"]["must_change_password"] is True
-        assert c.get("/me").json()["must_change_password"] is True
-        assert c.get("/dashboard").status_code==403
-        assert c.get("/project-management/projects").status_code==403
-        assert c.post("/auth/change-password",headers=ORIGIN,
-                      json={"new_password":"NotStrongEnough"}).status_code==422
         new_password="CompletelyNew!Pass789"
-        changed=c.post("/auth/change-password",headers=ORIGIN,
-                       json={"new_password":new_password})
+        changed=c.post("/auth/reset-password",headers=ORIGIN,
+                       json={"token":token,"password":new_password})
         assert changed.status_code==200,changed.text
-        assert c.get("/dashboard").status_code==401
+        assert c.post("/auth/reset-password",headers=ORIGIN,
+               json={"token":token,"password":"AnotherNew!Pass567"}).status_code==400
         assert c.post("/auth/login",json={
-            "email":"credential.person.qa@example.org","password":temp}).status_code==401
+            "email":"credential.person.qa@example.org","password":PASSWORD}).status_code==401
         signed=login(c,"credential.person.qa@example.org",new_password)
         assert signed["user"]["must_change_password"] is False
         assert c.get("/dashboard").status_code==200

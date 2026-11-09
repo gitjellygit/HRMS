@@ -13,6 +13,106 @@ from .employee_core import seal, unseal
 router=APIRouter(prefix="/security",tags=["Account Security"])
 def now():return datetime.now(timezone.utc)
 
+class LoginFailure(Base):
+    """Persistent account-level lockout across application workers."""
+    __tablename__="sec_login_failures"
+    employee_id:Mapped[int]=mapped_column(ForeignKey("employees.id"),primary_key=True)
+    failed_count:Mapped[int]=mapped_column(Integer,default=0)
+    locked_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
+    locked_until:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
+
+
+MAX_LOGIN_FAILURES=5
+LOGIN_LOCK_MINUTES=30
+
+
+def login_blocked(db:Session, user:Employee)->bool:
+    row=db.get(LoginFailure,user.id)
+    if row and row.locked_until and row.locked_until>now():
+        return True
+    return False
+
+
+def login_failed(db:Session,user:Employee):
+    """Call only after a credential failure, not inside an uncommitted transaction."""
+    from sqlalchemy import func, select
+    from sqlalchemy import text
+    from datetime import timedelta
+    # Serialize even the first failure, when there is no row yet.
+    db.execute(select(func.pg_advisory_xact_lock(93271,user.id)))
+    row=db.get(LoginFailure,user.id)
+    if row is None:
+        row=LoginFailure(employee_id=user.id,failed_count=0)
+        db.add(row)
+    current=now()
+    if row.locked_until and row.locked_until>current:
+        db.commit()
+        return True
+    if row.locked_until and row.locked_until<=current:
+        row.failed_count=0
+        row.locked_at=None
+        row.locked_until=None
+    row.failed_count+=1
+    if row.failed_count>=MAX_LOGIN_FAILURES:
+        row.locked_at=current
+        row.locked_until=current+timedelta(minutes=LOGIN_LOCK_MINUTES)
+        from .notification_center import add_inbox
+        admins=db.scalars(select(Employee).where(
+            Employee.status=="active",Employee.role.in_(("super_admin","admin","hr")))).all()
+        for admin in admins:
+            add_inbox(db,admin.id,"security","Account temporarily locked",
+                      f"Account {user.email} was locked after {MAX_LOGIN_FAILURES} unsuccessful sign-in attempts. "
+                      f"Lock expires in {LOGIN_LOCK_MINUTES} minutes or can be cleared by an administrator.",
+                      "people")
+    blocked=bool(row.locked_until and row.locked_until>current)
+    db.commit()
+    return blocked
+
+
+def login_succeeded(db:Session,user:Employee):
+    row=db.get(LoginFailure,user.id)
+    if row and (row.failed_count or row.locked_until):
+        row.failed_count=0
+        row.locked_at=None
+        row.locked_until=None
+        db.commit()
+
+
+@router.get("/login-lockouts")
+def list_login_lockouts(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    if user.role not in ("super_admin","admin","hr"):
+        raise HTTPException(403,"HR or Admin only")
+    rows=db.scalars(select(LoginFailure).where(LoginFailure.locked_until>now())).all()
+    staff={e.id:e.email for e in db.scalars(select(Employee).where(
+        Employee.id.in_([r.employee_id for r in rows]))).all()}
+    return [{"employee_id":r.employee_id,"email":staff.get(r.employee_id,""),
+             "failed_attempts":r.failed_count,"locked_until":r.locked_until} for r in rows]
+
+
+@router.post("/login-lockouts/{employee_id}/unlock")
+def unlock_login(employee_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    if user.role not in ("super_admin","admin","hr"):
+        raise HTTPException(403,"HR or Admin only")
+    target=db.get(Employee,employee_id)
+    if target is None:raise HTTPException(404,"Employee not found")
+    from .employee_core import protect_privileged_target, LifecycleEvent
+    protect_privileged_target(user,target)
+    row=db.get(LoginFailure,employee_id)
+    if row is None or row.locked_until is None or row.locked_until<=now():
+        raise HTTPException(409,"Account does not have an active login lock")
+    row.failed_count=0
+    row.locked_at=None
+    row.locked_until=None
+    db.add(LifecycleEvent(employee_id=employee_id,event="login_unlocked",
+                          note="Login unlocked by HR/Admin after failed attempts",
+                          effective_date=now().date(),performed_by=user.id))
+    from .notification_center import add_inbox
+    add_inbox(db,employee_id,"security","Account unlocked",
+              "HR has cleared the failed-login lock for your account.","profile")
+    db.commit()
+    return {"employee_id":employee_id,"unlocked":True}
+
+
 class MFAFactor(Base):
     __tablename__="sec_mfa_factors"
     employee_id:Mapped[int]=mapped_column(ForeignKey("employees.id"),primary_key=True)

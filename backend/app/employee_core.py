@@ -3,6 +3,7 @@
 Tables are additive: existing employee and document records remain intact.
 """
 import csv
+import hashlib
 import io
 import os
 import re
@@ -15,7 +16,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Query
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook, load_workbook
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, ValidationError, field_validator
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
@@ -288,16 +289,28 @@ def validate_relationships(db: Session, employee_id: int, data: MasterIn):
                 raise HTTPException(422, detail={"field": field, "message": "Select a valid active " + kind.replace("_"," ") + "."})
 
 
-def apply_master(db: Session, employee_id: int, data: MasterIn):
-    validate_relationships(db, employee_id, data)
+def apply_master(db: Session, employee_id: int, data: MasterIn, *, partial: bool = False):
     row = db.get(EmployeeCore, employee_id)
     if row is None:
         row = EmployeeCore(employee_id=employee_id)
         db.add(row)
-    for field,value in data.model_dump(exclude=set(SENSITIVE)).items():
+    values = data.model_dump(exclude_unset=partial)
+    # Relationship checks must see the complete resulting record on partial updates.
+    if partial:
+        combined = {key:(getattr(row,key) or "" if key in ("address","emergency_name","emergency_phone")
+                     else getattr(row,key) or None if key=="personal_email"
+                     else getattr(row,key))
+                    for key in MasterIn.model_fields if key not in SENSITIVE}
+        combined.update({key:value for key,value in values.items() if key not in SENSITIVE})
+        validate_relationships(db, employee_id, MasterIn.model_validate(combined))
+    else:
+        validate_relationships(db, employee_id, data)
+    for field,value in values.items():
+        if field in SENSITIVE:
+            continue
         setattr(row, field, value or "" if field in ("personal_email",) else value)
     for field in SENSITIVE:
-        value = getattr(data, field)
+        value = values.get(field)
         if value:
             setattr(row, field, seal(value))
     return row
@@ -485,7 +498,7 @@ def create_full_employee(body: EmployeeCreateIn, user: Employee = Depends(requir
     account = body.account
     if account.role not in ("super_admin","admin","hr","manager","employee","accountant"):
         raise HTTPException(422, "Unknown account role")
-    if account.role in ("super_admin", "admin") and user.role not in ADMIN_ROLES:
+    if account.role in ("super_admin", "admin") and user.role != "super_admin":
         raise HTTPException(403, "Only Super Admin may create an administrator")
     if db.scalar(select(Employee.id).where(func.lower(Employee.email) == str(account.email).lower())):
         raise HTTPException(409, detail={"field":"email","message":"This email is already registered."})
@@ -497,7 +510,8 @@ def create_full_employee(body: EmployeeCreateIn, user: Employee = Depends(requir
         department = db.get(OrgUnit, body.master.department_id)
         account = account.model_copy(update={"department": department.name})
     profile_fields = {"work_location","employment_type","manager_name","emergency_contact"}
-    employee = Employee(**account.model_dump(exclude={"password","employee_code"} | profile_fields), password_hash=passwords.hash(account.password))
+    employee = Employee(**account.model_dump(exclude={"password","employee_code"} | profile_fields),
+                        password_hash=passwords.hash(account.password), must_change_password=True)
     db.add(employee)
     try:
         db.flush()
@@ -515,8 +529,12 @@ def create_full_employee(body: EmployeeCreateIn, user: Employee = Depends(requir
 
 @router.put("/employees/{employee_id}")
 def update_master(employee_id: int, body: MasterIn, user: Employee = Depends(require_hr), db: Session = Depends(db_session)):
-    employee_or_404(db, employee_id)
-    apply_master(db, employee_id, body)
+    employee = employee_or_404(db, employee_id)
+    core = db.get(EmployeeCore, employee_id)
+    manager_id = body.model_dump(exclude_unset=True).get("manager_id", core.manager_id if core else None)
+    if employee.role not in ("admin", "super_admin") and not manager_id:
+        raise HTTPException(422,detail={"field":"manager_id","message":"A reporting manager is required for this employee."})
+    apply_master(db, employee_id, body, partial=True)
     db.commit()
     return employee_view(db, employee_or_404(db, employee_id), user)
 
@@ -529,19 +547,23 @@ def self_profile(user: Employee = Depends(current_user), db: Session = Depends(d
 @router.post("/me/change-requests", status_code=201)
 def request_profile_change(body: ChangeIn, user: Employee = Depends(current_user), db: Session = Depends(db_session)):
     value = body.value.strip()
-    if body.field_name in SENSITIVE:
-        # Validate with the normal master schema before encryption.
-        MasterIn.model_validate({body.field_name: value})
-        proposed = seal(value)
-    else:
-        if body.field_name == "date_of_birth":
-            try:
-                date.fromisoformat(value)
-            except ValueError as exc:
-                raise HTTPException(422, "Date must be YYYY-MM-DD") from exc
-        if body.field_name == "personal_email" and value:
-            MasterIn.model_validate({"personal_email": value})
-        proposed = value
+    try:
+        if body.field_name in SENSITIVE:
+            # Validate with the normal master schema before encryption.
+            MasterIn.model_validate({body.field_name: value})
+            proposed = seal(value)
+        else:
+            if body.field_name == "date_of_birth":
+                try:
+                    date.fromisoformat(value)
+                except ValueError as exc:
+                    raise HTTPException(422, "Date must be YYYY-MM-DD") from exc
+            if body.field_name == "personal_email" and value:
+                MasterIn.model_validate({"personal_email": value})
+            proposed = value
+    except ValidationError as exc:
+        message = exc.errors()[0]["msg"].replace("Value error, ", "")
+        raise HTTPException(422, detail={"field":body.field_name,"message":message}) from exc
     pending = db.scalar(select(ChangeRequest).where(ChangeRequest.employee_id == user.id, ChangeRequest.field_name == body.field_name, ChangeRequest.status == "pending"))
     if pending:
         raise HTTPException(409, "A request for this field is already awaiting HR review")
@@ -610,6 +632,8 @@ def lifecycle_history(employee_id: int, user: Employee = Depends(current_user), 
 @router.post("/employees/{employee_id}/lifecycle")
 def change_lifecycle(employee_id: int, body: LifecycleIn, user: Employee = Depends(require_hr), db: Session = Depends(db_session)):
     employee = employee_or_404(db, employee_id)
+    if body.event == "exited":
+        protect_privileged_target(user, employee)
     core = db.get(EmployeeCore, employee_id)
     if not core:
         core = EmployeeCore(employee_id=employee_id)
@@ -658,20 +682,24 @@ def reset_employee_password(employee_id:int,body:TemporaryPasswordIn,user:Employ
     protect_privileged_target(user,target)
     if target.status!="active":
         raise HTTPException(409,"Reactivate the employee before issuing new credentials.")
-    import string
-    chars=string.ascii_letters+string.digits+"!@#$%&*"
-    temporary="".join(secrets.choice(chars) for _ in range(20))
-    # Force representative character classes for the password policy.
-    temporary="A9!a"+temporary
-    target.password_hash=passwords.hash(temporary)
-    target.must_change_password=True
-    db.add(LifecycleEvent(employee_id=employee_id,event="password_reset",
-                          note="HR-issued temporary password: "+body.reason.strip(),
+    from .main import PasswordReset, send_reset_mail
+    token=secrets.token_urlsafe(32)
+    db.add(PasswordReset(employee_id=target.id,
+                         token_hash=hashlib.sha256(token.encode()).hexdigest(),
+                         expires_at=datetime.now(timezone.utc)+timedelta(minutes=30)))
+    link=os.getenv("FRONTEND_URL","http://localhost:3000").rstrip("/")+"/?reset="+token
+    try:
+        send_reset_mail(target.email,link)
+    except HTTPException:
+        db.rollback()
+        raise HTTPException(503,detail={"field":"email","message":
+            "Password reset email could not be sent. Configure SMTP before issuing reset links."})
+    db.add(LifecycleEvent(employee_id=employee_id,event="password_reset_requested",
+                          note="HR requested email-based password reset: "+body.reason.strip(),
                           effective_date=date.today(),performed_by=user.id))
     db.commit()
-    # No password in logs, DB or email; return once to authorized caller.
-    return {"employee_id":employee_id,"temporary_password":temporary,"must_change_on_login":True,
-            "message":"Share securely. The employee must change it on the next login."}
+    return {"employee_id":employee_id,"reset_email_sent":True,
+            "message":"A time-limited password setup link was sent to the employee. No password is visible to HR."}
 
 
 def sync_probation_periods(db:Session)->int:
@@ -804,6 +832,8 @@ async def import_employees(document: UploadFile = File(...), dry_run: bool = Tru
                 raise ValueError("Duplicate or existing work email")
             pending_emails.add(email)
             manager_email=str(row.get("manager_email") or "").strip().lower()
+            if not manager_email:
+                raise ValueError("Reporting manager email is required for imported employees")
             manager=db.scalar(select(Employee).where(func.lower(Employee.email)==manager_email)) if manager_email else None
             if manager_email and not manager:
                 raise ValueError("Reporting manager email must already exist")
@@ -828,7 +858,8 @@ async def import_employees(document: UploadFile = File(...), dry_run: bool = Tru
     created=0
     try:
         for inp, manager_id in parsed:
-            person=Employee(**inp.model_dump(exclude={"password","employee_code","manager_name","work_location","employment_type","emergency_contact"}),password_hash=passwords.hash(inp.password))
+            person=Employee(**inp.model_dump(exclude={"password","employee_code","manager_name","work_location","employment_type","emergency_contact"}),
+                            password_hash=passwords.hash(inp.password),must_change_password=True)
             db.add(person)
             db.flush()
             number=db.execute(text("SELECT nextval('hrms_employee_code_seq')")).scalar_one()

@@ -358,11 +358,25 @@ def health():
 
 @app.post("/auth/login")
 def login(body: LoginIn, response: Response, db: Session = Depends(db_session)):
-    user = db.scalar(select(Employee).where(Employee.email == str(body.email)))
-    if not user or user.status != "active" or not passwords.verify(body.password, user.password_hash):
+    user = db.scalar(select(Employee).where(func.lower(Employee.email) == str(body.email).lower()))
+    from .security import login_blocked, login_failed, login_succeeded, require_login_mfa
+    if not user or user.status!="active":
+        # Do not reveal whether the account exists.
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    from .security import require_login_mfa
-    require_login_mfa(db,user.id,body.otp)
+    if login_blocked(db,user):
+        raise HTTPException(status_code=423,detail="Account temporarily locked after failed login attempts. Contact HR/Admin or try again in 30 minutes.")
+    if not passwords.verify(body.password,user.password_hash):
+        locked=login_failed(db,user)
+        raise HTTPException(status_code=423 if locked else 401,
+            detail="Account temporarily locked after 5 failed attempts. Contact HR/Admin or try again in 30 minutes." if locked else "Invalid credentials")
+    try:
+        require_login_mfa(db,user.id,body.otp)
+    except HTTPException:
+        locked=login_failed(db,user)
+        if locked:
+            raise HTTPException(423,detail="Account temporarily locked after 5 failed attempts. Contact HR/Admin or try again in 30 minutes.")
+        raise
+    login_succeeded(db,user)
     lifetime = timedelta(days=30) if body.remember else timedelta(hours=8)
     token = jwt.encode({"sub": str(user.id), "pv": hashlib.sha256((SECRET + user.password_hash).encode()).hexdigest(), "exp": datetime.now(timezone.utc) + lifetime}, SECRET, algorithm="HS256")
     response.set_cookie(COOKIE_NAME, token, httponly=True, secure=COOKIE_SECURE, samesite='lax', max_age=int(lifetime.total_seconds()) if body.remember else None, path='/')
@@ -490,27 +504,9 @@ def list_employees(user: Employee = Depends(require("admin", "hr", "accountant")
     codes = dict(db.execute(select(EmployeeProfile.employee_id, EmployeeProfile.employee_code)).all())
     return [EmployeeOut.model_validate(employee).model_copy(update={"employee_code": codes.get(employee.id, "")}) for employee in employees]
 
-@app.post("/employees", response_model=EmployeeOut, status_code=201)
-def create_employee(body: EmployeeIn, user: Employee = Depends(require("admin", "hr")), db: Session = Depends(db_session)):
-    if body.role not in ("super_admin", "admin", "hr", "manager", "employee", "accountant"):
-        raise HTTPException(422, detail=[{"loc":["body","role"],"msg":"Select a valid access role.","type":"value_error"}])
-    if body.role in ("admin", "super_admin") and user.role not in ("super_admin", "admin"):
-        raise HTTPException(403, "Only Super Admin can create administrators")
-    if db.scalar(select(Employee.id).where(func.lower(Employee.email) == str(body.email).lower())):
-        raise HTTPException(409, detail={"field":"email","message":"This work email is already registered."})
-    profile_fields = {'work_location','employment_type','manager_name','emergency_contact'}
-    employee = Employee(**body.model_dump(exclude={"password","employee_code"} | profile_fields), password_hash=passwords.hash(body.password))
-    db.add(employee)
-    try:
-        db.flush()
-        code = employee_code_value(db, body.employee_code)
-        db.add(EmployeeProfile(employee_id=employee.id, employee_code=code, **body.model_dump(include=profile_fields)))
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(409, detail={"field":"email","message":"An employee with these details already exists."}) from exc
-    db.refresh(employee)
-    return as_employee_out(db, employee)
+@app.post("/employees", status_code=410)
+def create_employee(user: Employee = Depends(require("admin", "hr"))):
+    raise HTTPException(410, detail="Legacy employee creation retired; use /core/employees with reporting-manager validation.")
 
 @app.get("/attendance/status")
 def attendance_status(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
@@ -549,15 +545,9 @@ def attendance(employee_id: int | None = None, user: Employee = Depends(current_
         raise HTTPException(403, "Insufficient permissions")
     return db.scalars(select(Attendance).where(Attendance.employee_id == target).order_by(Attendance.id.desc()).limit(100)).all()
 
-@app.post("/leaves", response_model=LeaveOut, status_code=201)
-def apply_leave(body: LeaveIn, user: Employee = Depends(current_user), db: Session = Depends(db_session)):
-    if body.end_date < body.start_date:
-        raise HTTPException(422, "End date must not precede start date")
-    leave = Leave(employee_id=user.id, **body.model_dump())
-    db.add(leave)
-    db.commit()
-    db.refresh(leave)
-    return leave
+@app.post("/leaves", status_code=410)
+def apply_leave(user: Employee = Depends(current_user)):
+    raise HTTPException(410, detail="Legacy leave submission retired; use /leave/requests.")
 
 @app.get("/leaves", response_model=list[LeaveOut])
 def leaves(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
@@ -566,17 +556,9 @@ def leaves(user: Employee = Depends(current_user), db: Session = Depends(db_sess
         query = query.where(Leave.employee_id == user.id)
     return db.scalars(query.limit(200)).all()
 
-@app.patch("/leaves/{leave_id}", response_model=LeaveOut)
-def review_leave(leave_id: int, body: StatusIn, user: Employee = Depends(require("admin", "hr")), db: Session = Depends(db_session)):
-    if body.status not in ("approved", "rejected"):
-        raise HTTPException(422, "Invalid status")
-    leave = db.get(Leave, leave_id)
-    if not leave:
-        raise HTTPException(404, "Leave not found")
-    leave.status = body.status
-    db.commit()
-    db.refresh(leave)
-    return leave
+@app.patch("/leaves/{leave_id}", status_code=410)
+def review_leave(leave_id: int, user: Employee = Depends(require("admin", "hr"))):
+    raise HTTPException(410, detail="Legacy leave approval retired; use /leave/requests/{id}/review.")
 
 @app.get("/projects", response_model=list[ProjectOut])
 def projects(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
@@ -676,8 +658,7 @@ def validate_new_password(value: str):
 @app.post("/auth/change-password")
 def change_my_password(body: SelfPasswordChange,response:Response,
                        user:Employee=Depends(current_user),db:Session=Depends(db_session)):
-    if not user.must_change_password and (
-        not body.current_password or not passwords.verify(body.current_password,user.password_hash)):
+    if not body.current_password or not passwords.verify(body.current_password,user.password_hash):
         raise HTTPException(401,"Current password is incorrect")
     validate_new_password(body.new_password)
     if passwords.verify(body.new_password,user.password_hash):
@@ -723,7 +704,7 @@ def send_reset_mail(destination: str, link: str):
 @app.post("/auth/forgot-password")
 def forgot_password(body: ResetRequestIn, db: Session = Depends(db_session)):
     # Same response for registered and unregistered email addresses.
-    user = db.scalar(select(Employee).where(Employee.email == str(body.email), Employee.status == 'active'))
+    user = db.scalar(select(Employee).where(func.lower(Employee.email) == str(body.email).lower(), Employee.status == 'active'))
     if user:
         recent = db.scalar(select(PasswordReset).where(PasswordReset.employee_id == user.id).order_by(PasswordReset.id.desc()))
         if recent and recent.expires_at > datetime.now(timezone.utc) + timedelta(minutes=25):
@@ -733,8 +714,16 @@ def forgot_password(body: ResetRequestIn, db: Session = Depends(db_session)):
                                expires_at=datetime.now(timezone.utc) + timedelta(minutes=30))
         db.add(record)
         base_url = os.getenv('FRONTEND_URL', 'http://localhost:3000').rstrip('/')
-        send_reset_mail(user.email, base_url + '/?reset=' + token)
-        db.commit()
+        try:
+            send_reset_mail(user.email, base_url + '/?reset=' + token)
+        except HTTPException as exc:
+            # Do not disclose whether a requested email account exists.
+            # The email adapter should log delivery failures for operators.
+            db.rollback()
+            if exc.status_code != 503:
+                raise
+        else:
+            db.commit()
     return {"message": "If the email is registered, a password reset link has been sent."}
 
 @app.post("/auth/reset-password")
@@ -747,7 +736,15 @@ def reset_password(body: ResetConfirmIn, db: Session = Depends(db_session)):
     user = employee_exists(db, item.employee_id)
     if user.status != 'active':
         raise HTTPException(400, 'Invalid or expired reset link')
+    validate_new_password(body.password)
     user.password_hash = passwords.hash(body.password)
+    user.must_change_password = False
+    from .security import LoginFailure
+    attempt = db.get(LoginFailure,user.id)
+    if attempt:
+        attempt.failed_count = 0
+        attempt.locked_at = None
+        attempt.locked_until = None
     for reset in db.scalars(select(PasswordReset).where(PasswordReset.employee_id == user.id, PasswordReset.used_at.is_(None))).all():
         reset.used_at = now
     db.commit()

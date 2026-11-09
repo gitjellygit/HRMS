@@ -1,5 +1,6 @@
 import { test, expect, request } from '@playwright/test';
 import { login, navigate, users } from './helpers';
+import {TEST_PASSWORD} from './global-setup';
 import { API_URL, WEB_URL } from '../playwright.config';
 
 function persona(key:string){return users().find(u=>u.key===key)!}
@@ -215,7 +216,7 @@ test.describe('business-critical cross-role workflows',()=>{
     const managerReview=await request.newContext({extraHTTPHeaders:{Origin:WEB_URL}});
     try{
       const signedIn=await managerReview.post(API_URL+'/auth/login',{data:{
-        email:persona('manager').email,password:'DemoOnly!Pass1234'}});
+        email:persona('manager').email,password:TEST_PASSWORD}});
       expect(signedIn.status()).toBe(200);
       const approvals=await managerReview.get(API_URL+'/leave/requests?scope=approvals');
       expect(approvals.status()).toBe(200);
@@ -232,7 +233,7 @@ test.describe('business-critical cross-role workflows',()=>{
     const hrReview=await request.newContext({extraHTTPHeaders:{Origin:WEB_URL}});
     try{
       const signedIn=await hrReview.post(API_URL+'/auth/login',{data:{
-        email:persona('hr').email,password:'DemoOnly!Pass1234'}});
+        email:persona('hr').email,password:TEST_PASSWORD}});
       expect(signedIn.status()).toBe(200);
       const pending=await hrReview.get(API_URL+'/leave/requests?scope=approvals');
       expect(pending.status()).toBe(200);
