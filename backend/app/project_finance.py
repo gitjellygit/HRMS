@@ -158,13 +158,14 @@ def project_detail(db:Session,project_id:int):
     p=db.get(Project,project_id);d=db.get(ProjectDetail,project_id)
     if not p or not d:raise HTTPException(404,"Billable project not found")
     return p,d
-def live_period(p:Project,d:ProjectDetail,profile:ProjectBilling|None,start:date,end:date,as_of:date):
+def live_period(p:Project,d:ProjectDetail,profile:ProjectBilling|None,start:date,end:date,as_of:date,
+                *,allow_closed:bool=False):
     if p.status!="active" or (profile and profile.stopped_at is not None):
-        # Permits controlled back-billing after an exit, but never for service
-        # dates later than the actual stop/end date.
+        # Only an existing, explicitly reviewed closing-period task may be
+        # issued after termination; normal manual invoicing stays blocked.
         stopped=profile.stopped_at if profile else None
-        if stopped is None or end>stopped:
-            raise HTTPException(409,"Cannot bill beyond the project stop date")
+        if not allow_closed or stopped is None or end>stopped:
+            raise HTTPException(409,"Inactive projects cannot generate manual invoices")
     if not d.start_date:raise HTTPException(422,"Project start date required")
     if start<d.start_date:raise HTTPException(422,"Invoice starts before project start")
     if end<start:raise HTTPException(422,"Invalid period")
@@ -191,7 +192,7 @@ def audit(db:Session,user:Employee,project_id:int,event:str,note:str=""):
     db.add(FinanceAudit(project_id=project_id,actor_id=user.id,event=event,note=note[:2000]))
 def create_row(db:Session,user:Employee,p:Project,d:ProjectDetail,c:ProjectBilling,
                start:date,end:date,quantity:Decimal,tax:Decimal|None,issued:date,source:str):
-    live_period(p,d,c,start,end,issued)
+    live_period(p,d,c,start,end,issued,allow_closed=(source=="schedule_reviewed"))
     if not c.recipient_name:raise HTTPException(422,"Billing recipient required")
     existing=db.scalar(select(ClientInvoice.id).where(
       ClientInvoice.project_id==p.id,ClientInvoice.period_start==start,
@@ -399,7 +400,8 @@ def run_schedule(body:ScheduleIn,user:Employee=Depends(current_user),db:Session=
             start=max(d.start_date,last+timedelta(days=1) if last else d.start_date)
             period_end=min(body.as_of,end) if end else body.as_of
             if start>period_end:
-                skipped.append({"project_id":p.id,"reason":"nothing to bill"})
+                skipped.append({"project_id":p.id,"reason":
+                    "project ended; schedule disabled" if end and body.as_of>end else "nothing to bill"})
                 if end and body.as_of>end:
                     p.status="inactive";c.stopped_at=end;db.commit()
                 continue
