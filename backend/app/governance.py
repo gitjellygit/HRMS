@@ -9,6 +9,8 @@ from .main import Base, Employee, current_user, db_session
 from .bonus_policy import CompanyPolicy, CompanyPolicyRecord, BonusPolicyIn, PolicyRecordIn
 from .leave_management import LeavePolicy, PolicyIn, EntitlementIn
 from .employee_core import LeaveEntitlement
+from .payroll import SalaryIn, StatutoryIn, apply_salary_structure, apply_statutory_settings
+from .payroll_components import ComponentIn, apply_component
 
 router=APIRouter(prefix="/governance",tags=["Admin approval"])
 ADMINS=("super_admin","admin")
@@ -37,13 +39,26 @@ class Decision(BaseModel):
     reason:str=Field(min_length=10,max_length=1000)
 
 SCHEMAS={"company_policy":PolicyRecordIn,"leave_policy":PolicyIn,
-         "leave_allocation":EntitlementIn,"bonus_policy":BonusPolicyIn}
+         "leave_allocation":EntitlementIn,"bonus_policy":BonusPolicyIn,
+         "salary_structure":SalaryIn,"statutory_settings":StatutoryIn,
+         "salary_component":ComponentIn}
+PAYROLL_KINDS=("salary_structure","statutory_settings","salary_component")
 
 def submit(db,user,kind,payload,reason):
     if user.role not in HRS:raise HTTPException(403,"HR access required")
     if kind not in SCHEMAS:raise HTTPException(422,"Unsupported change category")
     if len(reason.strip())<10:raise HTTPException(422,"Reason must be at least ten characters")
     data=SCHEMAS[kind].model_validate(payload).model_dump(mode="json")
+    if kind in PAYROLL_KINDS:
+        employee=db.get(Employee,data["employee_id"])
+        if not employee:raise HTTPException(422,detail={"field":"employee_id","message":"Employee not found"})
+        if employee.id==user.id:raise HTTPException(403,"You cannot propose changes to your own compensation.")
+        if employee.role=="super_admin" and user.role!="super_admin":
+            raise HTTPException(403,"Only Super Admin can propose another Super Admin's compensation.")
+        if kind=="salary_structure":
+            pay=SalaryIn.model_validate(data)
+            if pay.other_deductions>pay.basic+pay.hra+pay.allowances:
+                raise HTTPException(422,detail={"field":"other_deductions","message":"Deductions exceed gross pay."})
     row=ChangeRequest(kind=kind,payload=json.dumps(data),reason=reason.strip(),submitted_by=user.id)
     db.add(row);db.commit();db.refresh(row)
     return {"id":row.id,"status":"pending","kind":row.kind,"admin_approval_required":True}
@@ -82,6 +97,16 @@ def apply(db,row):
         if not x:x=LeavePolicy(leave_type=p.leave_type);db.add(x)
         for key,value in p.model_dump(exclude={"leave_type","approval_chain"}).items():setattr(x,key,value)
         x.approval_chain=",".join(p.approval_chain)
+    elif row.kind in PAYROLL_KINDS:
+        target_id=data["employee_id"]
+        if target_id==row.reviewed_by:
+            raise HTTPException(403,"You cannot approve changes to your own compensation.")
+        if row.kind=="salary_structure":
+            apply_salary_structure(db,SalaryIn.model_validate(data),row.reviewed_by)
+        elif row.kind=="statutory_settings":
+            apply_statutory_settings(db,StatutoryIn.model_validate(data),row.reviewed_by)
+        else:
+            apply_component(db,ComponentIn.model_validate(data),row.reviewed_by)
     elif row.kind=="leave_allocation":
         p=EntitlementIn.model_validate(data)
         user=db.get(Employee,p.employee_id)
@@ -104,6 +129,12 @@ def review(request_id:int,body:Decision,user:Employee=Depends(current_user),db:S
     if not x:raise HTTPException(404,"Request not found")
     if x.status!="pending":raise HTTPException(409,"Already reviewed")
     if x.submitted_by==user.id:raise HTTPException(403,"Self approval prohibited")
+    if x.kind in PAYROLL_KINDS:
+        target=db.get(Employee,json.loads(x.payload)["employee_id"])
+        if not target:raise HTTPException(422,"Employee not found")
+        if target.id==user.id:raise HTTPException(403,"Cannot approve your own compensation.")
+        if target.role=="super_admin" and user.role!="super_admin":
+            raise HTTPException(403,"Only another Super Admin can approve that change.")
     x.reviewed_by=user.id;x.review_note=body.reason
     x.reviewed_at=datetime.now(timezone.utc)
     if body.approve:apply(db,x)
