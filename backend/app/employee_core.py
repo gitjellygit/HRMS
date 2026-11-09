@@ -610,13 +610,57 @@ def lifecycle_history(employee_id: int, user: Employee = Depends(current_user), 
 @router.post("/employees/{employee_id}/lifecycle")
 def change_lifecycle(employee_id: int, body: LifecycleIn, user: Employee = Depends(require_hr), db: Session = Depends(db_session)):
     employee = employee_or_404(db, employee_id)
+    if body.event == "exited":
+        protect_privileged_target(user, employee)
     core = db.get(EmployeeCore, employee_id)
     if not core:
         core = EmployeeCore(employee_id=employee_id)
         db.add(core)
-    core.lifecycle = body.event
     if body.event == "exited":
-        employee.status = "inactive"  # deactivates access immediately
+        # A reporting-manager exit must not strand direct reports or pending
+        # manager approvals. Prefer each report's HOD, then the exiting
+        # manager's own manager, then a distinct active HR/admin.
+        from .leave_management import LeaveRequest, ApprovalEvent, notify
+        reports=db.scalars(select(EmployeeCore).where(
+            EmployeeCore.manager_id==employee_id).with_for_update()).all()
+        fallback_staff=list(db.scalars(select(Employee).where(
+            Employee.status=="active",Employee.role.in_(ADMIN)).order_by(Employee.id)))
+        for report in reports:
+            candidates=[report.hod_id,core.manager_id]+[x.id for x in fallback_staff]
+            replacement_id=None
+            for candidate in dict.fromkeys(candidates):
+                if candidate is None or candidate in (employee_id,report.employee_id):
+                    continue
+                manager=db.get(Employee,candidate)
+                if not manager or manager.status!="active" or manager.role not in (
+                    "manager","super_admin","admin","hr"):
+                    continue
+                try:
+                    validate_relationships(db,report.employee_id,MasterIn(manager_id=candidate))
+                except HTTPException:
+                    continue
+                replacement_id=candidate
+                break
+            if replacement_id is None:
+                raise HTTPException(422,detail={"field":"manager_id",
+                    "message":"Assign an active manager to every direct report before exiting this manager."})
+            report.manager_id=replacement_id
+            db.add(LifecycleEvent(employee_id=report.employee_id,event="manager_reassigned",
+                note=f"Reporting manager {employee_id} exited; reassigned to {replacement_id}.",
+                effective_date=body.effective_date,performed_by=user.id))
+            pending=db.scalars(select(LeaveRequest).where(
+                LeaveRequest.employee_id==report.employee_id,
+                LeaveRequest.status=="pending",LeaveRequest.manager_snapshot_id==employee_id)).all()
+            for leave in pending:
+                stages=[x for x in leave.chain.split(",") if x]
+                if leave.current_stage<len(stages) and stages[leave.current_stage]=="manager":
+                    leave.manager_snapshot_id=replacement_id
+                    db.add(ApprovalEvent(request_id=leave.id,actor_id=user.id,
+                        action="manager_reassigned",stage="manager",
+                        note=f"Manager exit: {employee_id} to {replacement_id}"))
+                    notify(db,replacement_id,f"Leave request #{leave.id} needs your approval.",leave.id)
+        employee.status = "inactive"
+    core.lifecycle = body.event
     db.add(LifecycleEvent(employee_id=employee_id, event=body.event, note=body.note, effective_date=body.effective_date, performed_by=user.id))
     db.commit()
     return {"employee_id":employee_id, "lifecycle":body.event}
