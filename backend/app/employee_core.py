@@ -509,7 +509,8 @@ def create_full_employee(body: EmployeeCreateIn, user: Employee = Depends(requir
         department = db.get(OrgUnit, body.master.department_id)
         account = account.model_copy(update={"department": department.name})
     profile_fields = {"work_location","employment_type","manager_name","emergency_contact"}
-    employee = Employee(**account.model_dump(exclude={"password","employee_code"} | profile_fields), password_hash=passwords.hash(account.password))
+    employee = Employee(**account.model_dump(exclude={"password","employee_code"} | profile_fields),
+                        password_hash=passwords.hash(account.password), must_change_password=True)
     db.add(employee)
     try:
         db.flush()
@@ -852,7 +853,8 @@ async def import_employees(document: UploadFile = File(...), dry_run: bool = Tru
     created=0
     try:
         for inp, manager_id in parsed:
-            person=Employee(**inp.model_dump(exclude={"password","employee_code","manager_name","work_location","employment_type","emergency_contact"}),password_hash=passwords.hash(inp.password))
+            person=Employee(**inp.model_dump(exclude={"password","employee_code","manager_name","work_location","employment_type","emergency_contact"}),
+                            password_hash=passwords.hash(inp.password),must_change_password=True)
             db.add(person)
             db.flush()
             number=db.execute(text("SELECT nextval('hrms_employee_code_seq')")).scalar_one()
