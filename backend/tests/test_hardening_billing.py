@@ -12,10 +12,15 @@ def configure(client, project, tax="5.00", end=None):
     cfg={"recipient_name":"Pilot Invoice Customer","recipient_email":"billing@example.org",
          "billing_frequency":"monthly","billing_day":15,"payment_terms_days":15,
          "rate_unit":"hour","invoice_rate":"100.00","tax_rate_pct":tax}
-    if end is not None:
-        cfg["end_date"]=end.isoformat()
     res=client.put(f"/finance/projects/{project}/configuration",headers=ORIGIN,json=cfg)
     assert res.status_code==200,res.text
+    if end is not None:
+        scheduled=client.put(f"/finance/projects/{project}/billing",headers=ORIGIN,json={
+            "recipient_type":"client","recipient_name":"Pilot Invoice Customer",
+            "recipient_email":"billing@example.org","billing_day":15,
+            "payment_terms_days":15,"billing_frequency":"monthly",
+            "end_date":end.isoformat()})
+        assert scheduled.status_code==200,scheduled.text
 
 
 def test_voided_invoice_can_be_replaced_with_same_window():
