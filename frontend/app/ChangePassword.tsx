@@ -20,7 +20,7 @@ export default function ChangePassword({api,required,onComplete}:{api:string;req
   try{
    const r=await fetch(api+"/auth/change-password",{method:"POST",credentials:"include",
     headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({current_password:required?null:oldPass,new_password:newPass})});
+    body:JSON.stringify({current_password:oldPass,new_password:newPass})});
    const data=await r.json().catch(()=>({}));
    if(!r.ok)throw Error(typeof data.detail==="string"?data.detail:"Unable to change password.");
    setOldPass("");setNewPass("");setRepeat("");onComplete();
@@ -31,7 +31,7 @@ export default function ChangePassword({api,required,onComplete}:{api:string;req
    <div className="core-head"><LockKeyhole size={21}/><div><h2>{required?"Change your temporary password":"Change password"}</h2><p>{required?"For security, set your own password before accessing HRMS.":"Change your password; you will then sign in again."}</p></div></div>
    {error&&<FeedbackMotion type="error" compact message={error}/>}{busy&&<FeedbackMotion type="loading" compact message="Updating your password…"/>}
    <form className="password-change-form" onSubmit={change}>
-    {!required&&<label>Current password<input type={show?"text":"password"} autoComplete="current-password" required value={oldPass} onChange={e=>setOldPass(e.target.value)}/></label>}
+    <label>{required?"Initial password":"Current password"}<input type={show?"text":"password"} autoComplete="current-password" required value={oldPass} onChange={e=>setOldPass(e.target.value)}/></label>
     <label>New password<input name="new_password" aria-invalid={Boolean(error&&error.toLowerCase().includes("password"))} type={show?"text":"password"} autoComplete="new-password" required minLength={12} value={newPass} onChange={e=>setNewPass(e.target.value)}/></label>
     <label>Confirm new password<input name="confirm" aria-invalid={Boolean(error&&error.toLowerCase().includes("match"))} type={show?"text":"password"} autoComplete="new-password" required minLength={12} value={repeat} onChange={e=>setRepeat(e.target.value)}/></label>
     <label className="password-visibility"><input type="checkbox" checked={show} onChange={e=>setShow(e.target.checked)}/>{show?<EyeOff size={15}/>:<Eye size={15}/>} Show passwords</label>
