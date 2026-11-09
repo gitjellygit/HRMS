@@ -88,7 +88,7 @@ def test_employee_ids_phone_password_and_deactivation(monkeypatch):
         history=c.get(f"/core/employees/{employee_id}/lifecycle").json()
         assert any(x["event"]=="deactivated" and "formal exit" in x["note"] for x in history)
         c.post("/auth/logout",headers=ORIGIN)
-        assert c.post("/auth/login",json={"email":"ravi.hrux@example.org","password":temp}).status_code==401
+        assert c.post("/auth/login",json={"email":"ravi.hrux@example.org","password":"BrandNewPass!98765"}).status_code==401
 
 
 def test_policy_records_and_90_day_confirmation():
