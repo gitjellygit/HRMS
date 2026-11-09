@@ -11,7 +11,9 @@ from app.main import Base, engine
 
 @pytest.fixture(autouse=True)
 def isolated_backend_database():
-    if os.environ.get("HRMS_TEST_RESET_DB") != "1":
+    if (os.environ.get("HRMS_TEST_RESET_DB") != "1"
+            or os.environ.get("CI") != "true"
+            or engine.url.database != "hrms_test"):
         yield
         return
     Base.metadata.create_all(bind=engine)
