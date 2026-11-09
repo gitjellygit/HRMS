@@ -93,6 +93,9 @@ def test_ended_project_can_reissue_voided_invoice_with_explicit_audit_link():
         original=c.post("/finance/invoices",headers=ORIGIN,json=window)
         assert original.status_code==201,original.text
         original_id=original.json()["id"]
+        no_reason=c.post(f"/finance/invoices/{original_id}/status",headers=ORIGIN,
+            json={"status":"void","reference":"bad"})
+        assert no_reason.status_code==422,no_reason.text
         void=c.post(f"/finance/invoices/{original_id}/status",headers=ORIGIN,
                     json={"status":"void","reference":"Billing correction before project closure"})
         assert void.status_code==200,void.text
