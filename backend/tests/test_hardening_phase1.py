@@ -76,9 +76,9 @@ def test_case_insensitive_login_and_reset_email_privacy(monkeypatch):
             "email":"ADMIN@EXAMPLE.COM","password":"test-admin-password-12345"})
         assert upper.status_code==200,upper.text
         monkeypatch.setattr("app.main.send_reset_mail",broken_mail)
-        existing=client.post("/auth/forgot-password",json={
+        existing=client.post("/auth/forgot-password",headers=ORIGIN,json={
             "email":"payroll.person.qa@example.org"})
-        unknown=client.post("/auth/forgot-password",json={
+        unknown=client.post("/auth/forgot-password",headers=ORIGIN,json={
             "email":"nonexistent.reset.qa@example.org"})
         assert existing.status_code==200,existing.text
         assert unknown.status_code==200,unknown.text
