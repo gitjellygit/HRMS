@@ -492,9 +492,10 @@ def list_employees(user: Employee = Depends(require("admin", "hr", "accountant")
 
 @app.post("/employees", response_model=EmployeeOut, status_code=201)
 def create_employee(body: EmployeeIn, user: Employee = Depends(require("admin", "hr")), db: Session = Depends(db_session)):
+    raise HTTPException(410, detail="This legacy employee creation endpoint has been retired. Use /core/employees so reporting-manager and HR validations are enforced.")
     if body.role not in ("super_admin", "admin", "hr", "manager", "employee", "accountant"):
         raise HTTPException(422, detail=[{"loc":["body","role"],"msg":"Select a valid access role.","type":"value_error"}])
-    if body.role in ("admin", "super_admin") and user.role not in ("super_admin", "admin"):
+    if body.role in ("admin", "super_admin") and user.role != "super_admin":
         raise HTTPException(403, "Only Super Admin can create administrators")
     if db.scalar(select(Employee.id).where(func.lower(Employee.email) == str(body.email).lower())):
         raise HTTPException(409, detail={"field":"email","message":"This work email is already registered."})
@@ -551,6 +552,7 @@ def attendance(employee_id: int | None = None, user: Employee = Depends(current_
 
 @app.post("/leaves", response_model=LeaveOut, status_code=201)
 def apply_leave(body: LeaveIn, user: Employee = Depends(current_user), db: Session = Depends(db_session)):
+    raise HTTPException(410, detail="Legacy leave submission is retired. Use /leave/requests for policy, balance and approver validation.")
     if body.end_date < body.start_date:
         raise HTTPException(422, "End date must not precede start date")
     leave = Leave(employee_id=user.id, **body.model_dump())
@@ -568,6 +570,7 @@ def leaves(user: Employee = Depends(current_user), db: Session = Depends(db_sess
 
 @app.patch("/leaves/{leave_id}", response_model=LeaveOut)
 def review_leave(leave_id: int, body: StatusIn, user: Employee = Depends(require("admin", "hr")), db: Session = Depends(db_session)):
+    raise HTTPException(410, detail="Legacy leave approval is retired. Use /leave/requests/{id}/review for staged approval.")
     if body.status not in ("approved", "rejected"):
         raise HTTPException(422, "Invalid status")
     leave = db.get(Leave, leave_id)
