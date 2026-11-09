@@ -48,7 +48,7 @@ def test_partial_master_update_keeps_manager_and_legacy_writes_retired():
                           json={"manager_id":None}).status_code == 422
         assert client.post("/employees", headers=ORIGIN, json={
             "name":"Legacy employee", "email":"legacy.qa@example.org",
-            "password":PASS,"role":"employee"}).status_code == 410
+            "password":PASS,"role":"employee","designation":"Test employee", "department":"Quality"}).status_code == 410
         assert client.post("/leaves", headers=ORIGIN, json={
             "leave_type":"casual", "start_date":"2026-11-13",
             "end_date":"2026-11-13", "reason":"Legacy bypass"}).status_code == 410
