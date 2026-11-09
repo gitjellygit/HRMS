@@ -75,6 +75,30 @@ def test_component_and_reviewer_self_edit_are_blocked():
         assert review.status_code==200,review.text
         components=c.get(f"/payroll/components?employee_id={worker}")
         assert any(r["code"]=="qa_shift" for r in components.json())
+        from app.main import SessionLocal
+        from app.payroll_components import effective_components, SalaryComponentVersion
+        from sqlalchemy import select
+        original_day=date.today()
+        with SessionLocal() as db:
+            old=effective_components(db,worker,original_day)
+            assert len([v for v in old if v.code=="qa_shift" and float(v.amount)==800])==1
+        switch(c,"payroll.hr.qa@example.org")
+        future=date(original_day.year+1,1,1)
+        altered=propose(c,"salary_component",{**component,"amount":"2500.00",
+                                             "effective_from":future.isoformat()})
+        assert altered.status_code==201,altered.text
+        switch(c,"admin@example.com",ADMIN_PASS)
+        approval=c.post(f'/governance/requests/{altered.json()["id"]}/review',
+            headers=ORIGIN,json={"approve":True,"reason":"Verified future shift allowance amount."})
+        assert approval.status_code==200,approval.text
+        with SessionLocal() as db:
+            historical=effective_components(db,worker,original_day)
+            future_config=effective_components(db,worker,future)
+            assert any(v.code=="qa_shift" and float(v.amount)==800 for v in historical)
+            assert any(v.code=="qa_shift" and float(v.amount)==2500 for v in future_config)
+            assert len(db.scalars(select(SalaryComponentVersion).where(
+                SalaryComponentVersion.employee_id==worker,
+                SalaryComponentVersion.code=="qa_shift")).all())==2
         switch(c,"payroll.hr.qa@example.org")
         own_admin=propose(c,"salary_component",{**component,"employee_id":admin})
         assert own_admin.status_code==201
