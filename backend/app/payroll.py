@@ -201,9 +201,7 @@ def historical_config(db:Session,employee_id:int,kind:str,as_of:date,legacy):
     return None
 
 
-@router.put("/structures")
-def upsert_structure(body:SalaryIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
-    role(user)
+def apply_salary_structure(db:Session,body:SalaryIn,reviewer_id:int):
     if not db.get(Employee,body.employee_id):raise HTTPException(422,"Employee does not exist.")
     if body.other_deductions>body.basic+body.hra+body.allowances:
         raise HTTPException(422,"Deductions exceed gross pay.")
@@ -214,9 +212,15 @@ def upsert_structure(body:SalaryIn,user:Employee=Depends(current_user),db:Sessio
         append_config_version(db,body.employee_id,"salary",row,row.reviewed_by)
     if not row:row=SalaryStructure(employee_id=body.employee_id);db.add(row)
     for k,v in body.model_dump().items():setattr(row,k,v)
-    row.reviewed_by=user.id
-    append_config_version(db,body.employee_id,"salary",row,user.id)
-    db.commit();return salary_view(row)
+    row.reviewed_by=reviewer_id
+    append_config_version(db,body.employee_id,"salary",row,reviewer_id)
+    return salary_view(row)
+
+
+@router.put("/structures")
+def upsert_structure(body:SalaryIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    raise HTTPException(403,detail={"field":"approval","message":
+        "Salary changes require independent approval. Submit a salary_structure request through /governance/requests."})
 
 @router.get("/config-history")
 def config_history(employee_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
@@ -237,9 +241,7 @@ def structures(employee_id:int|None=None,user:Employee=Depends(current_user),db:
     if employee_id:q=q.where(SalaryStructure.employee_id==employee_id)
     return [salary_view(s) for s in db.scalars(q).all()]
 
-@router.put("/statutory")
-def configure_statutory(body:StatutoryIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
-    role(user)
+def apply_statutory_settings(db:Session,body:StatutoryIn,reviewer_id:int):
     if not db.get(Employee,body.employee_id):raise HTTPException(422,"Employee not found.")
     row=db.get(StatutorySettings,body.employee_id)
     if row and not db.scalar(select(PayrollConfigVersion.id).where(
@@ -248,9 +250,15 @@ def configure_statutory(body:StatutoryIn,user:Employee=Depends(current_user),db:
         append_config_version(db,body.employee_id,"statutory",row,row.reviewed_by)
     if not row:row=StatutorySettings(employee_id=body.employee_id);db.add(row)
     for k,v in body.model_dump().items():setattr(row,k,v)
-    row.reviewed_by=user.id
-    append_config_version(db,body.employee_id,"statutory",row,user.id)
-    db.commit();return setting_view(row)
+    row.reviewed_by=reviewer_id
+    append_config_version(db,body.employee_id,"statutory",row,reviewer_id)
+    return setting_view(row)
+
+
+@router.put("/statutory")
+def configure_statutory(body:StatutoryIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    raise HTTPException(403,detail={"field":"approval","message":
+        "Statutory changes require independent approval. Submit a statutory_settings request through /governance/requests."})
 
 @router.get("/statutory")
 def statutory(employee_id:int|None=None,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
