@@ -245,7 +245,7 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
        value={approvedUnits[r.id]||""} onChange={e=>setApprovedUnits(v=>({...v,[r.id]:e.target.value}))}/></label>
       <button className="primary" disabled={!approvedUnits[r.id]||Number(approvedUnits[r.id])<=0||busy}
        onClick={()=>void save(()=>call("/reviews/"+r.id+"/invoice","POST",{
-         quantity:Number(approvedUnits[r.id]),tax_rate_pct:Number(tax)}),"Reviewed invoice draft created.")}>Create reviewed invoice draft</button>
+         quantity:Number(approvedUnits[r.id])}),"Reviewed invoice draft created using the configured project tax rate.")}>Create reviewed invoice draft</button>
      </div>}
     </div>)}
    </div>
