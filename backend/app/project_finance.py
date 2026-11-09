@@ -194,11 +194,13 @@ def audit(db:Session,user:Employee,project_id:int,event:str,note:str=""):
     db.add(FinanceAudit(project_id=project_id,actor_id=user.id,event=event,note=note[:2000]))
 def create_row(db:Session,user:Employee,p:Project,d:ProjectDetail,c:ProjectBilling,
                start:date,end:date,quantity:Decimal,tax:Decimal|None,issued:date,source:str):
+    # Serialize invoice creation and project status changes before reading the
+    # service window; the partial unique index is the final duplicate guard.
+    db.execute(select(Project.id).where(Project.id==p.id).with_for_update()).first()
+    db.refresh(p)
+    db.refresh(c)
     live_period(p,d,c,start,end,issued,allow_closed=(source in ("schedule_reviewed","replacement")))
     if not c.recipient_name:raise HTTPException(422,"Billing recipient required")
-    # Serialize invoice creation for this project across API workers. The
-    # partial unique index remains the final database-level duplicate guard.
-    db.execute(select(Project.id).where(Project.id==p.id).with_for_update()).first()
     existing=db.scalar(select(ClientInvoice.id).where(
       ClientInvoice.project_id==p.id,ClientInvoice.period_start==start,
       ClientInvoice.period_end==end,ClientInvoice.recipient_type==c.recipient_type,
