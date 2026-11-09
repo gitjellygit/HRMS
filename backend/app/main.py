@@ -658,8 +658,7 @@ def validate_new_password(value: str):
 @app.post("/auth/change-password")
 def change_my_password(body: SelfPasswordChange,response:Response,
                        user:Employee=Depends(current_user),db:Session=Depends(db_session)):
-    if not user.must_change_password and (
-        not body.current_password or not passwords.verify(body.current_password,user.password_hash)):
+    if not body.current_password or not passwords.verify(body.current_password,user.password_hash):
         raise HTTPException(401,"Current password is incorrect")
     validate_new_password(body.new_password)
     if passwords.verify(body.new_password,user.password_hash):
