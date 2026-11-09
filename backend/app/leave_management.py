@@ -333,7 +333,10 @@ def balance(db: Session, employee_id: int, year: int,kind: str) -> dict:
     if config.carry_forward_limit:
         prior=base_entitlement(db,employee_id,year-1,kind,config)
         prior_used=used_days(db,employee_id,year-1,kind)
-        carry=min(max(prior-prior_used,Decimal("0")),Decimal(config.carry_forward_limit))
+        prior_encashed=Decimal(db.scalar(select(func.coalesce(func.sum(Encashment.days),0)).where(
+            Encashment.employee_id==employee_id,Encashment.year==year-1,
+            Encashment.leave_type==kind,Encashment.status.in_(("approved","pending")))) or 0)
+        carry=min(max(prior-prior_used-prior_encashed,Decimal("0")),Decimal(config.carry_forward_limit))
     used=used_days(db,employee_id,year,kind)
     encashed=db.scalar(select(func.coalesce(func.sum(Encashment.days),0)).where(
         Encashment.employee_id==employee_id,Encashment.year==year,
@@ -365,7 +368,13 @@ def can_approve(db: Session,user: Employee,row: LeaveRequest,stage: str)->bool:
     if row.employee_id==user.id:
         return False
     if stage=="manager":
+        if user.role in ADMIN:
+            # HR/admin escalation is recorded with a compulsory override note.
+            return True
         if row.manager_snapshot_id is None:
+            return False
+        manager=db.get(Employee,row.manager_snapshot_id)
+        if not manager or manager.status!="active":
             return False
         return user.id==row.manager_snapshot_id or user.id in active_delegate(db,row.manager_snapshot_id,date.today())
     if stage=="hr":
@@ -381,7 +390,11 @@ def upcoming_approvers(db: Session,row: LeaveRequest)->list[int]:
         return []
     stage=stages[row.current_stage]
     if stage=="manager":
-        return ([row.manager_snapshot_id]+list(active_delegate(db,row.manager_snapshot_id,date.today()))) if row.manager_snapshot_id else []
+        manager=db.get(Employee,row.manager_snapshot_id) if row.manager_snapshot_id else None
+        if not manager or manager.status!="active":
+            return list(db.scalars(select(Employee.id).where(
+                Employee.status=="active",Employee.role.in_(ADMIN))).all())
+        return [row.manager_snapshot_id]+list(active_delegate(db,row.manager_snapshot_id,date.today()))
     roles=ADMIN if stage=="hr" else ("super_admin","admin")
     return list(db.scalars(select(Employee.id).where(Employee.status=="active",Employee.role.in_(roles))).all())
 
@@ -391,7 +404,7 @@ def financial_year_hr_overview(fy: int=Query(default=fy_start_year(date.today())
                                user: Employee=Depends(hr_only),db: Session=Depends(db_session)):
     from .main import Attendance
     from .employee_core import EmployeeCore
-    staff=db.scalars(select(Employee).order_by(Employee.name)).all()
+    staff=db.scalars(select(Employee).where(Employee.status=="active").order_by(Employee.name)).all()
     kinds=db.scalars(select(LeavePolicy.leave_type).where(LeavePolicy.active.is_(True))).all()
     ongoing=set(db.scalars(select(Attendance.employee_id).where(Attendance.punch_out.is_(None))).all())
     pending=db.scalar(select(func.count()).select_from(LeaveRequest).where(LeaveRequest.status=="pending"))
@@ -527,14 +540,16 @@ def requests(scope: Literal["mine","team","approvals","all"]="mine",
                                           ApprovalDelegation.delegate_id==user.id,ApprovalDelegation.active.is_(True),
                                           ApprovalDelegation.start_date<=date.today(),
                                           ApprovalDelegation.end_date>=date.today()))))
-    rows=db.scalars(query.limit(500)).all()
+    # Approval filtering depends on stage and delegates; do it before capping
+    # the list so older pending decisions are never hidden by recent history.
+    rows=db.scalars(query if scope=="approvals" else query.limit(500)).all()
     if scope=="approvals":
         rows=[r for r in rows if
               (r.status=="approved" and r.cancellation_requested and user.role in ADMIN and r.employee_id!=user.id)
               or (r.status=="pending" and not r.cancellation_requested
                   and r.current_stage<len([stage for stage in r.chain.split(",") if stage])
                   and can_approve(db,user,r,[stage for stage in r.chain.split(",") if stage][r.current_stage]))]
-    return [record_view(row) for row in rows]
+    return [record_view(row) for row in rows[:500]]
 
 
 @router.post("/requests/{request_id}/review")
@@ -560,16 +575,28 @@ def review(request_id: int,body: ActionIn,user: Employee = Depends(current_user)
         stage=stages[row.current_stage]
         if not can_approve(db,user,row,stage):
             raise HTTPException(403,"You are not the current approver")
+        if stage=="manager" and user.role in ADMIN and (
+            row.manager_snapshot_id!=user.id and user.id not in (
+                active_delegate(db,row.manager_snapshot_id,date.today())
+                if row.manager_snapshot_id else set())):
+            if len(body.note.strip())<10:
+                raise HTTPException(422,detail={"field":"note",
+                    "message":"Explain this HR override in at least 10 characters."})
+            audit_action="override_"+body.action
+        else:
+            audit_action=body.action
         if body.action=="reject":
             row.status="rejected"
         else:
             row.current_stage+=1
             if row.current_stage>=len(stages):
                 row.status="approved"
-        action=body.action
+        action=audit_action
     row.updated_at=datetime.now(timezone.utc)
     db.add(ApprovalEvent(request_id=row.id,actor_id=user.id,action=action,stage=stage,note=body.note))
-    notify(db,row.employee_id,f"Your {row.leave_type} leave request #{row.id} is {row.status}.",row.id)
+    result_notice=("Your leave cancellation request was declined; original leave remains approved."
+        if action=="cancel_reject" else f"Your {row.leave_type} leave request #{row.id} is {row.status}.")
+    notify(db,row.employee_id,result_notice,row.id)
     if row.status=="pending":
         for target in upcoming_approvers(db,row):
             notify(db,target,f"Leave request #{row.id} needs your approval.",row.id)
@@ -748,8 +775,8 @@ def review_encashment(encashment_id: int,approve: bool,user: Employee = Depends(
     if row.employee_id==user.id:
         raise HTTPException(403,"Cannot approve your own encashment")
     available=balance(db,row.employee_id,row.year,row.leave_type)
-    if approve and available["remaining"]<float(row.days):
-        raise HTTPException(422,"Insufficient remaining balance")
+    if approve and available["remaining"]<0:
+        raise HTTPException(422,"Leave balance became negative while encashment was pending")
     row.status="approved" if approve else "rejected"
     row.reviewed_by=user.id
     notify(db,row.employee_id,f"Leave encashment #{row.id} {row.status}.")
