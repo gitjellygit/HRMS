@@ -358,7 +358,7 @@ def health():
 
 @app.post("/auth/login")
 def login(body: LoginIn, response: Response, db: Session = Depends(db_session)):
-    user = db.scalar(select(Employee).where(Employee.email == str(body.email)))
+    user = db.scalar(select(Employee).where(func.lower(Employee.email) == str(body.email).lower()))
     if not user or user.status != "active" or not passwords.verify(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     from .security import require_login_mfa
@@ -691,7 +691,7 @@ def send_reset_mail(destination: str, link: str):
 @app.post("/auth/forgot-password")
 def forgot_password(body: ResetRequestIn, db: Session = Depends(db_session)):
     # Same response for registered and unregistered email addresses.
-    user = db.scalar(select(Employee).where(Employee.email == str(body.email), Employee.status == 'active'))
+    user = db.scalar(select(Employee).where(func.lower(Employee.email) == str(body.email).lower(), Employee.status == 'active'))
     if user:
         recent = db.scalar(select(PasswordReset).where(PasswordReset.employee_id == user.id).order_by(PasswordReset.id.desc()))
         if recent and recent.expires_at > datetime.now(timezone.utc) + timedelta(minutes=25):
@@ -701,8 +701,16 @@ def forgot_password(body: ResetRequestIn, db: Session = Depends(db_session)):
                                expires_at=datetime.now(timezone.utc) + timedelta(minutes=30))
         db.add(record)
         base_url = os.getenv('FRONTEND_URL', 'http://localhost:3000').rstrip('/')
-        send_reset_mail(user.email, base_url + '/?reset=' + token)
-        db.commit()
+        try:
+            send_reset_mail(user.email, base_url + '/?reset=' + token)
+        except HTTPException as exc:
+            # Do not disclose whether a requested email account exists.
+            # The email adapter should log delivery failures for operators.
+            db.rollback()
+            if exc.status_code != 503:
+                raise
+        else:
+            db.commit()
     return {"message": "If the email is registered, a password reset link has been sent."}
 
 @app.post("/auth/reset-password")
