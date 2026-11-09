@@ -79,3 +79,42 @@ def test_missed_final_billing_period_creates_review_before_archiving():
         billed=c.post(f'/finance/reviews/{tasks[0]["id"]}/invoice',
                      headers=ORIGIN,json={"quantity":"2"})
         assert billed.status_code==201,billed.text
+
+
+def test_ended_project_can_reissue_voided_invoice_with_explicit_audit_link():
+    with TestClient(app) as c:
+        _,_,owner,_=seed(c)
+        project=placement(c,owner)
+        ended=date.today()-timedelta(days=1)
+        configure(c,project,end=ended)
+        window={"project_id":project,
+                "period_start":(ended-timedelta(days=1)).isoformat(),
+                "period_end":ended.isoformat(),"quantity":"5"}
+        original=c.post("/finance/invoices",headers=ORIGIN,json=window)
+        assert original.status_code==201,original.text
+        original_id=original.json()["id"]
+        void=c.post(f"/finance/invoices/{original_id}/status",headers=ORIGIN,
+                    json={"status":"void","reference":"Billing correction before project closure"})
+        assert void.status_code==200,void.text
+        exit=c.put(f"/finance/projects/{project}/lifecycle",headers=ORIGIN,json={
+            "active":False,"reason":"Project has reached the contractual end date.",
+            "end_date":ended.isoformat()})
+        assert exit.status_code==200,exit.text
+        assert exit.json()["status"]=="inactive"
+        manual=c.post("/finance/invoices",headers=ORIGIN,json=window)
+        assert manual.status_code==409,manual.text
+        invalid=c.post("/finance/invoices",headers=ORIGIN,json={
+            **window,"replaces_invoice_id":999999})
+        assert invalid.status_code==422,invalid.text
+        replacement=c.post("/finance/invoices",headers=ORIGIN,json={
+            **window,"replaces_invoice_id":original_id})
+        assert replacement.status_code==201,replacement.text
+        assert replacement.json()["replaces_invoice_id"]==original_id
+        assert replacement.json()["source"]=="replacement"
+        assert replacement.json()["id"]!=original_id
+        assert c.post("/finance/invoices",headers=ORIGIN,json={
+            **window,"replaces_invoice_id":original_id}).status_code==409
+        history=c.get(f"/finance/invoices?project_id={project}")
+        assert history.status_code==200
+        assert len(history.json())==2
+        assert any(v["stored_status"]=="void" for v in history.json())
