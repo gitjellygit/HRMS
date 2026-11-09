@@ -359,10 +359,24 @@ def health():
 @app.post("/auth/login")
 def login(body: LoginIn, response: Response, db: Session = Depends(db_session)):
     user = db.scalar(select(Employee).where(func.lower(Employee.email) == str(body.email).lower()))
-    if not user or user.status != "active" or not passwords.verify(body.password, user.password_hash):
+    from .security import login_blocked, login_failed, login_succeeded, require_login_mfa
+    if not user or user.status!="active":
+        # Do not reveal whether the account exists.
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    from .security import require_login_mfa
-    require_login_mfa(db,user.id,body.otp)
+    if login_blocked(db,user):
+        raise HTTPException(status_code=423,detail="Account temporarily locked after failed login attempts. Contact HR/Admin or try again in 30 minutes.")
+    if not passwords.verify(body.password,user.password_hash):
+        locked=login_failed(db,user)
+        raise HTTPException(status_code=423 if locked else 401,
+            detail="Account temporarily locked after 5 failed attempts. Contact HR/Admin or try again in 30 minutes." if locked else "Invalid credentials")
+    try:
+        require_login_mfa(db,user.id,body.otp)
+    except HTTPException:
+        locked=login_failed(db,user)
+        if locked:
+            raise HTTPException(423,detail="Account temporarily locked after 5 failed attempts. Contact HR/Admin or try again in 30 minutes.")
+        raise
+    login_succeeded(db,user)
     lifetime = timedelta(days=30) if body.remember else timedelta(hours=8)
     token = jwt.encode({"sub": str(user.id), "pv": hashlib.sha256((SECRET + user.password_hash).encode()).hexdigest(), "exp": datetime.now(timezone.utc) + lifetime}, SECRET, algorithm="HS256")
     response.set_cookie(COOKIE_NAME, token, httponly=True, secure=COOKIE_SECURE, samesite='lax', max_age=int(lifetime.total_seconds()) if body.remember else None, path='/')
