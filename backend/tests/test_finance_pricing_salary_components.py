@@ -4,7 +4,7 @@ from decimal import Decimal
 from fastapi.testclient import TestClient
 from app.main import app, SessionLocal
 from app.payroll import calculate
-from test_pay_people import seed, create, configure, login, PASS, ORIGIN
+from test_pay_people import seed, create, configure, login, PASS, ORIGIN, approved_compensation
 
 def placement(c,owner):
     r=c.post("/project-management/projects",headers=ORIGIN,json={
@@ -68,11 +68,11 @@ def test_hr_salary_components_adjust_payroll_and_employee_cannot_edit():
         admin,hr,one,other=seed(c)
         configure(c,one)
         effective=date(date.today().year,1,1).isoformat()
-        first=c.put("/payroll/components",headers=ORIGIN,json={
+        first=approved_compensation("salary_component",{
           "employee_id":one,"code":"shift_bonus","title":"Night shift bonus",
           "kind":"earning","amount":"1500.00","effective_from":effective})
         assert first.status_code==200,first.text
-        second=c.put("/payroll/components",headers=ORIGIN,json={
+        second=approved_compensation("salary_component",{
           "employee_id":one,"code":"parking_deduction","title":"Parking deduction",
           "kind":"deduction","amount":"200.00","effective_from":effective})
         assert second.status_code==200,second.text
