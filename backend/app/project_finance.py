@@ -10,7 +10,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr, Field, model_validator
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, Index, select, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, Index, select, func, text
 from sqlalchemy.orm import Mapped, Session, mapped_column
 from .main import Base, Employee, Project, current_user, db_session
 from .project_management import ProjectDetail, serialize
@@ -102,7 +102,7 @@ class ClientInvoice(Base):
     reference:Mapped[str]=mapped_column(String(120),default="")
     __table_args__=(Index("uq_finance_project_invoice_window_active",
                            "project_id","period_start","period_end","recipient_type",
-                           unique=True,postgresql_where=(status!="void")),)
+                           unique=True,postgresql_where=text("status <> 'void'")),)
 
 class FinanceAudit(Base):
     __tablename__="finance_audit"
