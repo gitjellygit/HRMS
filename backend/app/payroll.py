@@ -5,6 +5,8 @@ draft calculation until approved; never transfers money or files statutory retur
 """
 import io
 import os
+import json
+from types import SimpleNamespace
 import calendar
 from datetime import date, datetime, timezone, timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -52,6 +54,22 @@ class StatutorySettings(Base):
     gratuity_employer_provision:Mapped[Decimal]=mapped_column(Numeric(12,2),default=0)
     effective_from:Mapped[date]=mapped_column(Date)
     reviewed_by:Mapped[int]=mapped_column(ForeignKey("employees.id"))
+
+class PayrollConfigVersion(Base):
+    """Immutable salary/statutory history, including effective dates.
+
+    The legacy single-row tables remain projections of the latest submitted
+    configuration for API compatibility; calculations use historical versions.
+    """
+    __tablename__="pay_config_versions"
+    id:Mapped[int]=mapped_column(primary_key=True)
+    employee_id:Mapped[int]=mapped_column(ForeignKey("employees.id"),index=True)
+    kind:Mapped[str]=mapped_column(String(20),index=True)
+    effective_from:Mapped[date]=mapped_column(Date)
+    payload:Mapped[str]=mapped_column(Text)
+    changed_by:Mapped[int]=mapped_column(ForeignKey("employees.id"))
+    changed_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
+
 
 class PayrollRun(Base):
     __tablename__="pay_runs"
@@ -156,16 +174,60 @@ def line_view(s):
     return {k:getattr(s,k) for k in ("id","run_id","employee_id","gross","lop_days","lop_amount",
          "pf","esi","pt","tds","other_deductions","net","attendance_sessions","exceptions")}
 
+SALARY_FIELDS=("basic","hra","allowances","other_deductions")
+STATUTORY_FIELDS=("pf_employee_monthly","esi_employee_monthly",
+                  "professional_tax_monthly","tds_monthly","gratuity_employer_provision")
+
+def append_config_version(db:Session,employee_id:int,kind:str,model,actor_id:int):
+    fields=SALARY_FIELDS if kind=="salary" else STATUTORY_FIELDS
+    payload={field:str(getattr(model,field)) for field in fields}
+    db.add(PayrollConfigVersion(employee_id=employee_id,kind=kind,
+            effective_from=model.effective_from,payload=json.dumps(payload),
+            changed_by=actor_id))
+
+def historical_config(db:Session,employee_id:int,kind:str,as_of:date,legacy):
+    """Select historical terms effective in payroll month, not latest edit."""
+    version=db.scalar(select(PayrollConfigVersion).where(
+        PayrollConfigVersion.employee_id==employee_id,
+        PayrollConfigVersion.kind==kind,
+        PayrollConfigVersion.effective_from<=as_of).order_by(
+        PayrollConfigVersion.effective_from.desc(),PayrollConfigVersion.id.desc()))
+    if version:
+        values={key:Decimal(value) for key,value in json.loads(version.payload).items()}
+        return SimpleNamespace(effective_from=version.effective_from,**values)
+    # Pre-migration accounts may have only a single legacy effective row.
+    if legacy and legacy.effective_from<=as_of:
+        return legacy
+    return None
+
+
 @router.put("/structures")
 def upsert_structure(body:SalaryIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     role(user)
     if not db.get(Employee,body.employee_id):raise HTTPException(422,"Employee does not exist.")
+    if body.other_deductions>body.basic+body.hra+body.allowances:
+        raise HTTPException(422,"Deductions exceed gross pay.")
     row=db.get(SalaryStructure,body.employee_id)
+    if row and not db.scalar(select(PayrollConfigVersion.id).where(
+            PayrollConfigVersion.employee_id==body.employee_id,
+            PayrollConfigVersion.kind=="salary").limit(1)):
+        append_config_version(db,body.employee_id,"salary",row,row.reviewed_by)
     if not row:row=SalaryStructure(employee_id=body.employee_id);db.add(row)
     for k,v in body.model_dump().items():setattr(row,k,v)
     row.reviewed_by=user.id
-    if body.other_deductions>body.basic+body.hra+body.allowances:raise HTTPException(422,"Deductions exceed gross pay.")
+    append_config_version(db,body.employee_id,"salary",row,user.id)
     db.commit();return salary_view(row)
+
+@router.get("/config-history")
+def config_history(employee_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    own_or_fin(user,employee_id)
+    records=db.scalars(select(PayrollConfigVersion).where(
+        PayrollConfigVersion.employee_id==employee_id).order_by(
+        PayrollConfigVersion.effective_from.desc(),PayrollConfigVersion.id.desc())).all()
+    return [{"id":r.id,"employee_id":r.employee_id,"kind":r.kind,
+             "effective_from":r.effective_from,"values":json.loads(r.payload),
+             "changed_by":r.changed_by,"changed_at":r.changed_at} for r in records]
+
 
 @router.get("/structures")
 def structures(employee_id:int|None=None,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
@@ -180,9 +242,14 @@ def configure_statutory(body:StatutoryIn,user:Employee=Depends(current_user),db:
     role(user)
     if not db.get(Employee,body.employee_id):raise HTTPException(422,"Employee not found.")
     row=db.get(StatutorySettings,body.employee_id)
+    if row and not db.scalar(select(PayrollConfigVersion.id).where(
+            PayrollConfigVersion.employee_id==body.employee_id,
+            PayrollConfigVersion.kind=="statutory").limit(1)):
+        append_config_version(db,body.employee_id,"statutory",row,row.reviewed_by)
     if not row:row=StatutorySettings(employee_id=body.employee_id);db.add(row)
     for k,v in body.model_dump().items():setattr(row,k,v)
     row.reviewed_by=user.id
+    append_config_version(db,body.employee_id,"statutory",row,user.id)
     db.commit();return setting_view(row)
 
 @router.get("/statutory")
@@ -195,10 +262,10 @@ def statutory(employee_id:int|None=None,user:Employee=Depends(current_user),db:S
 
 def calculate(db,employee,period):
     start,end=ym_bounds(period)
-    salary=db.get(SalaryStructure,employee.id)
-    settings=db.get(StatutorySettings,employee.id)
-    if not salary or salary.effective_from>end:raise ValueError("Salary structure missing/effective later")
-    if not settings or settings.effective_from>end:raise ValueError("Reviewed statutory configuration missing")
+    salary=historical_config(db,employee.id,"salary",end,db.get(SalaryStructure,employee.id))
+    settings=historical_config(db,employee.id,"statutory",end,db.get(StatutorySettings,employee.id))
+    if salary is None:raise ValueError("Salary structure missing/effective later")
+    if settings is None:raise ValueError("Reviewed statutory configuration missing")
     from .payroll_components import effective_components
     components=effective_components(db,employee.id,end)
     extra_earnings=sum((Decimal(x.amount) for x in components if x.kind=="earning"),Decimal(0))
