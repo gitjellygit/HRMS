@@ -374,6 +374,14 @@ def create_invoice(body:InvoiceIn,user:Employee=Depends(current_user),db:Session
                  body.tax_rate_pct,body.issue_date,"replacement" if replacement else "manual")
     if replacement:
         x.replaces_invoice_id=replacement.id
+        from .billing_reviews import BillableReview
+        for review in db.scalars(select(BillableReview).where(
+                BillableReview.project_id==p.id,
+                BillableReview.period_start==body.period_start,
+                BillableReview.period_end==body.period_end,
+                BillableReview.status=="voided")):
+            review.status="invoiced"
+            review.invoice_id=x.id
         audit(db,user,p.id,"invoice_replacement",f"Replaced voided invoice #{replacement.id} with invoice #{x.id}")
     db.commit();db.refresh(x);return invoice_view(x)
 
