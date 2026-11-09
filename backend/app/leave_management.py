@@ -367,7 +367,9 @@ def can_approve(db: Session,user: Employee,row: LeaveRequest,stage: str)->bool:
     if stage=="manager":
         if row.manager_snapshot_id is None:
             return False
-        return user.id==row.manager_snapshot_id or user.id in active_delegate(db,row.manager_snapshot_id,date.today())
+        # HR can recover stuck requests when a manager exits or is absent.
+        return (user.role in ADMIN or user.id==row.manager_snapshot_id
+                or user.id in active_delegate(db,row.manager_snapshot_id,date.today()))
     if stage=="hr":
         return user.role in ADMIN
     if stage=="admin":
@@ -391,7 +393,7 @@ def financial_year_hr_overview(fy: int=Query(default=fy_start_year(date.today())
                                user: Employee=Depends(hr_only),db: Session=Depends(db_session)):
     from .main import Attendance
     from .employee_core import EmployeeCore
-    staff=db.scalars(select(Employee).order_by(Employee.name)).all()
+    staff=db.scalars(select(Employee).where(Employee.status=="active").order_by(Employee.name)).all()
     kinds=db.scalars(select(LeavePolicy.leave_type).where(LeavePolicy.active.is_(True))).all()
     ongoing=set(db.scalars(select(Attendance.employee_id).where(Attendance.punch_out.is_(None))).all())
     pending=db.scalar(select(func.count()).select_from(LeaveRequest).where(LeaveRequest.status=="pending"))
@@ -527,6 +529,9 @@ def requests(scope: Literal["mine","team","approvals","all"]="mine",
                                           ApprovalDelegation.delegate_id==user.id,ApprovalDelegation.active.is_(True),
                                           ApprovalDelegation.start_date<=date.today(),
                                           ApprovalDelegation.end_date>=date.today()))))
+    if scope=="approvals":
+        query=query.where(or_(LeaveRequest.status=="pending",
+                              (LeaveRequest.status=="approved") & (LeaveRequest.cancellation_requested.is_(True))))
     rows=db.scalars(query.limit(500)).all()
     if scope=="approvals":
         rows=[r for r in rows if
@@ -560,6 +565,8 @@ def review(request_id: int,body: ActionIn,user: Employee = Depends(current_user)
         stage=stages[row.current_stage]
         if not can_approve(db,user,row,stage):
             raise HTTPException(403,"You are not the current approver")
+        if stage=="manager" and user.role in ADMIN and user.id!=row.manager_snapshot_id and len(body.note.strip())<10:
+            raise HTTPException(422,detail={"field":"note","message":"Explain the HR manager-stage override (at least 10 characters)."})
         if body.action=="reject":
             row.status="rejected"
         else:
