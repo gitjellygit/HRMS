@@ -100,6 +100,7 @@ def test_accountant_sees_candidate_and_vendor_but_cannot_manage_project():
 def test_manual_invoice_status_pdf_payment_and_duplicate_period():
     with TestClient(app) as c:
         admin,hr,one,other=seed(c)
+        create(c,"finance.qa@example.org","Finance Accountant","accountant",admin)
         p=setup_project(c,one)
         billing(c,p,"candidate")
         switch(c,"finance.qa@example.org")
