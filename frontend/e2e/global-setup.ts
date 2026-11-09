@@ -3,7 +3,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { WEB_URL, API_URL } from '../playwright.config';
 
-export const TEST_PASSWORD = 'DemoOnly!Pass1234';
+const INITIAL_PASSWORD = 'DemoOnly!Pass1234';
+export const TEST_PASSWORD = 'Activated!Pass5678';
 export const E2E_DIR = resolve(__dirname, '.auth');
 export const USERS_FILE = resolve(E2E_DIR, 'users.json');
 
@@ -58,12 +59,26 @@ export default async function setup(_config: FullConfig) {
       data: {
         account: {
           name, email, role, designation, department, joining_date: '2026-04-01',
-          password: TEST_PASSWORD, employee_code: '', employment_type: 'Full time',
+          password: INITIAL_PASSWORD, employee_code: '', employment_type: 'Full time',
         },
         master: { department_id: departments[department],
           manager_id:key==='manager'?adminId:users.find(person=>person.key==='manager')?.id },
       },
     });
+    // Exercise mandatory initial-password change before enabling role tests.
+    const activate=await request.newContext({extraHTTPHeaders:{Origin:WEB_URL}});
+    try {
+      const first=await activate.post(API_URL+'/auth/login',{data:{email,password:INITIAL_PASSWORD}});
+      if(!first.ok()) throw Error('Initial sign-in failed for '+key+': '+first.status());
+      const firstBody=await first.json();
+      if(firstBody.user?.must_change_password!==true) throw Error('New employee must change password: '+key);
+      const protectedResource=await activate.get(API_URL+'/dashboard');
+      if(protectedResource.status()!==403) throw Error('First-login workspace guard not enforced: '+key);
+      const changed=await activate.post(API_URL+'/auth/change-password',{
+        data:{current_password:INITIAL_PASSWORD,new_password:TEST_PASSWORD}
+      });
+      if(!changed.ok()) throw Error('Employee first password update failed: '+key+' '+changed.status());
+    }finally{await activate.dispose()}
     users.push({ key, name, department: department + ' QA ' + token, code, role, designation, email, id: result.id });
   }
   await admin.dispose();
