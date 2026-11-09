@@ -296,7 +296,9 @@ def apply_master(db: Session, employee_id: int, data: MasterIn, *, partial: bool
     values = data.model_dump(exclude_unset=partial)
     # Relationship checks must see the complete resulting record on partial updates.
     if partial:
-        combined = {key:(getattr(row,key) or "" if key in ("address","emergency_name","emergency_phone") else getattr(row,key))
+        combined = {key:(getattr(row,key) or "" if key in ("address","emergency_name","emergency_phone")
+                     else getattr(row,key) or None if key=="personal_email"
+                     else getattr(row,key))
                     for key in MasterIn.model_fields if key not in SENSITIVE}
         combined.update({key:value for key,value in values.items() if key not in SENSITIVE})
         validate_relationships(db, employee_id, MasterIn.model_validate(combined))
