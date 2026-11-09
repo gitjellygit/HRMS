@@ -335,16 +335,19 @@ def balance(db: Session, employee_id: int, year: int,kind: str) -> dict:
         prior_used=used_days(db,employee_id,year-1,kind)
         prior_encashed=Decimal(db.scalar(select(func.coalesce(func.sum(Encashment.days),0)).where(
             Encashment.employee_id==employee_id,Encashment.year==year-1,
-            Encashment.leave_type==kind,Encashment.status.in_(("approved","pending")))) or 0)
+            Encashment.leave_type==kind,Encashment.status=="approved")) or 0)
         carry=min(max(prior-prior_used-prior_encashed,Decimal("0")),Decimal(config.carry_forward_limit))
     used=used_days(db,employee_id,year,kind)
-    encashed=db.scalar(select(func.coalesce(func.sum(Encashment.days),0)).where(
+    encashed=Decimal(db.scalar(select(func.coalesce(func.sum(Encashment.days),0)).where(
         Encashment.employee_id==employee_id,Encashment.year==year,
-        Encashment.leave_type==kind,Encashment.status=="approved"))
+        Encashment.leave_type==kind,Encashment.status=="approved")) or 0)
+    reserved=Decimal(db.scalar(select(func.coalesce(func.sum(Encashment.days),0)).where(
+        Encashment.employee_id==employee_id,Encashment.year==year,
+        Encashment.leave_type==kind,Encashment.status=="pending")) or 0)
     return {"leave_type":kind,"year":year,"fy_label":f"FY {year}-{str(year+1)[-2:]}",
             "allocated":float(allocated),"carried":float(carry),
-            "used":float(used),"encashed":float(encashed or 0),
-            "remaining":float(allocated+carry-used-Decimal(encashed or 0))}
+            "used":float(used),"encashed":float(encashed),"reserved_encashment":float(reserved),
+            "remaining":float(allocated+carry-used-encashed-reserved)}
 
 
 
