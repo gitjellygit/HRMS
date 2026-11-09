@@ -105,7 +105,7 @@ def test_login_five_failures_lock_and_notify_hr():
         unlocked=client.post(f"/security/login-lockouts/{worker}/unlock",headers=ORIGIN)
         assert unlocked.status_code==200,unlocked.text
         client.post("/auth/logout",headers=ORIGIN)
-        login(client,"payroll.person.qa@example.org")
+        login(client,"payroll.person.qa@example.org",PASS)
 
 
 def test_first_login_requires_employee_password_change():
