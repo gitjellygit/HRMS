@@ -490,28 +490,9 @@ def list_employees(user: Employee = Depends(require("admin", "hr", "accountant")
     codes = dict(db.execute(select(EmployeeProfile.employee_id, EmployeeProfile.employee_code)).all())
     return [EmployeeOut.model_validate(employee).model_copy(update={"employee_code": codes.get(employee.id, "")}) for employee in employees]
 
-@app.post("/employees", response_model=EmployeeOut, status_code=201)
-def create_employee(body: EmployeeIn, user: Employee = Depends(require("admin", "hr")), db: Session = Depends(db_session)):
-    raise HTTPException(410, detail="This legacy employee creation endpoint has been retired. Use /core/employees so reporting-manager and HR validations are enforced.")
-    if body.role not in ("super_admin", "admin", "hr", "manager", "employee", "accountant"):
-        raise HTTPException(422, detail=[{"loc":["body","role"],"msg":"Select a valid access role.","type":"value_error"}])
-    if body.role in ("admin", "super_admin") and user.role != "super_admin":
-        raise HTTPException(403, "Only Super Admin can create administrators")
-    if db.scalar(select(Employee.id).where(func.lower(Employee.email) == str(body.email).lower())):
-        raise HTTPException(409, detail={"field":"email","message":"This work email is already registered."})
-    profile_fields = {'work_location','employment_type','manager_name','emergency_contact'}
-    employee = Employee(**body.model_dump(exclude={"password","employee_code"} | profile_fields), password_hash=passwords.hash(body.password))
-    db.add(employee)
-    try:
-        db.flush()
-        code = employee_code_value(db, body.employee_code)
-        db.add(EmployeeProfile(employee_id=employee.id, employee_code=code, **body.model_dump(include=profile_fields)))
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(409, detail={"field":"email","message":"An employee with these details already exists."}) from exc
-    db.refresh(employee)
-    return as_employee_out(db, employee)
+@app.post("/employees", status_code=410)
+def create_employee(user: Employee = Depends(require("admin", "hr"))):
+    raise HTTPException(410, detail="Legacy employee creation retired; use /core/employees with reporting-manager validation.")
 
 @app.get("/attendance/status")
 def attendance_status(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
@@ -550,16 +531,9 @@ def attendance(employee_id: int | None = None, user: Employee = Depends(current_
         raise HTTPException(403, "Insufficient permissions")
     return db.scalars(select(Attendance).where(Attendance.employee_id == target).order_by(Attendance.id.desc()).limit(100)).all()
 
-@app.post("/leaves", response_model=LeaveOut, status_code=201)
-def apply_leave(body: LeaveIn, user: Employee = Depends(current_user), db: Session = Depends(db_session)):
-    raise HTTPException(410, detail="Legacy leave submission is retired. Use /leave/requests for policy, balance and approver validation.")
-    if body.end_date < body.start_date:
-        raise HTTPException(422, "End date must not precede start date")
-    leave = Leave(employee_id=user.id, **body.model_dump())
-    db.add(leave)
-    db.commit()
-    db.refresh(leave)
-    return leave
+@app.post("/leaves", status_code=410)
+def apply_leave(user: Employee = Depends(current_user)):
+    raise HTTPException(410, detail="Legacy leave submission retired; use /leave/requests.")
 
 @app.get("/leaves", response_model=list[LeaveOut])
 def leaves(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
@@ -568,18 +542,9 @@ def leaves(user: Employee = Depends(current_user), db: Session = Depends(db_sess
         query = query.where(Leave.employee_id == user.id)
     return db.scalars(query.limit(200)).all()
 
-@app.patch("/leaves/{leave_id}", response_model=LeaveOut)
-def review_leave(leave_id: int, body: StatusIn, user: Employee = Depends(require("admin", "hr")), db: Session = Depends(db_session)):
-    raise HTTPException(410, detail="Legacy leave approval is retired. Use /leave/requests/{id}/review for staged approval.")
-    if body.status not in ("approved", "rejected"):
-        raise HTTPException(422, "Invalid status")
-    leave = db.get(Leave, leave_id)
-    if not leave:
-        raise HTTPException(404, "Leave not found")
-    leave.status = body.status
-    db.commit()
-    db.refresh(leave)
-    return leave
+@app.patch("/leaves/{leave_id}", status_code=410)
+def review_leave(leave_id: int, user: Employee = Depends(require("admin", "hr"))):
+    raise HTTPException(410, detail="Legacy leave approval retired; use /leave/requests/{id}/review.")
 
 @app.get("/projects", response_model=list[ProjectOut])
 def projects(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
