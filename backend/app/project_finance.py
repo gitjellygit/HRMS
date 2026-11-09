@@ -448,7 +448,10 @@ def change_status(invoice_id:int,body:InvoiceStatusIn,user:Employee=Depends(curr
     if x.status in ("paid","void"):raise HTTPException(409,"Final invoice cannot be changed")
     if body.status=="sent" and x.status!="draft":raise HTTPException(409,"Only draft can be sent")
     if body.status=="paid" and x.status!="sent":raise HTTPException(409,"Invoice must be marked sent first")
-    x.status=body.status;x.reference=body.reference
+    if body.status=="void" and len(body.reference.strip())<10:
+        raise HTTPException(422,detail={"field":"reference",
+            "message":"Explain why the invoice is being voided (at least 10 characters)."})
+    x.status=body.status;x.reference=body.reference.strip()
     if body.status=="void":
         from .billing_reviews import BillableReview
         for review in db.scalars(select(BillableReview).where(BillableReview.invoice_id==x.id)):
