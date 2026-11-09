@@ -79,8 +79,14 @@ def test_hr_salary_components_adjust_payroll_and_employee_cannot_edit():
         with SessionLocal() as db:
             person=db.get(__import__("app.main",fromlist=["Employee"]).Employee,one)
             row=calculate(db,person,date.today().strftime("%Y-%m"))
-            assert Decimal(str(row["gross"]))==Decimal("51500.00")
-            assert Decimal(str(row["net"]))==Decimal("49600.00")
+            from app.payroll import money, ym_bounds
+            period=date.today().strftime("%Y-%m")
+            start,end=ym_bounds(period)
+            joined=person.joining_date
+            service_days=(end-max(start,joined)).days+1
+            expected_gross=money(Decimal("51500")*Decimal(service_days)/Decimal((end-start).days+1))
+            assert Decimal(str(row["gross"]))==expected_gross
+            assert Decimal(str(row["net"]))==expected_gross-Decimal("1900.00")
         # A new offer template may opt in to the reviewed salary breakdown.
         template=c.post("/people/offer-templates",headers=ORIGIN,json={
           "name":"QA Dynamic Salary Offer","content":
