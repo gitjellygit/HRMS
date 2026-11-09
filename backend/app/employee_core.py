@@ -3,6 +3,7 @@
 Tables are additive: existing employee and document records remain intact.
 """
 import csv
+import hashlib
 import io
 import os
 import re
@@ -681,20 +682,24 @@ def reset_employee_password(employee_id:int,body:TemporaryPasswordIn,user:Employ
     protect_privileged_target(user,target)
     if target.status!="active":
         raise HTTPException(409,"Reactivate the employee before issuing new credentials.")
-    import string
-    chars=string.ascii_letters+string.digits+"!@#$%&*"
-    temporary="".join(secrets.choice(chars) for _ in range(20))
-    # Force representative character classes for the password policy.
-    temporary="A9!a"+temporary
-    target.password_hash=passwords.hash(temporary)
-    target.must_change_password=True
-    db.add(LifecycleEvent(employee_id=employee_id,event="password_reset",
-                          note="HR-issued temporary password: "+body.reason.strip(),
+    from .main import PasswordReset, send_reset_mail
+    token=secrets.token_urlsafe(32)
+    db.add(PasswordReset(employee_id=target.id,
+                         token_hash=hashlib.sha256(token.encode()).hexdigest(),
+                         expires_at=datetime.now(timezone.utc)+timedelta(minutes=30)))
+    link=os.getenv("FRONTEND_URL","http://localhost:3000").rstrip("/")+"/?reset="+token
+    try:
+        send_reset_mail(target.email,link)
+    except HTTPException:
+        db.rollback()
+        raise HTTPException(503,detail={"field":"email","message":
+            "Password reset email could not be sent. Configure SMTP before issuing reset links."})
+    db.add(LifecycleEvent(employee_id=employee_id,event="password_reset_requested",
+                          note="HR requested email-based password reset: "+body.reason.strip(),
                           effective_date=date.today(),performed_by=user.id))
     db.commit()
-    # No password in logs, DB or email; return once to authorized caller.
-    return {"employee_id":employee_id,"temporary_password":temporary,"must_change_on_login":True,
-            "message":"Share securely. The employee must change it on the next login."}
+    return {"employee_id":employee_id,"reset_email_sent":True,
+            "message":"A time-limited password setup link was sent to the employee. No password is visible to HR."}
 
 
 def sync_probation_periods(db:Session)->int:
