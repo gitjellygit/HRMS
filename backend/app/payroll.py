@@ -210,12 +210,19 @@ def calculate(db,employee,period):
     leave=db.scalars(select(LeaveRequest).where(LeaveRequest.employee_id==employee.id,
         LeaveRequest.leave_type=="loss_of_pay",LeaveRequest.status=="approved",
         LeaveRequest.start_date<=end,LeaveRequest.end_date>=start)).all()
+    # Use the leave engine's holiday, weekend and half-day policy, not elapsed calendar days.
+    from .leave_management import working_days, user_location
+    location=user_location(db, employee.id)
     lop=Decimal("0")
     for row in leave:
         overlap_start=max(row.start_date,start)
         overlap_end=min(row.end_date,end)
         if overlap_start<=overlap_end:
-            lop+=Decimal((overlap_end-overlap_start).days+1)
+            if overlap_start==row.start_date and overlap_end==row.end_date:
+                chargeable=Decimal(row.days)
+            else:
+                chargeable=working_days(db,overlap_start,overlap_end,location,row.day_part)
+            lop+=chargeable
     lop=min(lop,days)
     loss=money(gross*lop/days)
     count=db.scalar(select(func.count()).select_from(Attendance).where(
