@@ -15,7 +15,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Query
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook, load_workbook
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, ValidationError, field_validator
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
@@ -542,19 +542,23 @@ def self_profile(user: Employee = Depends(current_user), db: Session = Depends(d
 @router.post("/me/change-requests", status_code=201)
 def request_profile_change(body: ChangeIn, user: Employee = Depends(current_user), db: Session = Depends(db_session)):
     value = body.value.strip()
-    if body.field_name in SENSITIVE:
-        # Validate with the normal master schema before encryption.
-        MasterIn.model_validate({body.field_name: value})
-        proposed = seal(value)
-    else:
-        if body.field_name == "date_of_birth":
-            try:
-                date.fromisoformat(value)
-            except ValueError as exc:
-                raise HTTPException(422, "Date must be YYYY-MM-DD") from exc
-        if body.field_name == "personal_email" and value:
-            MasterIn.model_validate({"personal_email": value})
-        proposed = value
+    try:
+        if body.field_name in SENSITIVE:
+            # Validate with the normal master schema before encryption.
+            MasterIn.model_validate({body.field_name: value})
+            proposed = seal(value)
+        else:
+            if body.field_name == "date_of_birth":
+                try:
+                    date.fromisoformat(value)
+                except ValueError as exc:
+                    raise HTTPException(422, "Date must be YYYY-MM-DD") from exc
+            if body.field_name == "personal_email" and value:
+                MasterIn.model_validate({"personal_email": value})
+            proposed = value
+    except ValidationError as exc:
+        message = exc.errors()[0]["msg"].replace("Value error, ", "")
+        raise HTTPException(422, detail={"field":body.field_name,"message":message}) from exc
     pending = db.scalar(select(ChangeRequest).where(ChangeRequest.employee_id == user.id, ChangeRequest.field_name == body.field_name, ChangeRequest.status == "pending"))
     if pending:
         raise HTTPException(409, "A request for this field is already awaiting HR review")
