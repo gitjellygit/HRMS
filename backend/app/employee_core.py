@@ -288,16 +288,25 @@ def validate_relationships(db: Session, employee_id: int, data: MasterIn):
                 raise HTTPException(422, detail={"field": field, "message": "Select a valid active " + kind.replace("_"," ") + "."})
 
 
-def apply_master(db: Session, employee_id: int, data: MasterIn):
-    validate_relationships(db, employee_id, data)
+def apply_master(db: Session, employee_id: int, data: MasterIn, *, partial: bool = False):
     row = db.get(EmployeeCore, employee_id)
     if row is None:
         row = EmployeeCore(employee_id=employee_id)
         db.add(row)
-    for field,value in data.model_dump(exclude=set(SENSITIVE)).items():
+    values = data.model_dump(exclude_unset=partial)
+    # Relationship checks must see the complete resulting record on partial updates.
+    if partial:
+        combined = {key:getattr(row,key) for key in MasterIn.model_fields if key not in SENSITIVE}
+        combined.update({key:value for key,value in values.items() if key not in SENSITIVE})
+        validate_relationships(db, employee_id, MasterIn.model_validate(combined))
+    else:
+        validate_relationships(db, employee_id, data)
+    for field,value in values.items():
+        if field in SENSITIVE:
+            continue
         setattr(row, field, value or "" if field in ("personal_email",) else value)
     for field in SENSITIVE:
-        value = getattr(data, field)
+        value = values.get(field)
         if value:
             setattr(row, field, seal(value))
     return row
@@ -485,7 +494,7 @@ def create_full_employee(body: EmployeeCreateIn, user: Employee = Depends(requir
     account = body.account
     if account.role not in ("super_admin","admin","hr","manager","employee","accountant"):
         raise HTTPException(422, "Unknown account role")
-    if account.role in ("super_admin", "admin") and user.role not in ADMIN_ROLES:
+    if account.role in ("super_admin", "admin") and user.role != "super_admin":
         raise HTTPException(403, "Only Super Admin may create an administrator")
     if db.scalar(select(Employee.id).where(func.lower(Employee.email) == str(account.email).lower())):
         raise HTTPException(409, detail={"field":"email","message":"This email is already registered."})
@@ -515,8 +524,12 @@ def create_full_employee(body: EmployeeCreateIn, user: Employee = Depends(requir
 
 @router.put("/employees/{employee_id}")
 def update_master(employee_id: int, body: MasterIn, user: Employee = Depends(require_hr), db: Session = Depends(db_session)):
-    employee_or_404(db, employee_id)
-    apply_master(db, employee_id, body)
+    employee = employee_or_404(db, employee_id)
+    core = db.get(EmployeeCore, employee_id)
+    manager_id = body.model_dump(exclude_unset=True).get("manager_id", core.manager_id if core else None)
+    if employee.role not in ("admin", "super_admin") and not manager_id:
+        raise HTTPException(422,detail={"field":"manager_id","message":"A reporting manager is required for this employee."})
+    apply_master(db, employee_id, body, partial=True)
     db.commit()
     return employee_view(db, employee_or_404(db, employee_id), user)
 
@@ -610,6 +623,8 @@ def lifecycle_history(employee_id: int, user: Employee = Depends(current_user), 
 @router.post("/employees/{employee_id}/lifecycle")
 def change_lifecycle(employee_id: int, body: LifecycleIn, user: Employee = Depends(require_hr), db: Session = Depends(db_session)):
     employee = employee_or_404(db, employee_id)
+    if body.event == "exited":
+        protect_privileged_target(user, employee)
     core = db.get(EmployeeCore, employee_id)
     if not core:
         core = EmployeeCore(employee_id=employee_id)
@@ -804,6 +819,8 @@ async def import_employees(document: UploadFile = File(...), dry_run: bool = Tru
                 raise ValueError("Duplicate or existing work email")
             pending_emails.add(email)
             manager_email=str(row.get("manager_email") or "").strip().lower()
+            if not manager_email:
+                raise ValueError("Reporting manager email is required for imported employees")
             manager=db.scalar(select(Employee).where(func.lower(Employee.email)==manager_email)) if manager_email else None
             if manager_email and not manager:
                 raise ValueError("Reporting manager email must already exist")
