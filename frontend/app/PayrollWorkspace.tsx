@@ -31,11 +31,21 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
  const [message,setMessage]=useState("");
  const [error,setError]=useState("");const [fieldError,setFieldError]=useState("");
  const [busy,setBusy]=useState(false);
+ const [payReason,setPayReason]=useState("");
  async function call(path:string,method="GET",body?:unknown){
   const r=await fetch(api+"/payroll"+path,{method,credentials:"include",headers:{"Content-Type":"application/json"},
    body:body===undefined?undefined:JSON.stringify(body)});
   const j=await r.json().catch(()=>({}));
   if(!r.ok){const d=j.detail;throw Object.assign(new Error(explainError(j,r.status)),{field:d?.field,employees:d?.employees})}
+  return j;
+ }
+ async function propose(kind:string,payload:Row){
+  if(payReason.trim().length<10)throw Error("Enter a specific reason (at least 10 characters) before submitting.");
+  const r=await fetch(api+"/governance/requests",{method:"POST",credentials:"include",
+   headers:{"Content-Type":"application/json"},body:JSON.stringify({kind,payload,reason:payReason.trim()})});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw Error(explainError(j,r.status));
+  setPayReason("");
   return j;
  }
  async function refresh(){
@@ -81,36 +91,40 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
   {message&&<FeedbackMotion type="success" compact message={message}/>}
   {busy&&<FeedbackMotion type="loading" compact message="Processing…"/>}
   {tab==="salary"&&finance&&<div className="ops-columns">
-   <section className="employee-surface"><h3>Monthly salary structure</h3><p className="field-help">All amounts in INR per month. Effective dates are recorded for HR review.</p>
-    <label className="ops-label">Employee<select value={chosen} onChange={e=>setChosen(e.target.value)}><option value="">Select employee</option>{employees.map(e=><option key={e.id} value={e.id}>{e.name} · {e.department}</option>)}</select></label>
+   {hr&&<section className="employee-surface"><h3>Approval reason</h3>
+    <p className="field-help">Explain the proposed compensation change. An independent Admin must approve before it takes effect.</p>
+    <label>Reason (10+ characters)<textarea required minLength={10} maxLength={1000} value={payReason}
+      onChange={e=>setPayReason(e.target.value)} placeholder="Describe the salary or statutory change and its justification."/></label>
+   </section>}
+   {hr&&<section className="employee-surface"><h3>Monthly salary structure</h3><p className="field-help">All amounts in INR per month. Salary changes take effect only after independent Admin approval.</p>
+    <label className="ops-label">Employee<select value={chosen} onChange={e=>setChosen(e.target.value)}><option value="">Select employee</option>{employees.filter(e=>e.id!==user.id).map(e=><option key={e.id} value={e.id}>{e.name} · {e.department}</option>)}</select></label>
     <form className="ops-form" onSubmit={e=>{e.preventDefault();if(!chosen){setError("Select the employee.");setFieldError("employee_id");return}
-     void submit(()=>call("/structures","PUT",{...salary,employee_id:Number(chosen)}),"Salary structure saved.")}}>
+     void submit(()=>propose("salary_structure",{...salary,employee_id:Number(chosen)}),"Salary change submitted for independent admin approval.")}}>
      {salaryFields.map(([key,title])=><label key={key}>{title}<input type="number" min="0" step=".01" required
       aria-invalid={fieldError===key} value={salary[key]??""} onChange={e=>setSalary(v=>({...v,[key]:e.target.value}))}/></label>)}
      <label>Effective from<input type="date" required value={salary.effective_from||today()} onChange={e=>setSalary(v=>({...v,effective_from:e.target.value}))}/></label>
-     <button className="employee-primary" disabled={!chosen||busy}>Save salary</button>
-    </form></section>
-   <section className="employee-surface"><h3>Reviewed statutory deductions</h3><p className="field-help">Enter employee-specific validated monthly amounts. This system does not choose tax brackets automatically.</p>
-    <form className="ops-form" onSubmit={e=>{e.preventDefault();void submit(()=>call("/statutory","PUT",{...statutory,employee_id:Number(chosen)}),"Statutory configuration saved.")}}>
+     <button className="employee-primary" disabled={!chosen||busy||payReason.trim().length<10}>Request salary approval</button>
+    </form></section>}
+   {hr&&<section className="employee-surface"><h3>Reviewed statutory deductions</h3><p className="field-help">Enter employee-specific validated monthly amounts. This system does not choose tax brackets automatically.</p>
+    <form className="ops-form" onSubmit={e=>{e.preventDefault();if(!chosen){setError("Select an employee first.");return}void submit(()=>propose("statutory_settings",{...statutory,employee_id:Number(chosen)}),"Statutory change submitted for independent admin approval.")}}>
      {statutoryFields.map(([key,title])=><label key={key}>{title}<input type="number" min="0" step=".01" required value={statutory[key]??""}
      onChange={e=>setStatutory(v=>({...v,[key]:e.target.value}))}/></label>)}
      <label>Effective from<input type="date" required value={statutory.effective_from||today()}
       onChange={e=>setStatutory(v=>({...v,effective_from:e.target.value}))}/></label>
-     <button className="employee-primary" disabled={!chosen||busy}>Save statutory amounts</button>
-    </form></section>
+     <button className="employee-primary" disabled={!chosen||busy||payReason.trim().length<10}>Request statutory approval</button>
+    </form></section>}
    {hr&&<section className="employee-surface"><h3>Additional earnings and deductions</h3>
     <p className="field-help">Add custom monthly salary components. They appear in payroll calculations, published payslips and new offers using the salary breakdown placeholder.</p>
     <form className="ops-form" onSubmit={e=>{e.preventDefault();if(!chosen){setError("Select an employee first.");return}
-      void submit(async()=>{await call("/components","PUT",{...component,employee_id:Number(chosen),amount:Number(component.amount)});
-        setComponents(await call("/components?employee_id="+chosen));
-      },"Salary component saved.")}}>
+      void submit(()=>propose("salary_component",{...component,employee_id:Number(chosen),amount:Number(component.amount)}),
+       "Salary component submitted for independent admin approval.")}}>
      <label>Unique code<input placeholder="shift_bonus" pattern="[a-z][a-z0-9_]{1,34}" required value={component.code} onChange={e=>setComponent(v=>({...v,code:e.target.value}))}/></label>
      <label>Display label<input placeholder="Shift allowance" minLength={2} required value={component.title} onChange={e=>setComponent(v=>({...v,title:e.target.value}))}/></label>
      <label>Item type<select value={component.kind} onChange={e=>setComponent(v=>({...v,kind:e.target.value}))}><option value="earning">Earning / allowance / bonus</option><option value="deduction">Deduction / tax adjustment</option></select></label>
      <label>Monthly amount (INR)<input type="number" min="0" step=".01" required value={component.amount} onChange={e=>setComponent(v=>({...v,amount:e.target.value}))}/></label>
      <label>Effective date<input type="date" required value={component.effective_from} onChange={e=>setComponent(v=>({...v,effective_from:e.target.value}))}/></label>
      <label className="ops-check"><input type="checkbox" checked={component.active} onChange={e=>setComponent(v=>({...v,active:e.target.checked}))}/>Active item</label>
-     <button className="employee-primary" disabled={!chosen||busy}>Save salary item</button>
+     <button className="employee-primary" disabled={!chosen||busy||payReason.trim().length<10}>Request component approval</button>
     </form>
     <div className="ops-table">{components.map(c=><div className="ops-row" key={c.code}>
       <strong>{c.title}</strong><span>{c.code} · {c.kind} · {cash(c.amount)} · {c.active?"active":"inactive"}</span>

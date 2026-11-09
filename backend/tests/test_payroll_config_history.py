@@ -4,7 +4,7 @@ from decimal import Decimal
 from fastapi.testclient import TestClient
 from app.main import app, SessionLocal, Employee
 from app.payroll import calculate
-from test_pay_people import seed, configure, ORIGIN
+from test_pay_people import seed, configure, ORIGIN, approved_compensation
 
 
 def test_future_salary_and_statutory_rates_do_not_change_current_month():
@@ -15,11 +15,11 @@ def test_future_salary_and_statutory_rates_do_not_change_current_month():
         with SessionLocal() as db:
             before=calculate(db,db.get(Employee,person),period)
         future=date(date.today().year+1,1,1).isoformat()
-        new_salary=client.put("/payroll/structures",headers=ORIGIN,json={
+        new_salary=approved_compensation("salary_structure",{
             "employee_id":person,"basic":"90000","hra":"20000",
             "allowances":"10000","other_deductions":"0","effective_from":future})
         assert new_salary.status_code==200,new_salary.text
-        new_tax=client.put("/payroll/statutory",headers=ORIGIN,json={
+        new_tax=approved_compensation("statutory_settings",{
             "employee_id":person,"pf_employee_monthly":"5000",
             "esi_employee_monthly":"0","professional_tax_monthly":"200",
             "tds_monthly":"10000","gratuity_employer_provision":"2500",

@@ -36,17 +36,55 @@ def seed(c):
     other=create(c,"payroll.other.qa@example.org","Other Payroll","employee",hr)
     return admin,hr,one,other
 
+def approved_compensation(kind,payload):
+    """Create genuine dual-control approvals using distinct test employees.
+
+    The secondary admin joins in a future year so it is not part of this
+    month's payroll; no production account is ever created by this helper.
+    """
+    from sqlalchemy import select
+    from app.main import passwords
+    with SessionLocal() as db:
+        target=db.get(Employee,payload["employee_id"])
+        hr=db.scalar(select(Employee).where(Employee.email=="payroll.hr.qa@example.org"))
+        primary=db.scalar(select(Employee).where(Employee.email==ADMIN))
+        assert target and hr and primary
+        sensitive_target=target.id in (hr.id,primary.id)
+        if sensitive_target:
+            secondary=db.scalar(select(Employee).where(Employee.email=="qa.secondary.payadmin@example.org"))
+            if secondary is None:
+                secondary=Employee(name="Secondary QA Payroll Admin",
+                    email="qa.secondary.payadmin@example.org",
+                    password_hash=passwords.hash(ADMIN_PASS),role="admin",
+                    designation="QA independent approver",
+                    joining_date=date(today.year+1,1,1),status="active")
+                db.add(secondary);db.commit();db.refresh(secondary)
+        proposer_email=ADMIN if target.id==hr.id else "payroll.hr.qa@example.org"
+        approver_email="qa.secondary.payadmin@example.org" if sensitive_target else ADMIN
+    with TestClient(app) as reviewer:
+        login(reviewer,proposer_email,ADMIN_PASS if proposer_email==ADMIN else PASS)
+        proposed=reviewer.post("/governance/requests",headers=ORIGIN,json={
+            "kind":kind,"payload":payload,
+            "reason":"QA fixture: independently reviewed compensation setup."})
+        assert proposed.status_code==201,proposed.text
+        request_id=proposed.json()["id"]
+        reviewer.post("/auth/logout",headers=ORIGIN)
+        login(reviewer,approver_email,ADMIN_PASS)
+        response=reviewer.post(f"/governance/requests/{request_id}/review",headers=ORIGIN,json={
+            "approve":True,"reason":"QA fixture: approved by separate administrator."})
+        assert response.status_code==200,response.text
+        return response
+
+
 def configure(c,person):
     effective=date(today.year,1,1).isoformat()
-    a=c.put("/payroll/structures",headers=ORIGIN,json={"employee_id":person,
+    approved_compensation("salary_structure",{"employee_id":person,
             "basic":30000,"hra":12000,"allowances":8000,
             "other_deductions":0,"effective_from":effective})
-    assert a.status_code==200,a.text
-    b=c.put("/payroll/statutory",headers=ORIGIN,json={
+    approved_compensation("statutory_settings",{
         "employee_id":person,"pf_employee_monthly":1000,
         "esi_employee_monthly":0,"professional_tax_monthly":200,
         "tds_monthly":500,"gratuity_employer_provision":1500,"effective_from":effective})
-    assert b.status_code==200,b.text
 
 def test_salary_and_pdf_privacy_and_payroll_approval():
     with TestClient(app) as c:
