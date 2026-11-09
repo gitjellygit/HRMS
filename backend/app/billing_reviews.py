@@ -24,7 +24,7 @@ class BillableReview(Base):
 
 class ApprovedUnits(BaseModel):
     quantity:Decimal=Field(gt=0,le=100000000,decimal_places=2)
-    tax_rate_pct:Decimal=Field(default=0,ge=0,le=100,decimal_places=2)
+    tax_rate_pct:Decimal|None=Field(default=None,ge=0,le=100,decimal_places=2)
 
 def create_review(db:Session,user:Employee,project_id:int,start:date,end:date,scheduled_on:date):
     present=db.scalar(select(BillableReview.id).where(
