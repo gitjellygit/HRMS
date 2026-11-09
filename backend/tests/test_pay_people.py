@@ -37,16 +37,39 @@ def seed(c):
     return admin,hr,one,other
 
 def approved_compensation(kind,payload):
-    """Create and independently approve a salary fixture without mutating caller cookies."""
+    """Create genuine dual-control approvals using distinct test employees.
+
+    The secondary admin joins in a future year so it is not part of this
+    month's payroll; no production account is ever created by this helper.
+    """
+    from sqlalchemy import select
+    from app.main import passwords
+    with SessionLocal() as db:
+        target=db.get(Employee,payload["employee_id"])
+        hr=db.scalar(select(Employee).where(Employee.email=="payroll.hr.qa@example.org"))
+        primary=db.scalar(select(Employee).where(Employee.email==ADMIN))
+        assert target and hr and primary
+        sensitive_target=target.id in (hr.id,primary.id)
+        if sensitive_target:
+            secondary=db.scalar(select(Employee).where(Employee.email=="qa.secondary.payadmin@example.org"))
+            if secondary is None:
+                secondary=Employee(name="Secondary QA Payroll Admin",
+                    email="qa.secondary.payadmin@example.org",
+                    password_hash=passwords.hash(ADMIN_PASS),role="admin",
+                    designation="QA independent approver",
+                    joining_date=date(today.year+1,1,1),status="active")
+                db.add(secondary);db.commit();db.refresh(secondary)
+        proposer_email=ADMIN if target.id==hr.id else "payroll.hr.qa@example.org"
+        approver_email="qa.secondary.payadmin@example.org" if sensitive_target else ADMIN
     with TestClient(app) as reviewer:
-        login(reviewer,"payroll.hr.qa@example.org",PASS)
+        login(reviewer,proposer_email,ADMIN_PASS if proposer_email==ADMIN else PASS)
         proposed=reviewer.post("/governance/requests",headers=ORIGIN,json={
             "kind":kind,"payload":payload,
             "reason":"QA fixture: independently reviewed compensation setup."})
         assert proposed.status_code==201,proposed.text
         request_id=proposed.json()["id"]
         reviewer.post("/auth/logout",headers=ORIGIN)
-        login(reviewer,ADMIN,ADMIN_PASS)
+        login(reviewer,approver_email,ADMIN_PASS)
         response=reviewer.post(f"/governance/requests/{request_id}/review",headers=ORIGIN,json={
             "approve":True,"reason":"QA fixture: approved by separate administrator."})
         assert response.status_code==200,response.text
