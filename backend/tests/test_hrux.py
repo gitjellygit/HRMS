@@ -22,7 +22,10 @@ def employee(name,email,code="",phone="9876543210",joined=None):
             "employee_code":code,"phone":phone,
             "joining_date":str(joined or date.today())}
 
-def test_employee_ids_phone_password_and_deactivation():
+def test_employee_ids_phone_password_and_deactivation(monkeypatch):
+    from urllib.parse import urlsplit,parse_qs
+    messages=[]
+    monkeypatch.setattr("app.main.send_reset_mail",lambda email,link: messages.append((email,link)))
     with TestClient(app) as c:
         assert c.post("/auth/login",json={"email":"admin@example.com","password":"test-admin-password-12345"}).status_code==200
         manager_id=make_manager(c,"Lifecycle")
@@ -57,21 +60,19 @@ def test_employee_ids_phone_password_and_deactivation():
         reset=c.post(f"/core/employees/{employee_id}/reset-password",
                      headers=ORIGIN,json={"reason":"Employee lost account credentials"})
         assert reset.status_code==200,reset.text
-        temp=reset.json()["temporary_password"]
-        assert len(temp)>=20
+        assert reset.json()["reset_email_sent"] is True
+        assert "temporary_password" not in reset.json()
+        assert messages[0][0]=="ravi.hrux@example.org"
+        token=parse_qs(urlsplit(messages[0][1]).query)["reset"][0]
         c.post("/auth/logout",headers=ORIGIN)
+        changed=c.post("/auth/reset-password",headers=ORIGIN,
+                       json={"token":token,"password":"BrandNewPass!98765"})
+        assert changed.status_code==200,changed.text
         assert c.post("/auth/login",json={"email":"ravi.hrux@example.org",
                                          "password":"SecureTempPass!1234"}).status_code==401
-        assert c.post("/auth/login",json={"email":"ravi.hrux@example.org","password":temp}).status_code==200
-        assert c.get("/me").json()["must_change_password"] is True
-        assert c.get(f"/core/employees/{employee_id}").status_code==403
-        assert c.get("/dashboard").status_code==403
-        changed=c.post("/auth/change-password",headers=ORIGIN,
-                       json={"new_password":"BrandNewPass!98765"})
-        assert changed.status_code==200,changed.text
-        assert c.get("/dashboard").status_code==401
         assert c.post("/auth/login",json={"email":"ravi.hrux@example.org",
                                          "password":"BrandNewPass!98765"}).status_code==200
+        assert c.get("/me").json()["must_change_password"] is False
         assert c.post(f"/core/employees/{employee_id}/deactivate",
                       headers=ORIGIN,json={"reason":"Employment ended by HR request"}).status_code==403
         c.post("/auth/logout",headers=ORIGIN)
