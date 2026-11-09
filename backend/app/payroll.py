@@ -203,21 +203,37 @@ def calculate(db,employee,period):
     components=effective_components(db,employee.id,end)
     extra_earnings=sum((Decimal(x.amount) for x in components if x.kind=="earning"),Decimal(0))
     extra_deductions=sum((Decimal(x.amount) for x in components if x.kind=="deduction"),Decimal(0))
-    gross=money(salary.basic+salary.hra+salary.allowances+extra_earnings)
-    # Payroll basis is calendar days in selected month and approved LOP only.
-    # A missing punch is an exception to review, never automatically unpaid leave.
+    # Monthly salary is prorated by calendar days of employment; LOP only by
+    # approved working-day leave units (including fractional single-day leave).
     days=Decimal((end-start).days+1)
+    last_day=end
+    if employee.status!="active":
+        from .employee_core import LifecycleEvent
+        exited=db.scalar(select(func.max(LifecycleEvent.effective_date)).where(
+            LifecycleEvent.employee_id==employee.id,
+            LifecycleEvent.event.in_(("exited","deactivated"))))
+        if exited is None or exited<start:
+            raise ValueError("Employee not employed during this payroll period")
+        last_day=min(end,exited)
+    first_day=max(start,employee.joining_date)
+    service_days=max(0,(last_day-first_day).days+1)
+    if service_days==0:
+        raise ValueError("Employee not employed during this payroll period")
+    monthly_gross=salary.basic+salary.hra+salary.allowances+extra_earnings
+    gross=money(monthly_gross*Decimal(service_days)/days)
     leave=db.scalars(select(LeaveRequest).where(LeaveRequest.employee_id==employee.id,
         LeaveRequest.leave_type=="loss_of_pay",LeaveRequest.status=="approved",
         LeaveRequest.start_date<=end,LeaveRequest.end_date>=start)).all()
+    from .leave_management import working_days, user_location
+    location=user_location(db,employee.id)
     lop=Decimal("0")
     for row in leave:
-        overlap_start=max(row.start_date,start)
-        overlap_end=min(row.end_date,end)
+        overlap_start=max(row.start_date,first_day)
+        overlap_end=min(row.end_date,last_day)
         if overlap_start<=overlap_end:
-            lop+=Decimal((overlap_end-overlap_start).days+1)
-    lop=min(lop,days)
-    loss=money(gross*lop/days)
+            lop+=working_days(db,overlap_start,overlap_end,location,row.day_part)
+    lop=min(lop,Decimal(service_days))
+    loss=money(monthly_gross*lop/days)
     count=db.scalar(select(func.count()).select_from(Attendance).where(
         Attendance.employee_id==employee.id,Attendance.punch_in>=datetime.combine(start,datetime.min.time(),tzinfo=timezone.utc),
         Attendance.punch_in<datetime.combine(end+timedelta(days=1),datetime.min.time(),tzinfo=timezone.utc),
@@ -237,7 +253,14 @@ def create_run(body:RunIn,user:Employee=Depends(current_user),db:Session=Depends
     if db.scalar(select(PayrollRun.id).where(PayrollRun.period==body.period)):
         raise HTTPException(409,"This payroll period already has a run; no duplicate calculations allowed.")
     start,end=ym_bounds(body.period)
-    eligible=db.scalars(select(Employee).where(Employee.status=="active",Employee.joining_date<=end)).all()
+    # Include employees who exited during this month for their final salary.
+    from .employee_core import LifecycleEvent
+    exited_this_month=select(LifecycleEvent.employee_id).where(
+        LifecycleEvent.event.in_(("exited","deactivated")),
+        LifecycleEvent.effective_date.between(start,end))
+    eligible=db.scalars(select(Employee).where(
+        Employee.joining_date<=end,
+        (Employee.status=="active") | Employee.id.in_(exited_this_month))).all()
     rows=[];problems=[]
     for emp in eligible:
         try:rows.append(calculate(db,emp,body.period))
