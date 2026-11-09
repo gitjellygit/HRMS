@@ -77,8 +77,14 @@ def test_salary_and_pdf_privacy_and_payroll_approval():
         assert run.status_code==200,run.text
         assert len(run.json()["lines"])>=2
         own_line=next(x for x in run.json()["lines"] if x["employee_id"]==one)
-        assert Decimal(str(own_line["gross"]))==Decimal("50000.00")
-        assert Decimal(str(own_line["net"]))==Decimal("48300.00")
+        from app.payroll import money, ym_bounds
+        start,end=ym_bounds(period)
+        person=next(e for e in staff if e["id"]==one)
+        joined=date.fromisoformat(person["joining_date"])
+        service_days=(end-max(start,joined)).days+1
+        expected_gross=money(Decimal(50000)*Decimal(service_days)/Decimal((end-start).days+1))
+        assert Decimal(str(own_line["gross"]))==expected_gross
+        assert Decimal(str(own_line["net"]))==expected_gross-Decimal("1700.00")
         assert c.post(f"/payroll/runs/{run_id}/approve",headers=ORIGIN).status_code==403
         c.post("/auth/logout",headers=ORIGIN)
         login(c,"payroll.hr.qa@example.org",PASS)
