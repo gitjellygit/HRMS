@@ -72,3 +72,36 @@ def test_pending_encashment_reserves_balance_and_reduces_next_year_carry():
         updated=next(b for b in after if b["leave_type"]=="earned")
         assert updated["reserved_encashment"]==0
         assert updated["encashed"]>=0.5
+
+
+def test_exiting_manager_reassigns_reports_and_pending_leave():
+    from app.main import SessionLocal
+    from app.employee_core import EmployeeCore
+    from app.leave_management import LeaveRequest
+    with TestClient(app) as c:
+        admin,manager,worker,_=seed(c)
+        c.put("/leave/policies",headers=ORIGIN,json={
+            "leave_type":"casual","annual_days":12,"probation_allowed":True,
+            "approval_chain":["manager","hr"],"active":True})
+        day=date.today()+timedelta(days=7)
+        while day.weekday()>=5:
+            day+=timedelta(days=1)
+        switch(c,"payroll.person.qa@example.org")
+        request=c.post("/leave/requests",headers=ORIGIN,json={
+            "leave_type":"casual","start_date":day.isoformat(),"end_date":day.isoformat(),
+            "reason":"QA manager exit during pending leave"})
+        assert request.status_code==201,request.text
+        request_id=request.json()["id"]
+        switch(c,"admin@example.com","test-admin-password-12345")
+        left=c.post(f"/core/employees/{manager}/lifecycle",headers=ORIGIN,json={
+            "event":"exited","note":"Manager exit with pending QA approval",
+            "effective_date":date.today().isoformat()})
+        assert left.status_code==200,left.text
+        with SessionLocal() as db:
+            assert db.get(EmployeeCore,worker).manager_id==admin
+            assert db.get(LeaveRequest,request_id).manager_snapshot_id==admin
+        reviewed=c.post(f"/leave/requests/{request_id}/review",headers=ORIGIN,
+                        json={"action":"approve"})
+        assert reviewed.status_code==200,reviewed.text
+        hist=c.get(f"/leave/requests/{request_id}/history").json()
+        assert any(x["action"]=="manager_reassigned" for x in hist)
