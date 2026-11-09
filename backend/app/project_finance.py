@@ -100,6 +100,7 @@ class ClientInvoice(Base):
     created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
     paid_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
     reference:Mapped[str]=mapped_column(String(120),default="")
+    replaces_invoice_id:Mapped[int|None]=mapped_column(ForeignKey("finance_invoices.id"),nullable=True)
     __table_args__=(Index("uq_finance_project_invoice_window_active",
                            "project_id","period_start","period_end","recipient_type",
                            unique=True,postgresql_where=text("status <> 'void'")),)
@@ -135,6 +136,7 @@ class InvoiceIn(BaseModel):
     period_end:date
     quantity:Decimal=Field(gt=0,le=100000000,decimal_places=2)
     tax_rate_pct:Decimal|None=Field(default=None,ge=0,le=100,decimal_places=2)
+    replaces_invoice_id:int|None=Field(default=None,gt=0)
     issue_date:date=Field(default_factory=date.today)
     @model_validator(mode="after")
     def validate_window(self):
@@ -179,7 +181,7 @@ def invoice_view(x:ClientInvoice,as_of:date|None=None):
     return {k:getattr(x,k) for k in ("id","project_id","recipient_type","recipient_name",
       "recipient_email","recipient_phone","billing_address","period_start","period_end",
       "issue_date","due_date","quantity","unit_rate","subtotal","tax_rate_pct","tax_amount",
-      "total","currency","source","reference")} | {"status":state,"stored_status":x.status}
+      "total","currency","source","reference","replaces_invoice_id")} | {"status":state,"stored_status":x.status}
 def billing_view(p:Project,d:ProjectDetail,profile:ProjectBilling|None):
     data=serialize(p,d)
     data["billing"]=({"recipient_type":profile.recipient_type,"recipient_name":profile.recipient_name,
@@ -192,7 +194,7 @@ def audit(db:Session,user:Employee,project_id:int,event:str,note:str=""):
     db.add(FinanceAudit(project_id=project_id,actor_id=user.id,event=event,note=note[:2000]))
 def create_row(db:Session,user:Employee,p:Project,d:ProjectDetail,c:ProjectBilling,
                start:date,end:date,quantity:Decimal,tax:Decimal|None,issued:date,source:str):
-    live_period(p,d,c,start,end,issued,allow_closed=(source=="schedule_reviewed"))
+    live_period(p,d,c,start,end,issued,allow_closed=(source in ("schedule_reviewed","replacement")))
     if not c.recipient_name:raise HTTPException(422,"Billing recipient required")
     existing=db.scalar(select(ClientInvoice.id).where(
       ClientInvoice.project_id==p.id,ClientInvoice.period_start==start,
@@ -360,8 +362,19 @@ def create_invoice(body:InvoiceIn,user:Employee=Depends(current_user),db:Session
     authorized(user)
     p,d=project_detail(db,body.project_id);c=db.get(ProjectBilling,p.id)
     if c is None:raise HTTPException(422,"Configure project billing first")
+    replacement=None
+    if body.replaces_invoice_id is not None:
+        replacement=db.get(ClientInvoice,body.replaces_invoice_id)
+        if (replacement is None or replacement.status!="void" or
+            replacement.project_id!=p.id or replacement.recipient_type!=c.recipient_type or
+            replacement.period_start!=body.period_start or replacement.period_end!=body.period_end):
+            raise HTTPException(422,detail={"field":"replaces_invoice_id",
+                "message":"Choose a voided invoice for the same project, recipient and billing period."})
     x=create_row(db,user,p,d,c,body.period_start,body.period_end,body.quantity,
-                 body.tax_rate_pct,body.issue_date,"manual")
+                 body.tax_rate_pct,body.issue_date,"replacement" if replacement else "manual")
+    if replacement:
+        x.replaces_invoice_id=replacement.id
+        audit(db,user,p.id,"invoice_replacement",f"Replaced voided invoice #{replacement.id} with invoice #{x.id}")
     db.commit();db.refresh(x);return invoice_view(x)
 
 @router.post("/schedules/run")
