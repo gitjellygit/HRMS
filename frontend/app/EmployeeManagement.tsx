@@ -73,8 +73,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
  const [selectedAction,setSelectedAction]=useState<Employee|null>(null);
  const [actionKind,setActionKind]=useState<"deactivate"|"reset"|null>(null);
  const [actionReason,setActionReason]=useState("");
- const [tempPassword,setTempPassword]=useState("");
- const [copied,setCopied]=useState(false);
+ const [resetSent,setResetSent]=useState(false);
  const [actionBusy,setActionBusy]=useState(false);
  const load=useCallback(async()=>{
   setLoading(true);
@@ -172,7 +171,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
   }catch(err){setFailure((err as Error).message)}finally{setSaving(false)}
  }
  function beginAction(employee:Employee,kind:"deactivate"|"reset"){
-  setSelectedAction(employee);setActionKind(kind);setActionReason("");setTempPassword("");setCopied(false);setFailure("");
+  setSelectedAction(employee);setActionKind(kind);setActionReason("");setResetSent(false);setFailure("");
  }
  async function commitAction(){
   if(!selectedAction||!actionKind)return;
@@ -182,10 +181,11 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
    const url="/core/employees/"+selectedAction.id+"/"+(actionKind==="deactivate"?"deactivate":"reset-password");
    const response=await fetch(api+url,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({reason:actionReason.trim()})});
    const data=await response.json().catch(()=>({}));
-   if(!response.ok)throw Error(typeof data.detail==="string"?data.detail:"Action failed.");
+   if(!response.ok)throw Error(ApiError(data.detail).message);
    if(actionKind==="reset"){
-    setTempPassword(data.temporary_password);
-    setMessage("Temporary password issued. Share securely; old login sessions are invalid.");
+    if(!data.reset_email_sent)throw Error("The password reset email was not confirmed. Try again.");
+    setResetSent(true);
+    setMessage("Password reset link sent to the employee's registered work email.");
    }else{setSelectedAction(null);setActionKind(null);setMessage("Employee deactivated with a recorded reason.");await load()}
   }catch(e){setFailure((e as Error).message)}finally{setActionBusy(false)}
  }
@@ -293,7 +293,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
     <div className="employee-group"><div className="employee-group-head"><ShieldCheck size={18}/><div><h3>Account security</h3><p>Only HR/Admin can create an employee login</p></div></div>
      <div className="employee-form-grid">
       {field("password","Temporary password",{required:true,type:showPassword?"text":"password",placeholder:"Create a strong password",hint:"At least 12 characters, uppercase, lowercase, number and symbol."})}
-      <div className="employee-field employee-security-note"><label>Access guidelines</label><p>Only grant HR or Admin access when required. Ask the employee to reset their temporary password after first login.</p><button type="button" className="employee-link" onClick={()=>setShowPassword(!showPassword)}>{showPassword?"Hide":"Show"} password</button></div>
+      <div className="employee-field employee-security-note"><label>Access guidelines</label><p>Only grant HR or Admin access when required. The employee will be required to change their initial password before accessing HRMS.</p><button type="button" className="employee-link" onClick={()=>setShowPassword(!showPassword)}>{showPassword?"Hide":"Show"} password</button></div>
      </div>
     </div>
     <div className="employee-group"><div className="employee-group-head"><FileUp size={18}/><div><h3>Employee documents</h3><p>Optional initial document for this account</p></div></div>
@@ -303,11 +303,16 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
    </form>
   </section>}
   {selectedAction&&actionKind&&<div className="employee-modal-backdrop"><div className="employee-modal" role="dialog" aria-modal="true" aria-label={actionKind==="reset"?"Reset employee password":"Deactivate employee"}>
-   <div className="employee-title-row"><div><h2>{actionKind==="reset"?"Reset password":"Deactivate employee"}</h2><p>{selectedAction.name} · {selectedAction.employee_code||"Employee"}</p></div><button className="employee-icon-button" onClick={()=>{setSelectedAction(null);setActionKind(null);setTempPassword("")}} aria-label="Close"><X size={18}/></button></div>
+   <div className="employee-title-row"><div><h2>{actionKind==="reset"?"Reset password":"Deactivate employee"}</h2><p>{selectedAction.name} · {selectedAction.employee_code||"Employee"}</p></div><button className="employee-icon-button" onClick={()=>{setSelectedAction(null);setActionKind(null);setResetSent(false)}} aria-label="Close"><X size={18}/></button></div>
    {failure&&<p className="field-error" role="alert">{failure}</p>}
-   {tempPassword?<div className="employee-temporary-password"><FeedbackMotion type="success" compact message="Temporary password issued successfully."/><p>Temporary password (shown once):</p><code>{tempPassword}</code><button className="employee-cancel" onClick={async()=>{try{await navigator.clipboard.writeText(tempPassword);setCopied(true)}catch{setFailure("Copy failed. Please use a secure manual transfer.")}}}>{copied?"Copied successfully":"Copy securely"}</button><p>Existing sessions are invalidated. The employee must set a new password on their next login.</p></div>:<>
+   {resetSent?<div className="employee-temporary-password">
+    <FeedbackMotion type="success" compact message="Password reset email sent."/>
+    <p>The employee will receive a secure, time-limited link at their registered work email. No password is displayed to HR.</p>
+    <button className="employee-cancel" onClick={()=>{setSelectedAction(null);setActionKind(null);setResetSent(false)}}>Close</button>
+   </div>:<>
+    {actionKind==="reset"&&<p className="field-help">Send a 30-minute password setup link to the employee. Email delivery must be configured.</p>}
     <label className="employee-field">Reason (required, 10+ characters)<textarea value={actionReason} maxLength={500} rows={3} onChange={e=>setActionReason(e.target.value)} placeholder={actionKind==="deactivate"?"Explain why access is being deactivated":"Reason for credential reset"}/></label>
-    <div className="employee-form-footer"><button className="employee-cancel" onClick={()=>setSelectedAction(null)}>Cancel</button><button className="employee-primary" disabled={actionBusy||actionReason.trim().length<10} onClick={commitAction}>{actionBusy?"Saving…":actionKind==="deactivate"?"Confirm deactivation":"Issue temporary password"}</button></div>
+    <div className="employee-form-footer"><button className="employee-cancel" onClick={()=>setSelectedAction(null)}>Cancel</button><button className="employee-primary" disabled={actionBusy||actionReason.trim().length<10} onClick={commitAction}>{actionBusy?"Saving…":actionKind==="deactivate"?"Confirm deactivation":"Send password reset link"}</button></div>
    </>}
   </div></div>}
   {docsFor&&<div className="employee-modal-backdrop" role="presentation"><div className="employee-modal" role="dialog" aria-modal="true" aria-label={"Documents for "+docsFor.name}><div className="employee-title-row"><div><h2>{docsFor.name}</h2><p>Employee documents</p></div><button className="employee-icon-button" onClick={()=>setDocsFor(null)} aria-label="Close"><X size={20}/></button></div>{docError&&<div className="error">{docError}</div>}{!documents.length?<p className="muted">No documents on file.</p>:documents.map(doc=><div key={doc.id} className="employee-doc"><span>{doc.name}</span><button className="employee-link" onClick={()=>downloadFile(doc.id,doc.name)}>Download</button></div>)}</div></div>}
