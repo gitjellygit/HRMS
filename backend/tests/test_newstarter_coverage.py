@@ -55,4 +55,4 @@ def test_new_employee_leave_end_to_end():
   assert c.get(f"/leave/requests/{rid}/history").status_code==200
   assert c.post("/auth/logout",headers=ORIGIN).status_code==200
   assert c.get("/me").status_code==401
-  assert login(c,email,PASS)["role"]=="employee"
+  assert login(c,email,PASS)["user"]["role"]=="employee"
