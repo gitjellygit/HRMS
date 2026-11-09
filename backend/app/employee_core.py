@@ -296,7 +296,9 @@ def apply_master(db: Session, employee_id: int, data: MasterIn):
         db.add(row)
     for field,value in data.model_dump(exclude=set(SENSITIVE), exclude_unset=True).items():
         setattr(row, field, value or "" if field in ("personal_email",) else value)
-    for field in SENSITIVE & data.model_fields_set:
+    for field in SENSITIVE:
+        if field not in data.model_fields_set:
+            continue
         value = getattr(data, field)
         if value:
             setattr(row, field, seal(value))
