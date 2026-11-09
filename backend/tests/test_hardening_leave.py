@@ -49,19 +49,19 @@ def test_pending_encashment_reserves_balance_and_reduces_next_year_carry():
     with TestClient(app) as c:
         admin,hr,employee,other=seed(c)
         cfg=c.put("/leave/policies",headers=ORIGIN,json={
-            "leave_type":"casual","annual_days":12,"carry_forward_limit":12,
+            "leave_type":"earned","annual_days":12,"carry_forward_limit":12,
             "probation_allowed":True,"encashment_allowed":True,
             "approval_chain":["manager","hr"],"active":True})
         assert cfg.status_code==200,cfg.text
         fy=fy_start_year(date.today())
         before=c.get(f"/leave/balances?employee_id={other}&year={fy}").json()
-        casual=next(b for b in before if b["leave_type"]=="casual")
+        casual=next(b for b in before if b["leave_type"]=="earned")
         switch(c,"payroll.other.qa@example.org")
         pending=c.post("/leave/encashment",headers=ORIGIN,json={
-            "leave_type":"casual","year":fy,"days":"0.5"})
+            "leave_type":"earned","year":fy,"days":"0.5"})
         assert pending.status_code==201,pending.text
         balances=c.get(f"/leave/balances?year={fy}").json()
-        updated=next(b for b in balances if b["leave_type"]=="casual")
+        updated=next(b for b in balances if b["leave_type"]=="earned")
         assert updated["reserved_encashment"]>=0.5
         assert updated["remaining"]==casual["remaining"]-0.5
         switch(c,"admin@example.com","test-admin-password-12345")
@@ -69,6 +69,6 @@ def test_pending_encashment_reserves_balance_and_reduces_next_year_carry():
                         headers=ORIGIN)
         assert approved.status_code==200,approved.text
         after=c.get(f"/leave/balances?employee_id={other}&year={fy}").json()
-        updated=next(b for b in after if b["leave_type"]=="casual")
+        updated=next(b for b in after if b["leave_type"]=="earned")
         assert updated["reserved_encashment"]==0
         assert updated["encashed"]>=0.5
