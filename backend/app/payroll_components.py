@@ -55,16 +55,19 @@ def components(employee_id:int,user:Employee=Depends(current_user),db:Session=De
     return [view(x) for x in db.scalars(select(SalaryComponent).where(
         SalaryComponent.employee_id==employee_id).order_by(SalaryComponent.code)).all()]
 
-@router.put("/components")
-def save_component(body:ComponentIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
-    if user.role not in HR:raise HTTPException(403,"Only HR can configure salary components")
+def apply_component(db:Session,body:ComponentIn,reviewer_id:int):
     person=db.get(Employee,body.employee_id)
     if not person or person.status!="active":raise HTTPException(422,"Active employee required")
     row=db.get(SalaryComponent,(body.employee_id,body.code))
     if row is None:
-        row=SalaryComponent(employee_id=body.employee_id,code=body.code,updated_by=user.id)
+        row=SalaryComponent(employee_id=body.employee_id,code=body.code,updated_by=reviewer_id)
         db.add(row)
     for k,v in body.model_dump().items():setattr(row,k,v)
-    row.updated_by=user.id
-    db.commit()
+    row.updated_by=reviewer_id
     return view(row)
+
+
+@router.put("/components")
+def save_component(body:ComponentIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    raise HTTPException(403,detail={"field":"approval","message":
+        "Salary components require independent approval. Submit a salary_component request through /governance/requests."})
