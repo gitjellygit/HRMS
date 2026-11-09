@@ -247,6 +247,22 @@ def calculate(db,employee,period):
         other_deductions=money(salary.other_deductions+extra_deductions),net=money(gross-deductions),
         attendance_sessions=count,exceptions=exceptions)
 
+def calculate_or_exception(db,employee,period):
+    """Keep the draft reviewable even when one employee lacks payroll setup.
+
+    Exception lines have zero payable values and block approval until the
+    configuration is corrected and the draft is recalculated.
+    """
+    try:
+        return calculate(db,employee,period)
+    except ValueError as exc:
+        result=dict(employee_id=employee.id,exceptions="Payroll setup: "+str(exc))
+        for field in ("gross","lop_days","lop_amount","pf","esi","pt","tds","other_deductions","net"):
+            result[field]=Decimal("0")
+        result["attendance_sessions"]=0
+        return result
+
+
 @router.post("/runs",status_code=201)
 def create_run(body:RunIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     role(user)
@@ -261,11 +277,9 @@ def create_run(body:RunIn,user:Employee=Depends(current_user),db:Session=Depends
     eligible=db.scalars(select(Employee).where(
         Employee.joining_date<=end,
         (Employee.status=="active") | Employee.id.in_(exited_this_month))).all()
-    rows=[];problems=[]
+    rows=[]
     for emp in eligible:
-        try:rows.append(calculate(db,emp,body.period))
-        except ValueError as e:problems.append({"employee_id":emp.id,"employee_name":emp.name,"message":str(e)})
-    if problems:raise HTTPException(422,detail={"field":"employees","message":"Resolve salary/statutory setup and calculation errors first.","employees":problems})
+        rows.append(calculate_or_exception(db,emp,body.period))
     if not rows:raise HTTPException(422,"No eligible employees in period.")
     run=PayrollRun(period=body.period,created_by=user.id)
     db.add(run);db.flush()
@@ -278,6 +292,46 @@ def create_run(body:RunIn,user:Employee=Depends(current_user),db:Session=Depends
                   kind=component.kind,amount=component.amount))
     db.commit();db.refresh(run)
     return {"id":run.id,"period":run.period,"status":run.status,"employees":len(rows)}
+
+@router.post("/runs/{run_id}/recalculate")
+def recalculate_draft(run_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    """Refresh a draft after salary, statutory or attendance corrections.
+
+    Never recalculate an approved/published run, and never remove an existing
+    employee or monetary audit record. Existing component snapshots are
+    refreshed atomically.
+    """
+    role(user,HR)
+    run=db.scalar(select(PayrollRun).where(PayrollRun.id==run_id).with_for_update())
+    if run is None:raise HTTPException(404,"Payroll run not found")
+    if run.status!="draft":raise HTTPException(409,"Only a draft payroll can be recalculated")
+    from .payroll_components import effective_components, PayslipComponent
+    _,end=ym_bounds(run.period)
+    lines=db.scalars(select(PayrollLine).where(PayrollLine.run_id==run_id).with_for_update()).all()
+    if not lines:raise HTTPException(409,"Draft has no employee lines to recalculate")
+    exceptions=0
+    for line in lines:
+        employee=db.get(Employee,line.employee_id)
+        if employee is None:
+            raise HTTPException(409,"A payroll employee was removed; contact an administrator")
+        previous="gross="+str(line.gross)+"; net="+str(line.net)+"; exception="+str(line.exceptions)
+        result=calculate_or_exception(db,employee,run.period)
+        for field,value in result.items():setattr(line,field,value)
+        if line.exceptions:exceptions+=1
+        existing=db.scalars(select(PayslipComponent).where(PayslipComponent.line_id==line.id)).all()
+        for component in existing:db.delete(component)
+        db.flush()
+        if not line.exceptions.startswith("Payroll setup:"):
+            for component in effective_components(db,employee.id,end):
+                db.add(PayslipComponent(line_id=line.id,code=component.code,
+                    title=component.title,kind=component.kind,amount=component.amount))
+        db.add(PayrollReviewAudit(run_id=run.id,line_id=line.id,reviewer_id=user.id,
+            action="draft_recalculated",
+            reason=previous+"; recalculated gross="+str(line.gross)+"; net="+str(line.net)))
+    db.commit()
+    return {"id":run.id,"period":run.period,"status":"draft",
+            "recalculated":len(lines),"unresolved_exceptions":exceptions}
+
 
 @router.get("/runs")
 def get_runs(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
