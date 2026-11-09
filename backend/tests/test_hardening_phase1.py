@@ -20,7 +20,7 @@ def test_privileged_lifecycle_and_role_creation_are_blocked():
         elevated = client.post("/core/employees", headers=ORIGIN, json={
             "account":{"email":"security.no.super.qa@example.org",
                        "name":"Disallowed Super Admin", "password":PASS,
-                       "role":"super_admin", "designation":"QA"},
+                       "role":"super_admin", "designation":"QA","department":"Quality"},
             "master":{}
         })
         assert elevated.status_code == 403, elevated.text
