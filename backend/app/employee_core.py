@@ -294,9 +294,9 @@ def apply_master(db: Session, employee_id: int, data: MasterIn):
     if row is None:
         row = EmployeeCore(employee_id=employee_id)
         db.add(row)
-    for field,value in data.model_dump(exclude=set(SENSITIVE)).items():
+    for field,value in data.model_dump(exclude=set(SENSITIVE), exclude_unset=True).items():
         setattr(row, field, value or "" if field in ("personal_email",) else value)
-    for field in SENSITIVE:
+    for field in SENSITIVE & data.model_fields_set:
         value = getattr(data, field)
         if value:
             setattr(row, field, seal(value))
@@ -485,7 +485,9 @@ def create_full_employee(body: EmployeeCreateIn, user: Employee = Depends(requir
     account = body.account
     if account.role not in ("super_admin","admin","hr","manager","employee","accountant"):
         raise HTTPException(422, "Unknown account role")
-    if account.role in ("super_admin", "admin") and user.role not in ADMIN_ROLES:
+    if account.role == "super_admin" and user.role != "super_admin":
+        raise HTTPException(403, "Only Super Admin may create another Super Admin")
+    if account.role == "admin" and user.role != "super_admin":
         raise HTTPException(403, "Only Super Admin may create an administrator")
     if db.scalar(select(Employee.id).where(func.lower(Employee.email) == str(account.email).lower())):
         raise HTTPException(409, detail={"field":"email","message":"This email is already registered."})
@@ -515,7 +517,12 @@ def create_full_employee(body: EmployeeCreateIn, user: Employee = Depends(requir
 
 @router.put("/employees/{employee_id}")
 def update_master(employee_id: int, body: MasterIn, user: Employee = Depends(require_hr), db: Session = Depends(db_session)):
-    employee_or_404(db, employee_id)
+    target=employee_or_404(db, employee_id)
+    current=db.get(EmployeeCore, employee_id)
+    if target.role not in ("admin","super_admin") and "manager_id" in body.model_fields_set and body.manager_id is None:
+        raise HTTPException(422, detail={"field":"manager_id","message":"An active reporting manager is required."})
+    if target.role not in ("admin","super_admin") and not (body.manager_id if "manager_id" in body.model_fields_set else current.manager_id if current else None):
+        raise HTTPException(422, detail={"field":"manager_id","message":"An active reporting manager is required."})
     apply_master(db, employee_id, body)
     db.commit()
     return employee_view(db, employee_or_404(db, employee_id), user)
@@ -610,6 +617,8 @@ def lifecycle_history(employee_id: int, user: Employee = Depends(current_user), 
 @router.post("/employees/{employee_id}/lifecycle")
 def change_lifecycle(employee_id: int, body: LifecycleIn, user: Employee = Depends(require_hr), db: Session = Depends(db_session)):
     employee = employee_or_404(db, employee_id)
+    if body.event == "exited":
+        protect_privileged_target(user, employee)
     core = db.get(EmployeeCore, employee_id)
     if not core:
         core = EmployeeCore(employee_id=employee_id)
