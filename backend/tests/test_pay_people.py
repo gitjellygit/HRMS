@@ -55,7 +55,7 @@ def test_salary_and_pdf_privacy_and_payroll_approval():
         # Every eligible employee has reviewed salary + tax configuration.
         staff=c.get("/employees").json()
         for emp in staff:
-            if emp["status"]=="active" and emp["joining_date"]<=date(today.year,today.month,
+            if emp["joining_date"]<=date(today.year,today.month,
                     28 if today.month==2 else 30 if today.month in (4,6,9,11) else 31).isoformat():
                 configure(c,emp["id"])
         with SessionLocal() as db:
