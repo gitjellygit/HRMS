@@ -687,6 +687,13 @@ def deactivate_employee(employee_id:int,body:DeactivateEmployeeIn,user:Employee=
     protect_privileged_target(user,target)
     if target.status!="active":
         raise HTTPException(409,"Employee is already inactive.")
+    from .people_operations import ExitCase
+    pending_exit=db.scalar(select(ExitCase.id).where(
+        ExitCase.employee_id==employee_id,
+        ExitCase.status.in_(("requested","approved","clearance"))))
+    if pending_exit:
+        raise HTTPException(409,detail={"field":"exit_case",
+            "message":"An employee exit is in progress. Complete its checklist, clearances and F&F before deactivating the account."})
     reassign_reports_for_inactive_manager(db,employee_id,user,date.today())
     target.status="inactive"
     db.add(LifecycleEvent(employee_id=employee_id,event="deactivated",note=body.reason.strip(),
