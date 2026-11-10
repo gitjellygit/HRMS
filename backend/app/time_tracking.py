@@ -86,6 +86,17 @@ class Timesheet(Base):
     hours:Mapped[Decimal]=mapped_column(Numeric(5,2))
     note:Mapped[str]=mapped_column(Text,default="")
     status:Mapped[str]=mapped_column(String(20),default="draft")
+    reviewed_by:Mapped[int|None]=mapped_column(ForeignKey("employees.id"),nullable=True)
+    reviewed_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
+
+
+class TimeProjectAssignment(Base):
+    __tablename__="time_project_assignments"
+    employee_id:Mapped[int]=mapped_column(ForeignKey("employees.id"),primary_key=True)
+    project_id:Mapped[int]=mapped_column(ForeignKey("projects.id"),primary_key=True)
+    active:Mapped[bool]=mapped_column(Boolean,default=True)
+    assigned_by:Mapped[int]=mapped_column(ForeignKey("employees.id"))
+
 
 class BiometricPunch(Base):
     __tablename__="time_biometric_events"
@@ -140,6 +151,17 @@ class TimeRequestIn(BaseModel):
             raise ValueError("Specify valid punch-in and punch-out times.")
         if self.kind=="shift_swap" and not self.target_employee_id: raise ValueError("Select the shift-swap colleague.")
         return self
+
+class AssignmentIn(BaseModel):
+    employee_id:int=Field(gt=0)
+    project_id:int=Field(gt=0)
+    active:bool=True
+
+
+class TimesheetReviewIn(BaseModel):
+    approve:bool
+    reason:str=Field(min_length=10,max_length=500)
+
 
 class TimesheetIn(BaseModel):
     work_date:date
@@ -392,12 +414,19 @@ def audits(request_id:int,user:Employee=Depends(current_user),db:Session=Depends
             for a in db.scalars(select(TimeAudit).where(TimeAudit.request_id==request_id)).all()]
 
 @router.get("/timesheets")
-def timesheets(scope:Literal["mine","all"]="mine",user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+def timesheets(scope:Literal["mine","all","approvals"]="mine",
+    user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     if scope=="all" and user.role not in HR:raise HTTPException(403)
     q=select(Timesheet).order_by(Timesheet.work_date.desc(),Timesheet.id.desc())
     if scope=="mine":q=q.where(Timesheet.employee_id==user.id)
+    elif scope=="approvals":
+        q=q.where(Timesheet.status=="submitted",Timesheet.employee_id!=user.id)
+        if user.role not in HR:
+            q=q.join(EmployeeCore,EmployeeCore.employee_id==Timesheet.employee_id).where(
+                EmployeeCore.manager_id==user.id)
     return [{"id":t.id,"employee_id":t.employee_id,"work_date":t.work_date,"project_id":t.project_id,
-             "task":t.task,"hours":float(t.hours),"note":t.note,"status":t.status} for t in db.scalars(q).all()]
+             "task":t.task,"hours":float(t.hours),"note":t.note,"status":t.status,
+             "reviewed_by":t.reviewed_by,"reviewed_at":t.reviewed_at} for t in db.scalars(q.limit(500)).all()]
 
 @router.post("/timesheets",status_code=201)
 def create_timesheet(body:TimesheetIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
@@ -405,9 +434,12 @@ def create_timesheet(body:TimesheetIn,user:Employee=Depends(current_user),db:Ses
     if body.project_id is not None:
         from .project_management import ProjectDetail
         detail=db.get(ProjectDetail,body.project_id)
-        if not db.get(Project,body.project_id) or (
-            user.role not in HR and (not detail or detail.sourced_by_id!=user.id)):
-            raise HTTPException(422,detail={"field":"project_id","message":"Select one of your sourced projects."})
+        assignment=db.get(TimeProjectAssignment,(user.id,body.project_id))
+        has_project_access=(detail is not None and (detail.sourced_by_id==user.id or
+                            (assignment is not None and assignment.active)))
+        if not db.get(Project,body.project_id) or (user.role not in HR and not has_project_access):
+            raise HTTPException(422,detail={"field":"project_id","message":
+                "Select a project assigned to you or sourced by you."})
     used=db.scalar(select(func.coalesce(func.sum(Timesheet.hours),0)).where(
          Timesheet.employee_id==user.id,Timesheet.work_date==body.work_date)) or 0
     if Decimal(used)+body.hours>24:raise HTTPException(422,detail={"field":"hours","message":"Daily timesheets cannot exceed 24 hours."})
@@ -421,3 +453,75 @@ def submit_timesheet(timesheet_id:int,user:Employee=Depends(current_user),db:Ses
     if row.employee_id!=user.id:raise HTTPException(403)
     if row.status!="draft":raise HTTPException(409,"Already submitted")
     row.status="submitted";db.commit();return {"status":row.status}
+
+@router.put("/timesheets/{timesheet_id}")
+def update_timesheet(timesheet_id:int,body:TimesheetIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    row=db.get(Timesheet,timesheet_id)
+    if row is None:raise HTTPException(404,"Timesheet not found")
+    if row.employee_id!=user.id:raise HTTPException(403,"You can edit only your own timesheets")
+    if row.status not in ("draft","rejected"):
+        raise HTTPException(409,"Submitted or approved timesheets are locked")
+    if body.project_id is not None:
+        from .main import Project
+        from .project_management import ProjectDetail
+        detail=db.get(ProjectDetail,body.project_id)
+        assn=db.get(TimeProjectAssignment,(user.id,body.project_id))
+        if not db.get(Project,body.project_id) or (
+            user.role not in HR and (not detail or (
+                detail.sourced_by_id!=user.id and not (assn and assn.active)))):
+            raise HTTPException(422,detail={"field":"project_id",
+                "message":"Choose a project assigned to you or sourced by you."})
+    used=db.scalar(select(func.coalesce(func.sum(Timesheet.hours),0)).where(
+        Timesheet.employee_id==user.id,Timesheet.work_date==body.work_date,
+        Timesheet.id!=timesheet_id)) or 0
+    if Decimal(used)+body.hours>24:
+        raise HTTPException(422,detail={"field":"hours","message":"Daily timesheets cannot exceed 24 hours"})
+    for key,value in body.model_dump().items():setattr(row,key,value)
+    row.status="draft";row.reviewed_by=None;row.reviewed_at=None
+    db.commit()
+    return {"id":row.id,"status":row.status,"hours":row.hours}
+
+
+@router.post("/timesheets/{timesheet_id}/review")
+def review_timesheet(timesheet_id:int,body:TimesheetReviewIn,
+    user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    row=db.scalar(select(Timesheet).where(Timesheet.id==timesheet_id).with_for_update())
+    if row is None:raise HTTPException(404,"Timesheet not found")
+    if row.employee_id==user.id:raise HTTPException(403,"You cannot approve your own timesheet")
+    if not permitted(db,user,row.employee_id):
+        raise HTTPException(403,"Only assigned manager or HR can review this timesheet")
+    if row.status!="submitted":raise HTTPException(409,"Only submitted timesheets can be reviewed")
+    row.status="approved" if body.approve else "rejected"
+    row.reviewed_by=user.id;row.reviewed_at=NOW()
+    db.add(TimeAudit(employee_id=row.employee_id,actor_id=user.id,
+        event="timesheet_"+row.status,note=body.reason.strip()))
+    db.commit()
+    return {"id":row.id,"status":row.status,"reviewed_by":user.id}
+
+
+@router.put("/project-assignments")
+def assign_project(body:AssignmentIn,user:Employee=Depends(only_hr),db:Session=Depends(db_session)):
+    from .main import Project
+    if not db.get(Employee,body.employee_id):
+        raise HTTPException(422,detail={"field":"employee_id","message":"Employee not found"})
+    if not db.get(Project,body.project_id):
+        raise HTTPException(422,detail={"field":"project_id","message":"Project not found"})
+    row=db.get(TimeProjectAssignment,(body.employee_id,body.project_id))
+    if row is None:
+        row=TimeProjectAssignment(employee_id=body.employee_id,project_id=body.project_id,
+                                  assigned_by=user.id)
+        db.add(row)
+    row.active=body.active;row.assigned_by=user.id
+    db.commit()
+    return {"employee_id":body.employee_id,"project_id":body.project_id,"active":row.active}
+
+
+@router.get("/project-assignments")
+def list_project_assignments(employee_id:int|None=None,
+    user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    if user.role not in HR:employee_id=user.id
+    q=select(TimeProjectAssignment)
+    if employee_id:q=q.where(TimeProjectAssignment.employee_id==employee_id)
+    return [{"employee_id":x.employee_id,"project_id":x.project_id,"active":x.active}
+            for x in db.scalars(q).all()]
+

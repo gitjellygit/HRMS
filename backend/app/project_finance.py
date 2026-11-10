@@ -74,6 +74,13 @@ def charge_rate(db:Session,project_id:int,recipient_type:str,placement_rate:Deci
     return Decimal(row.pricing_value)
 
 
+class InvoiceSeries(Base):
+    """Annual, independently allocated human-readable billing references."""
+    __tablename__="finance_invoice_series"
+    fiscal_year:Mapped[int]=mapped_column(Integer,primary_key=True)
+    next_number:Mapped[int]=mapped_column(Integer,default=1)
+
+
 class ClientInvoice(Base):
     __tablename__="finance_invoices"
     id:Mapped[int]=mapped_column(primary_key=True)
@@ -101,6 +108,15 @@ class ClientInvoice(Base):
     paid_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
     reference:Mapped[str]=mapped_column(String(120),default="")
     replaces_invoice_id:Mapped[int|None]=mapped_column(ForeignKey("finance_invoices.id"),nullable=True)
+    invoice_number:Mapped[str|None]=mapped_column(String(50),unique=True,nullable=True)
+    tax_scheme:Mapped[str]=mapped_column(String(20),default="generic")
+    supplier_gstin:Mapped[str]=mapped_column(String(15),default="")
+    recipient_gstin:Mapped[str]=mapped_column(String(15),default="")
+    sac_code:Mapped[str]=mapped_column(String(8),default="")
+    place_of_supply:Mapped[str]=mapped_column(String(2),default="")
+    cgst_amount:Mapped[Decimal]=mapped_column(Numeric(14,2),default=Decimal(0))
+    sgst_amount:Mapped[Decimal]=mapped_column(Numeric(14,2),default=Decimal(0))
+    igst_amount:Mapped[Decimal]=mapped_column(Numeric(14,2),default=Decimal(0))
     __table_args__=(Index("uq_finance_project_invoice_window_active",
                            "project_id","period_start","period_end","recipient_type",
                            unique=True,postgresql_where=text("status <> 'void'")),)
@@ -130,6 +146,22 @@ class ProjectStateIn(BaseModel):
     reason:str=Field(min_length=10,max_length=500)
     end_date:date|None=None
 
+class GSTDetailsIn(BaseModel):
+    """GST draft calculation inputs; not statutory issuance or IRN validation."""
+    supplier_gstin:str=Field(pattern=r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$")
+    recipient_gstin:str=Field(pattern=r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$")
+    sac_code:str=Field(pattern=r"^[0-9]{6}$")
+    place_of_supply:str=Field(pattern=r"^[0-9]{2}$")
+
+    @model_validator(mode="after")
+    def valid_location(self):
+        if not 1<=int(self.place_of_supply)<=38:
+            raise ValueError("Enter a valid two-digit Indian state/UT GST code.")
+        if not 1<=int(self.supplier_gstin[:2])<=38 or not 1<=int(self.recipient_gstin[:2])<=38:
+            raise ValueError("GSTIN must start with an Indian state/UT code.")
+        return self
+
+
 class InvoiceIn(BaseModel):
     project_id:int
     period_start:date
@@ -137,6 +169,7 @@ class InvoiceIn(BaseModel):
     quantity:Decimal=Field(gt=0,le=100000000,decimal_places=2)
     tax_rate_pct:Decimal|None=Field(default=None,ge=0,le=100,decimal_places=2)
     replaces_invoice_id:int|None=Field(default=None,gt=0)
+    gst_details:GSTDetailsIn|None=None
     issue_date:date=Field(default_factory=date.today)
     @model_validator(mode="after")
     def validate_window(self):
@@ -175,13 +208,29 @@ def live_period(p:Project,d:ProjectDetail,profile:ProjectBilling|None,start:date
     if end>as_of:raise HTTPException(422,"Cannot invoice future service dates")
     if profile and profile.end_date and end>profile.end_date:
         raise HTTPException(409,"Invoice period exceeds project end date")
+def allocate_invoice_number(db:Session,issued:date):
+    fiscal_year=issued.year if issued.month>=4 else issued.year-1
+    # Advisory lock serializes first allocation for this financial year across workers.
+    db.execute(select(func.pg_advisory_xact_lock(84523,fiscal_year)))
+    series=db.get(InvoiceSeries,fiscal_year,with_for_update=True)
+    if series is None:
+        series=InvoiceSeries(fiscal_year=fiscal_year,next_number=1)
+        db.add(series);db.flush()
+    number=series.next_number
+    series.next_number+=1
+    return f"JG/{fiscal_year}-{str(fiscal_year+1)[-2:]}/{number:06d}"
+
+
 def invoice_view(x:ClientInvoice,as_of:date|None=None):
     as_of=as_of or date.today()
     state="overdue" if x.status=="sent" and x.due_date<as_of else x.status
     return {k:getattr(x,k) for k in ("id","project_id","recipient_type","recipient_name",
       "recipient_email","recipient_phone","billing_address","period_start","period_end",
       "issue_date","due_date","quantity","unit_rate","subtotal","tax_rate_pct","tax_amount",
-      "total","currency","source","reference","replaces_invoice_id")} | {"status":state,"stored_status":x.status}
+      "total","currency","source","reference","replaces_invoice_id","invoice_number",
+      "tax_scheme","supplier_gstin","recipient_gstin","sac_code","place_of_supply",
+      "cgst_amount","sgst_amount","igst_amount")} | {"status":state,"stored_status":x.status,
+      "statutory_tax_invoice":False}
 def billing_view(p:Project,d:ProjectDetail,profile:ProjectBilling|None):
     data=serialize(p,d)
     data["billing"]=({"recipient_type":profile.recipient_type,"recipient_name":profile.recipient_name,
@@ -193,7 +242,8 @@ def billing_view(p:Project,d:ProjectDetail,profile:ProjectBilling|None):
 def audit(db:Session,user:Employee,project_id:int,event:str,note:str=""):
     db.add(FinanceAudit(project_id=project_id,actor_id=user.id,event=event,note=note[:2000]))
 def create_row(db:Session,user:Employee,p:Project,d:ProjectDetail,c:ProjectBilling,
-               start:date,end:date,quantity:Decimal,tax:Decimal|None,issued:date,source:str):
+               start:date,end:date,quantity:Decimal,tax:Decimal|None,issued:date,source:str,
+               gst_details:GSTDetailsIn|None=None):
     # Serialize invoice creation and project status changes before reading the
     # service window; the partial unique index is the final duplicate guard.
     db.execute(select(Project.id).where(Project.id==p.id).with_for_update()).first()
@@ -210,6 +260,16 @@ def create_row(db:Session,user:Employee,p:Project,d:ProjectDetail,c:ProjectBilli
     pricing=db.get(ProjectCharge,(p.id,c.recipient_type))
     applied_tax=Decimal(tax) if tax is not None else Decimal(pricing.tax_rate_pct if pricing else 0)
     subtotal=money(rate*quantity);tax_amount=money(subtotal*applied_tax/Decimal(100))
+    if gst_details and d.currency!="INR":
+        raise HTTPException(422,detail={"field":"gst_details",
+            "message":"GST draft calculations require INR project currency."})
+    scheme="generic";cgst=Decimal(0);sgst=Decimal(0);igst=Decimal(0)
+    if gst_details:
+        scheme="cgst_sgst" if gst_details.supplier_gstin[:2]==gst_details.place_of_supply else "igst"
+        if scheme=="cgst_sgst":
+            cgst=money(tax_amount/2);sgst=tax_amount-cgst
+        else:
+            igst=tax_amount
     x=ClientInvoice(project_id=p.id,recipient_type=c.recipient_type,
        recipient_name=c.recipient_name,recipient_email=c.recipient_email,
        recipient_phone=c.recipient_phone,billing_address=c.billing_address,
@@ -217,7 +277,13 @@ def create_row(db:Session,user:Employee,p:Project,d:ProjectDetail,c:ProjectBilli
        due_date=issued+timedelta(days=c.payment_terms_days),quantity=quantity,
        unit_rate=rate,subtotal=subtotal,tax_rate_pct=applied_tax,
        tax_amount=tax_amount,total=subtotal+tax_amount,currency=d.currency,
-       created_by=user.id,source=source)
+       created_by=user.id,source=source,
+       invoice_number=allocate_invoice_number(db,issued),tax_scheme=scheme,
+       supplier_gstin=gst_details.supplier_gstin if gst_details else "",
+       recipient_gstin=gst_details.recipient_gstin if gst_details else "",
+       sac_code=gst_details.sac_code if gst_details else "",
+       place_of_supply=gst_details.place_of_supply if gst_details else "",
+       cgst_amount=cgst,sgst_amount=sgst,igst_amount=igst)
     db.add(x);db.flush();audit(db,user,p.id,"invoice_created",source)
     return x
 
@@ -376,7 +442,8 @@ def create_invoice(body:InvoiceIn,user:Employee=Depends(current_user),db:Session
             raise HTTPException(422,detail={"field":"replaces_invoice_id",
                 "message":"Choose a voided invoice for the same project, recipient and billing period."})
     x=create_row(db,user,p,d,c,body.period_start,body.period_end,body.quantity,
-                 body.tax_rate_pct,body.issue_date,"replacement" if replacement else "manual")
+                 body.tax_rate_pct,body.issue_date,"replacement" if replacement else "manual",
+                 gst_details=body.gst_details)
     if replacement:
         x.replaces_invoice_id=replacement.id
         from .billing_reviews import BillableReview
@@ -448,20 +515,42 @@ def run_schedule(body:ScheduleIn,user:Employee=Depends(current_user),db:Session=
 @router.post("/invoices/{invoice_id}/status")
 def change_status(invoice_id:int,body:InvoiceStatusIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     authorized(user)
-    x=db.get(ClientInvoice,invoice_id)
+    x=db.scalar(select(ClientInvoice).where(ClientInvoice.id==invoice_id).with_for_update())
     if not x:raise HTTPException(404,"Invoice not found")
-    if x.status in ("paid","void"):raise HTTPException(409,"Final invoice cannot be changed")
+    if x.status in ("paid","void","settled_by_credit"):raise HTTPException(409,"Final invoice cannot be changed")
     if body.status=="sent" and x.status!="draft":raise HTTPException(409,"Only draft can be sent")
     if body.status=="paid" and x.status!="sent":raise HTTPException(409,"Invoice must be marked sent first")
+    if body.status=="void":
+        from .finance_ledger import settlement
+        current=settlement(db,x)
+        if current["paid"]>0 or current["credited"]>0:
+            raise HTTPException(409,"Reverse recorded payments or credits before voiding this invoice.")
     if body.status=="void" and len(body.reference.strip())<10:
         raise HTTPException(422,detail={"field":"reference",
             "message":"Explain why the invoice is being voided (at least 10 characters)."})
     x.status=body.status;x.reference=body.reference.strip()
     if body.status=="void":
         from .billing_reviews import BillableReview
+        from .finance_ledger import TimesheetInvoiceAllocation
         for review in db.scalars(select(BillableReview).where(BillableReview.invoice_id==x.id)):
             review.status="voided"
-    if body.status=="paid":x.paid_at=now()
+        for claim in db.scalars(select(TimesheetInvoiceAllocation).where(
+                TimesheetInvoiceAllocation.invoice_id==x.id,
+                TimesheetInvoiceAllocation.active.is_(True))):
+            claim.active=False
+    if body.status=="paid":
+        # Legacy one-click 'mark paid' must still create a cash ledger entry,
+        # otherwise ageing/settlement reports silently disagree with status.
+        from .finance_ledger import settlement, InvoicePayment
+        balance=settlement(db,x)
+        if balance["outstanding"]<=0:raise HTTPException(409,"No outstanding balance to record")
+        payment=InvoicePayment(invoice_id=x.id,amount=balance["outstanding"],
+            received_on=date.today(),reference=("manual-paid-"+str(x.id)+"-"+str(int(now().timestamp()))),
+            recorded_by=user.id)
+        db.add(payment)
+        x.paid_at=now()
+        audit(db,user,x.project_id,"invoice_payment_recorded",
+              f"Legacy mark-paid recorded {balance['outstanding']} {x.currency} as settlement.")
     audit(db,user,x.project_id,"invoice_"+body.status,body.reference)
     db.commit();return invoice_view(x)
 
@@ -477,7 +566,7 @@ def invoice_pdf(invoice_id:int,user:Employee=Depends(current_user),db:Session=De
     buf=io.BytesIO();doc=SimpleDocTemplate(buf,pagesize=A4);styles=getSampleStyleSheet()
     safe=lambda s:escape(str(s or ""))
     story=[Paragraph("JellyGit — Invoice Draft / Recorded Invoice",styles["Heading1"]),
-      Spacer(1,12),Paragraph("Invoice #"+str(x.id)+" — "+safe(x.status).upper(),styles["Normal"]),
+      Spacer(1,12),Paragraph("Invoice "+safe(x.invoice_number or ("#"+str(x.id)))+" — "+safe(x.status).upper(),styles["Normal"]),
       Paragraph("Bill to: "+safe(x.recipient_name),styles["Normal"]),
       Paragraph("Email: "+safe(x.recipient_email)+" | Phone: "+safe(x.recipient_phone),styles["Normal"]),
       Paragraph("Address: "+safe(x.billing_address),styles["Normal"]),
@@ -485,7 +574,18 @@ def invoice_pdf(invoice_id:int,user:Employee=Depends(current_user),db:Session=De
       Paragraph("Issued: "+str(x.issue_date)+" | Due: "+str(x.due_date),styles["Normal"]),Spacer(1,12)]
     story.append(Table([["Qty","Rate","Subtotal","Tax","Total"],
        [str(x.quantity),str(x.unit_rate),str(x.subtotal),str(x.tax_amount),str(x.total)+" "+x.currency]]))
-    story.append(Spacer(1,15));story.append(Paragraph("Payment is tracked in HRMS; this document is not evidence of payment.",styles["Normal"]))
+    if x.tax_scheme in ("igst","cgst_sgst"):
+        story.extend([Spacer(1,10),
+            Paragraph("Draft Indian GST calculation - verify all tax fields and statutory requirements before issuance.",styles["Normal"]),
+            Paragraph("Supplier GSTIN: "+safe(x.supplier_gstin),styles["Normal"]),
+            Paragraph("Recipient GSTIN: "+safe(x.recipient_gstin),styles["Normal"]),
+            Paragraph("SAC: "+safe(x.sac_code)+" | Place of supply code: "+safe(x.place_of_supply),styles["Normal"]),
+            Paragraph("CGST: "+str(x.cgst_amount)+" | SGST: "+str(x.sgst_amount)+" | IGST: "+str(x.igst_amount),styles["Normal"])])
+    else:
+        story.append(Paragraph("Internal billing record - not a statutory tax invoice.",styles["Normal"]))
+    story.append(Spacer(1,15));story.append(Paragraph(
+        "Invoice draft for review. This document is not evidence of payment or certified tax compliance.",
+        styles["Normal"]))
     doc.build(story);buf.seek(0)
     return StreamingResponse(buf,media_type="application/pdf",
       headers={"Content-Disposition":f'attachment; filename="invoice-{x.id}.pdf"',
