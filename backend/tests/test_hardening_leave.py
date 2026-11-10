@@ -36,9 +36,8 @@ def test_hr_override_requires_reason_and_inactive_overview_is_safe():
         assert escalated.status_code==200,escalated.text
         history=c.get(f"/leave/requests/{leave_id}/history").json()
         assert any(x["action"]=="override_approve" for x in history)
-        exited=c.post(f"/core/employees/{employee}/lifecycle",headers=ORIGIN,json={
-            "event":"exited","note":"Testing inactive employee on HR dashboard",
-            "effective_date":str(date.today())})
+        exited=c.post(f"/core/employees/{employee}/deactivate",headers=ORIGIN,json={
+            "reason":"HR dashboard must exclude an inactive test employee"})
         assert exited.status_code==200,exited.text
         overview=c.get(f"/leave/hr-overview?fy={fy_start_year(date.today())}")
         assert overview.status_code==200,overview.text
