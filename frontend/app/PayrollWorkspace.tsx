@@ -34,6 +34,7 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
  const [payReason,setPayReason]=useState("");
  const [salarySection,setSalarySection]=useState<"structure"|"statutory"|"components">("structure");
  const [reviewLoading,setReviewLoading]=useState<number|null>(null);
+ const [resolutionReasons,setResolutionReasons]=useState<Record<number,string>>({});
  const reviewRef=useRef<HTMLDivElement>(null);
  const salaryInputRef=useRef<HTMLDivElement>(null);
  const [validation,setValidation]=useState<string[]>([]);
@@ -63,6 +64,7 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
   setEmployees(a);setStructures(b);setRules(c);setRuns(d);setSlips(e);setExpenses(f);setClaims(g);
  }
  useEffect(()=>{void refresh()},[api,user.id]);
+ useEffect(()=>{if(runDetail)reviewRef.current?.scrollIntoView({behavior:"smooth",block:"start"})},[runDetail]);
  useEffect(()=>{
   const p=structures.find(s=>String(s.employee_id)===chosen),t=rules.find(s=>String(s.employee_id)===chosen);
   setSalary(p?{...p}:{basic:"",hra:"",allowances:"",other_deductions:"",effective_from:today()});
@@ -108,7 +110,7 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
   try{
    const detail=await call("/runs/"+id);
    setRunDetail(detail);
-   window.requestAnimationFrame(()=>reviewRef.current?.scrollIntoView({behavior:"smooth",block:"start"}));
+   // The rendered review panel is scrolled into view by the runDetail effect.
   }catch(e){setError("Could not open payroll run #"+id+": "+(e as Error).message)}
   finally{setReviewLoading(null)}
  }
@@ -232,14 +234,31 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
     <button className="employee-primary" disabled={busy} onClick={()=>void submit(()=>call("/runs","POST",{period:month}),"Payroll draft calculated.")}>Calculate draft</button></div>
    <div className="ops-table">{runs.map(r=><div className="ops-row" key={r.id}><strong>{r.period}</strong><span>{r.status}</span>
     <button className="employee-cancel" disabled={reviewLoading!==null} onClick={()=>void reviewRun(r.id)}>{reviewLoading===r.id?"Opening…":"Review details"}</button>
-    {r.status==="draft"&&hr&&<button className="employee-primary" disabled={busy} onClick={()=>void submit(()=>call("/runs/"+r.id+"/approve","POST"),"Payroll approved.")}>Approve</button>}
+    {r.status==="draft"&&hr&&(r.created_by===user.id?
+      <span className="payroll-approval-note" title="The payroll creator cannot approve their own run"><ShieldCheck size={15}/> Another HR/Admin must approve this run.</span>:
+      <button className="employee-primary" disabled={busy} onClick={()=>void submit(()=>call("/runs/"+r.id+"/approve","POST"),"Payroll approved.")}>Approve payroll</button>)}
     {r.status==="approved"&&hr&&<button className="employee-primary" disabled={busy} onClick={()=>void submit(()=>call("/runs/"+r.id+"/publish","POST"),"Payslips published.")}>Publish</button>}
    </div>)}</div>
    {runDetail&&<div className="ops-breakdown payroll-run-review" ref={reviewRef} tabIndex={-1}><div className="payroll-review-header"><strong>Payroll review details</strong><button type="button" className="employee-cancel" onClick={()=>setRunDetail(null)}>Close review</button></div><h4>Run {runDetail.period} · {runDetail.status}</h4><p>Gross {cash(runDetail.gross_total)} · Net {cash(runDetail.net_total)} · {runDetail.exceptions} attendance exceptions</p>
-    <div className="table-wrap"><table><thead><tr><th>Employee</th><th>Gross</th><th>LOP days</th><th>LOP</th><th>Net</th><th>Exceptions</th></tr></thead><tbody>{runDetail.lines?.map((line:Row)=><tr key={line.id}><td>#{line.employee_id}</td><td>{cash(line.gross)}</td><td>{line.lop_days}</td><td>{cash(line.lop_amount)}</td><td>{cash(line.net)}</td><td>{line.exceptions||"None"}{line.exceptions&&hr&&<button className="employee-cancel" disabled={busy}
-   onClick={()=>{const reason=window.prompt("Explain the verified attendance exception (20+ characters).");
-    if(reason)void submit(()=>call("/runs/"+runDetail.id+"/lines/"+line.id+"/resolve-exception","POST",{reason}),"Attendance exception reviewed.");
-   }}>Resolve with reason</button>}</td></tr>)}</tbody></table></div></div>}
+    {runDetail.status==="draft"&&hr&&<div className="payroll-review-actions">
+      <p className="field-help">Changed salary or statutory settings? Recalculate the draft to refresh its payroll lines and exceptions. Previously approved or published runs cannot be recalculated.</p>
+      <button type="button" className="employee-cancel" disabled={busy} onClick={()=>void submit(async()=>{
+       await call("/runs/"+runDetail.id+"/recalculate","POST");
+       setRunDetail(await call("/runs/"+runDetail.id));
+      },"Draft recalculated. Review the updated figures and unresolved exceptions.")}>Recalculate this draft</button>
+     </div>}
+    <div className="table-wrap"><table><thead><tr><th>Employee</th><th>Gross</th><th>LOP days</th><th>LOP</th><th>Net</th><th>Exceptions</th></tr></thead>
+     <tbody>{runDetail.lines?.map((line:Row)=><tr key={line.id}><td>#{line.employee_id}</td><td>{cash(line.gross)}</td><td>{line.lop_days}</td><td>{cash(line.lop_amount)}</td><td>{cash(line.net)}</td>
+      <td>{line.exceptions?<div className="payroll-exception-editor"><p>{line.exceptions}</p>{hr&&runDetail.status==="draft"&&<>
+       <textarea rows={2} aria-label={"Exception review reason for employee "+line.employee_id} placeholder="Explain how the exception was verified (20+ characters)"
+        value={resolutionReasons[line.id]||""} onChange={e=>setResolutionReasons(v=>({...v,[line.id]:e.target.value}))}/>
+       <button type="button" className="employee-cancel" disabled={busy} onClick={()=>{
+        const reason=(resolutionReasons[line.id]||"").trim();
+        if(reason.length<20){setError("Exception for employee #"+line.employee_id+": provide at least 20 characters explaining how it was verified.");return}
+        void submit(async()=>{await call("/runs/"+runDetail.id+"/lines/"+line.id+"/resolve-exception","POST",{reason});
+         setRunDetail(await call("/runs/"+runDetail.id));
+        },"Attendance exception resolved and audit reason recorded.");
+       }}>Resolve exception</button></>}</div>:"No exceptions"}</td></tr>)}</tbody></table></div></div>}
   </section>}
   {tab==="payslips"&&<section className="employee-surface">
    <h3><FileDown size={19}/> Published payslips</h3><p className="muted">Confidential — only published payslips can be downloaded by authorized users.</p>
