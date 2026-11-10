@@ -361,50 +361,14 @@ def approved_days(leaves: list[Leave], *, year: int, kind: str) -> float:
     return float(total)
 
 
-@router.put("/leave-entitlements")
-def set_leave_entitlement(body: LeaveEntitlementIn, user: Employee = Depends(require_hr), db: Session = Depends(db_session)):
-    employee_or_404(db, body.employee_id)
-    row = db.scalar(select(LeaveEntitlement).where(
-        LeaveEntitlement.employee_id == body.employee_id, LeaveEntitlement.year == body.year,
-        LeaveEntitlement.leave_type == body.leave_type).with_for_update())
-    if row is None:
-        row = LeaveEntitlement(employee_id=body.employee_id, year=body.year, leave_type=body.leave_type, allocated_days=body.allocated_days)
-        db.add(row)
-    else:
-        row.allocated_days = body.allocated_days
-    db.commit()
-    return {"employee_id":body.employee_id, "year":body.year, "leave_type":body.leave_type, "allocated_days":float(body.allocated_days)}
+@router.put("/leave-entitlements",status_code=410)
+def set_leave_entitlement(user:Employee=Depends(require_hr)):
+    raise HTTPException(410,detail="Legacy calendar-year entitlement edits are retired. Use /leave/allocations with April–March financial years.")
 
 
-@router.get("/hr-overview")
-def hr_overview(year: int = Query(default=date.today().year, ge=2020, le=2100), user: Employee = Depends(require_hr),
-                db: Session = Depends(db_session)):
-    employees = db.scalars(select(Employee).order_by(Employee.name)).all()
-    entitlements = db.scalars(select(LeaveEntitlement).where(LeaveEntitlement.year == year)).all()
-    all_leaves = db.scalars(select(Leave).where(Leave.start_date <= date(year,12,31), Leave.end_date >= date(year,1,1))).all()
-    attendance = db.scalars(select(Attendance).where(Attendance.punch_out.is_(None))).all()
-    pending_count = sum(1 for leave in all_leaves if leave.status == "pending")
-    entitlements_by_employee: dict[int,list[LeaveEntitlement]] = {}
-    leaves_by_employee: dict[int,list[Leave]] = {}
-    for row in entitlements:
-        entitlements_by_employee.setdefault(row.employee_id, []).append(row)
-    for row in all_leaves:
-        leaves_by_employee.setdefault(row.employee_id, []).append(row)
-    open_shifts = {a.employee_id for a in attendance}
-    rows = []
-    for employee in employees:
-        balance = [
-            {"leave_type":e.leave_type, "allocated":float(e.allocated_days),
-             "used":approved_days(leaves_by_employee.get(employee.id,[]), year=year, kind=e.leave_type),
-             "remaining":float(e.allocated_days)-approved_days(leaves_by_employee.get(employee.id,[]), year=year, kind=e.leave_type)}
-            for e in entitlements_by_employee.get(employee.id,[])
-        ]
-        rows.append({"id":employee.id, "name":employee.name, "department":employee.department,
-                     "role":employee.role, "status":employee.status,
-                     "currently_checked_in":employee.id in open_shifts,
-                     "leave_balances":balance})
-    return {"year":year, "headcount":len([e for e in employees if e.status == "active"]),
-            "pending_leave_requests":pending_count, "currently_checked_in":len(open_shifts), "employees":rows}
+@router.get("/hr-overview",status_code=410)
+def hr_overview(user:Employee=Depends(require_hr)):
+    raise HTTPException(410,detail="Legacy leave dashboard is retired. Use /leave/hr-overview for consistent April–March balances.")
 
 
 @router.get("/roles")
