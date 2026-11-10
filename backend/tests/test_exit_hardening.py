@@ -23,6 +23,10 @@ def test_exit_tasks_block_final_settlement_and_templates_can_be_disabled():
             "notice_days":30})
         assert case.status_code==201,case.text
         case_id=case.json()["id"]
+        deactivate=client.post(f"/core/employees/{worker}/deactivate",headers=ORIGIN,
+            json={"reason":"Attempt to skip pending clearance and final settlement"})
+        assert deactivate.status_code==409,deactivate.text
+        assert deactivate.json()["detail"]["field"]=="exit_case"
         tasks=client.get(f"/exit-workflow/cases/{case_id}/tasks")
         assert tasks.status_code==200,tasks.text
         assert len(tasks.json())>=1
