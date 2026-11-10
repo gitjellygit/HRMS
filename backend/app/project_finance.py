@@ -464,8 +464,13 @@ def change_status(invoice_id:int,body:InvoiceStatusIn,user:Employee=Depends(curr
     x.status=body.status;x.reference=body.reference.strip()
     if body.status=="void":
         from .billing_reviews import BillableReview
+        from .finance_ledger import TimesheetInvoiceAllocation
         for review in db.scalars(select(BillableReview).where(BillableReview.invoice_id==x.id)):
             review.status="voided"
+        for claim in db.scalars(select(TimesheetInvoiceAllocation).where(
+                TimesheetInvoiceAllocation.invoice_id==x.id,
+                TimesheetInvoiceAllocation.active.is_(True))):
+            claim.active=False
     if body.status=="paid":
         # Legacy one-click 'mark paid' must still create a cash ledger entry,
         # otherwise ageing/settlement reports silently disagree with status.
