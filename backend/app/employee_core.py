@@ -605,7 +605,7 @@ def reassign_reports_for_inactive_manager(db:Session,employee_id:int,actor:Emplo
     fallback_staff=list(db.scalars(select(Employee).where(
         Employee.status=="active",Employee.role.in_(ADMIN)).order_by(Employee.id)))
     for report in reports:
-        candidates=[report.hod_id,core.manager_id]+[x.id for x in fallback_staff]
+        candidates=[report.hod_id,core.manager_id if core else None]+[x.id for x in fallback_staff]
         replacement_id=None
         for candidate in dict.fromkeys(candidates):
             if candidate is None or candidate in (employee_id,report.employee_id):
@@ -650,6 +650,12 @@ def change_lifecycle(employee_id: int, body: LifecycleIn, user: Employee = Depen
         core = EmployeeCore(employee_id=employee_id)
         db.add(core)
     if body.event == "exited":
+        from .people_operations import ExitCase
+        settled=db.scalar(select(ExitCase.id).where(
+            ExitCase.employee_id==employee_id,ExitCase.status=="settled").order_by(ExitCase.id.desc()))
+        if not settled:
+            raise HTTPException(409,detail={"field":"exit_case",
+                "message":"Complete the employee exit case, checklist and F&F settlement before marking the employee as exited."})
         reassign_reports_for_inactive_manager(db,employee_id,user,body.effective_date)
         employee.status = "inactive"
     core.lifecycle = body.event
