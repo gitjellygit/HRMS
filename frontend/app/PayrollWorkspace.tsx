@@ -79,7 +79,7 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
   if(!chosen)problems.push("Select the employee whose payroll configuration you want to change.");
   if(payReason.trim().length<10)problems.push("Explain why this change is needed (at least 10 characters).");
   const fields=kind==="structure"?salaryFields:kind==="statutory"?statutoryFields:[["code","Component code"],["title","Display label"],["amount","Monthly amount"]] as const;
-  const source=kind==="structure"?salary:kind==="statutory"?statutory:component;
+  const source:Row=kind==="structure"?salary:kind==="statutory"?statutory:component;
   for(const [key,label] of fields){
    const value=source[key];
    if(value===undefined||value===null||String(value).trim()==="")problems.push(label+" is required.");
