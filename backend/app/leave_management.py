@@ -103,6 +103,22 @@ class LeaveNotice(Base):
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class LeaveEmailDelivery(Base):
+    """Transactionally queued leave email; in-app notification remains immediate."""
+    __tablename__="leave_email_outbox"
+    id:Mapped[int]=mapped_column(primary_key=True)
+    recipient_id:Mapped[int]=mapped_column(ForeignKey("employees.id"),index=True)
+    request_id:Mapped[int|None]=mapped_column(ForeignKey("leave_requests_v2.id"),nullable=True)
+    subject:Mapped[str]=mapped_column(String(160))
+    message:Mapped[str]=mapped_column(Text)
+    status:Mapped[str]=mapped_column(String(24),default="queued",index=True)
+    attempts:Mapped[int]=mapped_column(Integer,default=0)
+    last_error:Mapped[str]=mapped_column(String(500),default="")
+    created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),
+        default=lambda:datetime.now(timezone.utc))
+    sent_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
+
+
 class Encashment(Base):
     __tablename__ = "leave_encashment_requests"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -227,29 +243,71 @@ def org_manager(db: Session, employee_id: int) -> int | None:
 
 
 def notify(db: Session, recipient_id: int, message: str, request_id: int | None = None):
+    """In-app and email outbox entries share the leave workflow transaction."""
     db.add(LeaveNotice(recipient_id=recipient_id,request_id=request_id,message=message[:500]))
+    db.add(LeaveEmailDelivery(recipient_id=recipient_id,request_id=request_id,
+        subject="JellyGit HRMS: leave update",message=message[:500],status="queued"))
 
 
 def email_notice(email: str, subject: str, message: str):
-    """Best-effort email; in-app notification is durable even if SMTP is unavailable."""
+    """Transport used only by the outbox worker, never by an API request."""
     host=os.getenv("SMTP_HOST")
     sender=os.getenv("SMTP_FROM")
     if not host or not sender:
-        return
+        raise RuntimeError("SMTP_HOST and SMTP_FROM must be configured.")
     note=EmailMessage()
     note["From"]=sender
     note["To"]=email
     note["Subject"]=subject
     note.set_content(message)
-    try:
-        with smtplib.SMTP(host,int(os.getenv("SMTP_PORT","587")),timeout=4) as smtp:
-            smtp.starttls(context=ssl.create_default_context())
-            if os.getenv("SMTP_USER"):
-                smtp.login(os.getenv("SMTP_USER"),os.getenv("SMTP_PASSWORD",""))
-            smtp.send_message(note)
-    except (OSError,smtplib.SMTPException):
-        # In-app notices are the reliable notification channel.
-        return
+    with smtplib.SMTP(host,int(os.getenv("SMTP_PORT","587")),timeout=5) as smtp:
+        smtp.starttls(context=ssl.create_default_context())
+        if os.getenv("SMTP_USER"):
+            smtp.login(os.getenv("SMTP_USER"),os.getenv("SMTP_PASSWORD",""))
+        smtp.send_message(note)
+
+
+def deliver_queued_emails(db:Session,limit:int=25)->dict:
+    """Explicit worker invocation; serializes queued sends and records failures."""
+    delivered=failed=0
+    rows=db.scalars(select(LeaveEmailDelivery).where(
+        LeaveEmailDelivery.status.in_(("queued","retry"))).order_by(
+        LeaveEmailDelivery.id).limit(min(max(limit,1),100)).with_for_update(skip_locked=True)).all()
+    for item in rows:
+        employee=db.get(Employee,item.recipient_id)
+        item.attempts+=1
+        try:
+            if not employee or not employee.email:raise RuntimeError("Recipient email not available.")
+            email_notice(employee.email,item.subject,item.message)
+            item.status="sent";item.sent_at=datetime.now(timezone.utc);item.last_error=""
+            delivered+=1
+        except (OSError,smtplib.SMTPException,RuntimeError) as exc:
+            item.last_error=str(exc)[:500]
+            item.status="failed" if item.attempts>=5 else "retry"
+            failed+=1
+    db.commit()
+    return {"delivered":delivered,"failed":failed,"processed":len(rows)}
+
+
+@router.get("/email-outbox")
+def email_outbox(user:Employee=Depends(hr_only),db:Session=Depends(db_session)):
+    rows=db.scalars(select(LeaveEmailDelivery).order_by(
+        LeaveEmailDelivery.id.desc()).limit(100)).all()
+    return [{"id":item.id,"recipient_id":item.recipient_id,"request_id":item.request_id,
+             "status":item.status,"attempts":item.attempts,"error":item.last_error,
+             "created_at":item.created_at,"sent_at":item.sent_at} for item in rows]
+
+
+@router.post("/email-outbox/{delivery_id}/retry")
+def retry_delivery(delivery_id:int,user:Employee=Depends(hr_only),db:Session=Depends(db_session)):
+    item=db.scalar(select(LeaveEmailDelivery).where(
+        LeaveEmailDelivery.id==delivery_id).with_for_update())
+    if not item:raise HTTPException(404,"Email delivery not found")
+    if item.status=="sent":raise HTTPException(409,"This email has already been delivered.")
+    item.status="queued";item.attempts=0;item.last_error=""
+    db.commit()
+    return {"id":item.id,"status":"queued"}
+
 
 
 def dates_between(start: date,end: date):
@@ -512,12 +570,8 @@ def request_leave(body: LeaveIn,user: Employee = Depends(current_user),db: Sessi
     notify(db,user.id,f"Leave request #{row.id} submitted.",row.id)
     db.commit()
     db.refresh(row)
-    # External email is best effort; user has a durable in-app notification regardless.
-    if manager_id:
-        manager=db.get(Employee,manager_id)
-        if manager:
-            email_notice(manager.email,"JellyGit HRMS: leave approval pending",
-                         f"{user.name} requested {body.leave_type} leave. Review request #{row.id} in HRMS.")
+    # Email has been durably queued for all upcoming approvers and the requester.
+    # Run the separate worker to deliver messages; a failed SMTP never delays leave submission.
     return record_view(row)
 
 
