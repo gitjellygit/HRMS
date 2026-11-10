@@ -187,7 +187,7 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
     <button className="employee-primary" disabled={busy}>{editingTimesheetId?"Update draft timesheet":"Save hours"}</button>
     {editingTimesheetId&&<button type="button" className="employee-cancel" onClick={()=>{
       setEditingTimesheetId(null);setTimeForm({work_date:today(),task:"",hours:"",project_id:"",note:""});
-    }}>Cancel editing</button>
+    }}>Cancel editing</button>}
    </form></section>
    <section className="employee-surface"><h3>My time entries</h3><div className="time-list">{timesheets.length?timesheets.map(t=><div key={t.id}><strong>{t.task} · {t.hours}h</strong><span>{t.work_date} · {t.note||"No notes"}</span><small>{t.status}</small>{(t.status==="draft"||t.status==="rejected")&&<button className="employee-cancel" disabled={busy}
     onClick={()=>{setTimeForm({work_date:t.work_date,task:t.task,hours:String(t.hours),project_id:String(t.project_id||""),note:t.note||""});
