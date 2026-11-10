@@ -403,10 +403,11 @@ def upcoming_approvers(db: Session,row: LeaveRequest)->list[int]:
 
 
 @router.get("/hr-overview")
-def financial_year_hr_overview(fy: int=Query(default=fy_start_year(date.today()),ge=2020,le=2100),
+def financial_year_hr_overview(fy: int | None=Query(default=None,ge=2020,le=2100),
                                user: Employee=Depends(hr_only),db: Session=Depends(db_session)):
     from .main import Attendance
     from .employee_core import EmployeeCore
+    fy=fy if fy is not None else fy_start_year(date.today())
     staff=db.scalars(select(Employee).where(Employee.status=="active").order_by(Employee.name)).all()
     kinds=db.scalars(select(LeavePolicy.leave_type).where(LeavePolicy.active.is_(True))).all()
     ongoing=set(db.scalars(select(Attendance.employee_id).where(Attendance.punch_out.is_(None))).all())
@@ -466,8 +467,9 @@ def allocate(body: EntitlementIn,user: Employee = Depends(policy_admin),db: Sess
 
 
 @router.get("/balances")
-def balances(employee_id: int | None = None,year: int=Query(default=fy_start_year(date.today()),ge=2020,le=2100),
+def balances(employee_id: int | None = None,year: int | None=Query(default=None,ge=2020,le=2100),
              user: Employee = Depends(current_user),db: Session = Depends(db_session)):
+    year=year if year is not None else fy_start_year(date.today())
     target=employee_id or user.id
     if target!=user.id and user.role not in ADMIN:
         raise HTTPException(403,"Only HR can view another employee's balances")
@@ -651,8 +653,9 @@ def history(request_id: int,user: Employee = Depends(current_user),db: Session =
 
 
 @router.get("/holidays")
-def holidays(year: int=Query(default=date.today().year,ge=2020,le=2100),location: str="all",
+def holidays(year: int | None=Query(default=None,ge=2020,le=2100),location: str="all",
              user: Employee = Depends(current_user),db: Session = Depends(db_session)):
+    year=year if year is not None else date.today().year
     rows=db.scalars(select(Holiday).where(Holiday.holiday_date.between(date(year,1,1),date(year,12,31)),
         Holiday.location.in_(["all",location])).order_by(Holiday.holiday_date)).all()
     return [{"id":h.id,"name":h.name,"date":h.holiday_date,"location":h.location,"optional":h.optional} for h in rows]
@@ -672,9 +675,11 @@ def add_holiday(body: HolidayIn,user: Employee = Depends(hr_only),db: Session = 
 
 
 @router.get("/calendar")
-def team_calendar(month: int=Query(default=date.today().month,ge=1,le=12),
-                  year: int=Query(default=date.today().year,ge=2020,le=2100),
+def team_calendar(month: int | None=Query(default=None,ge=1,le=12),
+                  year: int | None=Query(default=None,ge=2020,le=2100),
                   user: Employee = Depends(current_user),db: Session = Depends(db_session)):
+    month=month if month is not None else date.today().month
+    year=year if year is not None else date.today().year
     if user.role in ADMIN:
         ids=db.scalars(select(Employee.id).where(Employee.status=="active")).all()
     elif user.role=="manager":
@@ -788,10 +793,11 @@ def review_encashment(encashment_id: int,approve: bool,user: Employee = Depends(
 
 
 @router.get("/reports")
-def reports(year: int=Query(default=date.today().year,ge=2020,le=2100),
+def reports(year: int | None=Query(default=None,ge=2020,le=2100),
             department: str | None=None,month: int | None=Query(default=None,ge=1,le=12),
             format: Literal["json","csv"]="json",
             user: Employee = Depends(hr_only),db: Session = Depends(db_session)):
+    year=year if year is not None else fy_start_year(date.today())
     fy_first,fy_last=fy_bounds(year)
     stmt=select(LeaveRequest,Employee).join(Employee,LeaveRequest.employee_id==Employee.id).where(
         LeaveRequest.start_date.between(fy_first,fy_last))
