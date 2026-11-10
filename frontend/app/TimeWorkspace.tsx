@@ -26,6 +26,10 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
  const [requests,setRequests]=useState<Row[]>([]);
  const [approvals,setApprovals]=useState<Row[]>([]);
  const [timesheets,setTimesheets]=useState<Row[]>([]);
+ const [timesheetApprovals,setTimesheetApprovals]=useState<Row[]>([]);
+ const [projectAssignments,setProjectAssignments]=useState<Row[]>([]);
+ const [assignmentEmployee,setAssignmentEmployee]=useState("");
+ const [assignmentProject,setAssignmentProject]=useState("");
  const [staff,setStaff]=useState<Row[]>([]);
  const [projectOptions,setProjectOptions]=useState<Row[]>([]);
  const [requestForm,setRequestForm]=useState<Row>({kind:"wfh",work_date:today(),end_date:"",
@@ -53,13 +57,16 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
    call("/daily"),call("/policy"),call("/shifts"),call("/roster"),call("/requests"),call("/requests?scope=approvals"),
    call("/timesheets"),
    isHR?fetch(api+"/employees",{credentials:"include"}).then(r=>r.ok?r.json():[]):Promise.resolve([]),
-   fetch(api+"/project-management/projects",{credentials:"include"}).then(r=>r.ok?r.json():[])
+   fetch(api+"/project-management/projects",{credentials:"include"}).then(r=>r.ok?r.json():[]),
+   isApprover?call("/timesheets?scope=approvals"):Promise.resolve([]),
+   call("/project-assignments")
   ]);
   const value=(n:number)=>fetches[n].status==="fulfilled"?(fetches[n] as PromiseFulfilledResult<any>).value:undefined;
   setDaily(value(0)||[]);setPolicy(value(1)||initialPolicy);setShifts(value(2)||[]);
   setRosters(value(3)||[]);setRequests(value(4)||[]);setApprovals(value(5)||[]);
   setTimesheets(value(6)||[]);setStaff(value(7)||[]);setProjectOptions(value(8)||[]);
- },[call,api,isHR]);
+  setTimesheetApprovals(value(9)||[]);setProjectAssignments(value(10)||[]);
+ },[call,api,isHR,isApprover]);
  useEffect(()=>{void load()},[load]);
  function clear(){setError("");setErrorField("");setNotice("")}
  function showError(err:unknown,field?:string){
@@ -166,13 +173,58 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
   {tab==="timesheets"&&<div className="time-columns">
    <section className="employee-surface"><h3>Log work hours</h3><form className="time-form" onSubmit={e=>{e.preventDefault();void execute(()=>call("/timesheets","POST",{...timeForm,hours:Number(timeForm.hours),project_id:timeForm.project_id?Number(timeForm.project_id):null}),"Timesheet entry saved.")}}>
     <label>Work date<input type="date" name="work_date" value={timeForm.work_date} onChange={e=>setTimeForm(v=>({...v,work_date:e.target.value}))}/></label>
-    <label>Project (optional)<select name="project_id" value={timeForm.project_id} onChange={e=>setTimeForm(v=>({...v,project_id:e.target.value}))}><option value="">Internal / unassigned task</option>{projectOptions.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label>
+    <label>Project (optional)<select name="project_id" value={timeForm.project_id} onChange={e=>setTimeForm(v=>({...v,project_id:e.target.value}))}><option value="">Internal / unassigned task</option>{projectOptions.filter(p=>isHR||p.sourced_by_id===user.id||
+      projectAssignments.some(a=>a.project_id===p.id&&a.employee_id===user.id&&a.active))
+      .map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label>
     <label>Task <span className="required">*</span><input name="task" required minLength={3} aria-invalid={errorField==="task"} value={timeForm.task} onChange={e=>setTimeForm(v=>({...v,task:e.target.value}))} placeholder="e.g. QA review / Sprint planning"/></label>
     <label>Hours <span className="required">*</span><input name="hours" required min=".25" max="24" step=".25" type="number" aria-invalid={errorField==="hours"} value={timeForm.hours} onChange={e=>setTimeForm(v=>({...v,hours:e.target.value}))}/></label>
     <label className="wide">Notes<textarea rows={3} maxLength={1000} value={timeForm.note} onChange={e=>setTimeForm(v=>({...v,note:e.target.value}))}/></label>
     <button className="employee-primary" disabled={busy}>Save hours</button>
    </form></section>
-   <section className="employee-surface"><h3>My time entries</h3><div className="time-list">{timesheets.length?timesheets.map(t=><div key={t.id}><strong>{t.task} · {t.hours}h</strong><span>{t.work_date} · {t.note||"No notes"}</span><small>{t.status}</small>{t.status==="draft"&&<button className="employee-cancel" disabled={busy} onClick={()=>void execute(()=>call("/timesheets/"+t.id+"/submit","POST"),"Timesheet submitted.")}>Submit</button>}</div>):<p>No timesheets yet.</p>}</div></section>
+   <section className="employee-surface"><h3>My time entries</h3><div className="time-list">{timesheets.length?timesheets.map(t=><div key={t.id}><strong>{t.task} · {t.hours}h</strong><span>{t.work_date} · {t.note||"No notes"}</span><small>{t.status}</small>{(t.status==="draft"||t.status==="rejected")&&<button className="employee-cancel" disabled={busy}
+    onClick={()=>{setTimeForm({work_date:t.work_date,task:t.task,hours:String(t.hours),project_id:String(t.project_id||""),note:t.note||""});
+     if(t.status==="rejected")setNotice("Edit this timesheet in the form above, then save the draft again.");}}>
+    Edit details</button>}
+    {t.status==="draft"&&<button className="employee-cancel" disabled={busy} onClick={()=>void execute(()=>call("/timesheets/"+t.id+"/submit","POST"),"Timesheet submitted to manager/HR for approval.")}>Submit</button>}</div>):<p>No timesheets yet.</p>}</div></section>
+   {isApprover&&<section className="employee-surface"><h3>Timesheets awaiting review</h3>
+    <p className="field-help">Only approved hours can be included in verified project billing. Approval requires a specific reason.</p>
+    <div className="time-list">{timesheetApprovals.map(t=><div key={t.id}>
+     <strong>{t.task} · {t.hours}h · Employee #{t.employee_id}</strong>
+     <span>{t.work_date} · Project #{t.project_id||"Internal"}</span>
+     <button disabled={busy} className="employee-primary" onClick={()=>{
+      const reason=window.prompt("Reason for approving these hours (at least 10 characters)");
+      if(reason?.trim()&&reason.trim().length>=10)void execute(()=>call("/timesheets/"+t.id+"/review","POST",
+       {approve:true,reason:reason.trim()}),"Timesheet approved for billing review.");
+      else if(reason!==null)setError("Provide a review reason with at least 10 characters.");
+     }}>Approve hours</button>
+     <button disabled={busy} className="employee-cancel" onClick={()=>{
+      const reason=window.prompt("Reason for rejecting these hours (at least 10 characters)");
+      if(reason?.trim()&&reason.trim().length>=10)void execute(()=>call("/timesheets/"+t.id+"/review","POST",
+       {approve:false,reason:reason.trim()}),"Timesheet rejected and returned for correction.");
+      else if(reason!==null)setError("Provide a rejection reason with at least 10 characters.");
+     }}>Reject</button>
+    </div>)}{!timesheetApprovals.length&&<p>No submitted timesheets are awaiting your review.</p>}</div>
+   </section>}
+   {isHR&&<section className="employee-surface"><h3>Project assignments</h3>
+    <p className="field-help">Assign employees to client projects so they can submit billable work hours.</p>
+    <form className="time-form" onSubmit={e=>{e.preventDefault();void execute(()=>call("/project-assignments","PUT",
+      {employee_id:Number(assignmentEmployee),project_id:Number(assignmentProject),active:true}),
+      "Employee assigned to project.")}}>
+     <label>Employee<select required value={assignmentEmployee} onChange={e=>setAssignmentEmployee(e.target.value)}>
+      <option value="">Select employee</option>{staff.map(x=><option value={x.id} key={x.id}>{x.name}</option>)}
+     </select></label>
+     <label>Project<select required value={assignmentProject} onChange={e=>setAssignmentProject(e.target.value)}>
+      <option value="">Select project</option>{projectOptions.map(x=><option value={x.id} key={x.id}>{x.name}</option>)}
+     </select></label>
+     <button className="employee-primary" disabled={busy||!assignmentEmployee||!assignmentProject}>Assign employee</button>
+    </form>
+    {projectAssignments.map(a=><div key={a.employee_id+"-"+a.project_id} className="ops-row">
+     <span>Employee #{a.employee_id} · Project #{a.project_id} · {a.active?"Assigned":"Inactive"}</span>
+     {a.active&&<button className="employee-cancel" disabled={busy}
+      onClick={()=>void execute(()=>call("/project-assignments","PUT",{
+       employee_id:a.employee_id,project_id:a.project_id,active:false}),"Project assignment deactivated.")}>Remove</button>}
+    </div>)}
+   </section>}
   </div>}
 
   {tab==="policies"&&isHR&&<section className="employee-surface"><h3>Attendance and GPS rules</h3><p className="muted">Policy flags classify late/half days. Deduction and payroll posting are not automated in this release.</p>
