@@ -427,6 +427,17 @@ def review_exit(exit_id:int,body:ExitUpdate,user:Employee=Depends(current_user),
     if not row:raise HTTPException(404)
     if row.status in ("settled","rejected"):raise HTTPException(409)
     if body.status=="settled":
+        from .exit_workflow import ExitTask, create_tasks
+        task_rows=db.scalars(select(ExitTask).where(ExitTask.exit_id==exit_id).with_for_update()).all()
+        if not task_rows:
+            create_tasks(db,row)
+            db.flush()
+            task_rows=db.scalars(select(ExitTask).where(ExitTask.exit_id==exit_id).with_for_update()).all()
+        unfinished=[task.title for task in task_rows if task.status!="completed"]
+        if unfinished:
+            raise HTTPException(422,detail={"field":"exit_tasks",
+                "message":"Complete the exit checklist before final settlement.",
+                "pending_tasks":unfinished})
         from .people_ops_extensions import ExitClearance
         approved=set(db.scalars(select(ExitClearance.kind).where(ExitClearance.exit_id==exit_id)).all())
         if not {"assets","it","finance"}.issubset(approved):
