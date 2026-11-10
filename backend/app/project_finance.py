@@ -10,7 +10,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr, Field, model_validator
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, select, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, Index, select, func, text
 from sqlalchemy.orm import Mapped, Session, mapped_column
 from .main import Base, Employee, Project, current_user, db_session
 from .project_management import ProjectDetail, serialize
@@ -100,8 +100,10 @@ class ClientInvoice(Base):
     created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
     paid_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
     reference:Mapped[str]=mapped_column(String(120),default="")
-    __table_args__=(UniqueConstraint("project_id","period_start","period_end","recipient_type",
-                                     name="uq_finance_project_invoice_window"),)
+    replaces_invoice_id:Mapped[int|None]=mapped_column(ForeignKey("finance_invoices.id"),nullable=True)
+    __table_args__=(Index("uq_finance_project_invoice_window_active",
+                           "project_id","period_start","period_end","recipient_type",
+                           unique=True,postgresql_where=text("status <> 'void'")),)
 
 class FinanceAudit(Base):
     __tablename__="finance_audit"
@@ -134,6 +136,7 @@ class InvoiceIn(BaseModel):
     period_end:date
     quantity:Decimal=Field(gt=0,le=100000000,decimal_places=2)
     tax_rate_pct:Decimal|None=Field(default=None,ge=0,le=100,decimal_places=2)
+    replaces_invoice_id:int|None=Field(default=None,gt=0)
     issue_date:date=Field(default_factory=date.today)
     @model_validator(mode="after")
     def validate_window(self):
@@ -157,9 +160,14 @@ def project_detail(db:Session,project_id:int):
     p=db.get(Project,project_id);d=db.get(ProjectDetail,project_id)
     if not p or not d:raise HTTPException(404,"Billable project not found")
     return p,d
-def live_period(p:Project,d:ProjectDetail,profile:ProjectBilling|None,start:date,end:date,as_of:date):
+def live_period(p:Project,d:ProjectDetail,profile:ProjectBilling|None,start:date,end:date,as_of:date,
+                *,allow_closed:bool=False):
     if p.status!="active" or (profile and profile.stopped_at is not None):
-        raise HTTPException(409,"Inactive projects cannot generate invoices")
+        # Only an existing, explicitly reviewed closing-period task may be
+        # issued after termination; normal manual invoicing stays blocked.
+        stopped=profile.stopped_at if profile else None
+        if not allow_closed or stopped is None or end>stopped:
+            raise HTTPException(409,"Inactive projects cannot generate manual invoices")
     if not d.start_date:raise HTTPException(422,"Project start date required")
     if start<d.start_date:raise HTTPException(422,"Invoice starts before project start")
     if end<start:raise HTTPException(422,"Invalid period")
@@ -173,7 +181,7 @@ def invoice_view(x:ClientInvoice,as_of:date|None=None):
     return {k:getattr(x,k) for k in ("id","project_id","recipient_type","recipient_name",
       "recipient_email","recipient_phone","billing_address","period_start","period_end",
       "issue_date","due_date","quantity","unit_rate","subtotal","tax_rate_pct","tax_amount",
-      "total","currency","source","reference")} | {"status":state,"stored_status":x.status}
+      "total","currency","source","reference","replaces_invoice_id")} | {"status":state,"stored_status":x.status}
 def billing_view(p:Project,d:ProjectDetail,profile:ProjectBilling|None):
     data=serialize(p,d)
     data["billing"]=({"recipient_type":profile.recipient_type,"recipient_name":profile.recipient_name,
@@ -185,12 +193,18 @@ def billing_view(p:Project,d:ProjectDetail,profile:ProjectBilling|None):
 def audit(db:Session,user:Employee,project_id:int,event:str,note:str=""):
     db.add(FinanceAudit(project_id=project_id,actor_id=user.id,event=event,note=note[:2000]))
 def create_row(db:Session,user:Employee,p:Project,d:ProjectDetail,c:ProjectBilling,
-               start:date,end:date,quantity:Decimal,tax:Decimal,issued:date,source:str):
-    live_period(p,d,c,start,end,issued)
+               start:date,end:date,quantity:Decimal,tax:Decimal|None,issued:date,source:str):
+    # Serialize invoice creation and project status changes before reading the
+    # service window; the partial unique index is the final duplicate guard.
+    db.execute(select(Project.id).where(Project.id==p.id).with_for_update()).first()
+    db.refresh(p)
+    db.refresh(c)
+    live_period(p,d,c,start,end,issued,allow_closed=(source in ("schedule_reviewed","replacement")))
     if not c.recipient_name:raise HTTPException(422,"Billing recipient required")
     existing=db.scalar(select(ClientInvoice.id).where(
       ClientInvoice.project_id==p.id,ClientInvoice.period_start==start,
-      ClientInvoice.period_end==end,ClientInvoice.recipient_type==c.recipient_type))
+      ClientInvoice.period_end==end,ClientInvoice.recipient_type==c.recipient_type,
+      ClientInvoice.status!="void"))
     if existing:raise HTTPException(409,"Invoice already exists for this project, recipient and period")
     rate=charge_rate(db,p.id,c.recipient_type,Decimal(d.rate));money=lambda n:n.quantize(Decimal("0.01"),rounding=ROUND_HALF_UP)
     pricing=db.get(ProjectCharge,(p.id,c.recipient_type))
@@ -353,8 +367,27 @@ def create_invoice(body:InvoiceIn,user:Employee=Depends(current_user),db:Session
     authorized(user)
     p,d=project_detail(db,body.project_id);c=db.get(ProjectBilling,p.id)
     if c is None:raise HTTPException(422,"Configure project billing first")
+    replacement=None
+    if body.replaces_invoice_id is not None:
+        replacement=db.get(ClientInvoice,body.replaces_invoice_id)
+        if (replacement is None or replacement.status!="void" or
+            replacement.project_id!=p.id or replacement.recipient_type!=c.recipient_type or
+            replacement.period_start!=body.period_start or replacement.period_end!=body.period_end):
+            raise HTTPException(422,detail={"field":"replaces_invoice_id",
+                "message":"Choose a voided invoice for the same project, recipient and billing period."})
     x=create_row(db,user,p,d,c,body.period_start,body.period_end,body.quantity,
-                 body.tax_rate_pct,body.issue_date,"manual")
+                 body.tax_rate_pct,body.issue_date,"replacement" if replacement else "manual")
+    if replacement:
+        x.replaces_invoice_id=replacement.id
+        from .billing_reviews import BillableReview
+        for review in db.scalars(select(BillableReview).where(
+                BillableReview.project_id==p.id,
+                BillableReview.period_start==body.period_start,
+                BillableReview.period_end==body.period_end,
+                BillableReview.status=="voided")):
+            review.status="invoiced"
+            review.invoice_id=x.id
+        audit(db,user,p.id,"invoice_replacement",f"Replaced voided invoice #{replacement.id} with invoice #{x.id}")
     db.commit();db.refresh(x);return invoice_view(x)
 
 @router.post("/schedules/run")
@@ -370,9 +403,8 @@ def run_schedule(body:ScheduleIn,user:Employee=Depends(current_user),db:Session=
         p=db.get(Project,c.project_id);d=db.get(ProjectDetail,c.project_id)
         if not p or not d or not d.start_date or p.status!="active" or c.stopped_at:
             skipped.append({"project_id":c.project_id,"reason":"inactive or invalid project"});continue
-        if c.end_date and body.as_of>c.end_date:
-            p.status="inactive";c.stopped_at=c.end_date
-            db.commit();skipped.append({"project_id":p.id,"reason":"project ended; schedule disabled"});continue
+        # Never disable an ended project before checking its final, possibly
+        # missed, billable service period. We still create an approval task.
         end=c.end_date
         cadence=c.billing_frequency or "monthly"
         if cadence=="monthly":
@@ -384,17 +416,27 @@ def run_schedule(body:ScheduleIn,user:Employee=Depends(current_user),db:Session=
             days_elapsed=(body.as_of-anchor).days
             scheduled=(body.as_of.isoweekday()==weekday and
                        (cadence=="weekly" or days_elapsed//7%2==0))
-        if body.as_of>d.start_date and (scheduled or (end and body.as_of==end)):
+        if body.as_of>d.start_date and (scheduled or (end and body.as_of>=end)):
             prior=db.scalar(select(func.max(ClientInvoice.period_end)).where(
-                ClientInvoice.project_id==p.id,ClientInvoice.recipient_type==c.recipient_type))
-            other=db.scalar(select(func.max(BillableReview.period_end)).where(BillableReview.project_id==p.id))
+                ClientInvoice.project_id==p.id,ClientInvoice.recipient_type==c.recipient_type,
+                ClientInvoice.status!="void"))
+            other=db.scalar(select(func.max(BillableReview.period_end)).where(
+                BillableReview.project_id==p.id,BillableReview.status!="voided"))
             last=max([x for x in (prior,other) if x is not None],default=None)
             start=max(d.start_date,last+timedelta(days=1) if last else d.start_date)
             period_end=min(body.as_of,end) if end else body.as_of
             if start>period_end:
-                skipped.append({"project_id":p.id,"reason":"nothing to bill"});continue
+                skipped.append({"project_id":p.id,"reason":
+                    "project ended; schedule disabled" if end and body.as_of>end else "nothing to bill"})
+                if end and body.as_of>end:
+                    p.status="inactive";c.stopped_at=end;db.commit()
+                continue
             task=create_review(db,user,p.id,start,period_end,body.as_of)
             if task:
+                # When the final period is queued, archive the project only
+                # after creating the review. Back-billing up to stop is allowed.
+                if end and body.as_of>end:
+                    p.status="inactive";c.stopped_at=end
                 db.commit()
                 tasks_created.append(task)
             else:
@@ -411,7 +453,14 @@ def change_status(invoice_id:int,body:InvoiceStatusIn,user:Employee=Depends(curr
     if x.status in ("paid","void"):raise HTTPException(409,"Final invoice cannot be changed")
     if body.status=="sent" and x.status!="draft":raise HTTPException(409,"Only draft can be sent")
     if body.status=="paid" and x.status!="sent":raise HTTPException(409,"Invoice must be marked sent first")
-    x.status=body.status;x.reference=body.reference
+    if body.status=="void" and len(body.reference.strip())<10:
+        raise HTTPException(422,detail={"field":"reference",
+            "message":"Explain why the invoice is being voided (at least 10 characters)."})
+    x.status=body.status;x.reference=body.reference.strip()
+    if body.status=="void":
+        from .billing_reviews import BillableReview
+        for review in db.scalars(select(BillableReview).where(BillableReview.invoice_id==x.id)):
+            review.status="voided"
     if body.status=="paid":x.paid_at=now()
     audit(db,user,x.project_id,"invoice_"+body.status,body.reference)
     db.commit();return invoice_view(x)

@@ -24,13 +24,21 @@ class BillableReview(Base):
 
 class ApprovedUnits(BaseModel):
     quantity:Decimal=Field(gt=0,le=100000000,decimal_places=2)
-    tax_rate_pct:Decimal=Field(default=0,ge=0,le=100,decimal_places=2)
+    tax_rate_pct:Decimal|None=Field(default=None,ge=0,le=100,decimal_places=2)
 
 def create_review(db:Session,user:Employee,project_id:int,start:date,end:date,scheduled_on:date):
-    present=db.scalar(select(BillableReview.id).where(
+    present=db.scalar(select(BillableReview).where(
         BillableReview.project_id==project_id,BillableReview.period_start==start,
-        BillableReview.period_end==end))
-    if present:return None
+        BillableReview.period_end==end).with_for_update())
+    if present:
+        if present.status!="voided":
+            return None
+        # An invoice was voided: reopen its review without losing history.
+        present.status="needs_units"
+        present.invoice_id=None
+        audit(db,user,project_id,"invoice_review_reopened","Voided invoice requires replacement review")
+        return {"id":present.id,"project_id":project_id,"status":present.status,
+                "period_start":present.period_start,"period_end":present.period_end}
     task=BillableReview(project_id=project_id,period_start=start,period_end=end,scheduled_on=scheduled_on)
     db.add(task);db.flush()
     audit(db,user,project_id,"invoice_units_required","Billing quantity to be verified by accountant")

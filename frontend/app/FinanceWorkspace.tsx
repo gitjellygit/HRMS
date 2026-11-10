@@ -23,6 +23,7 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
  const [periodStart,setPeriodStart]=useState(today());
  const [periodEnd,setPeriodEnd]=useState(today());
  const [quantity,setQuantity]=useState("1");
+ const [replacementInvoiceId,setReplacementInvoiceId]=useState<number|null>(null);
  const [tax,setTax]=useState("0");
  const [scheduleDate,setScheduleDate]=useState(today());
  const [notice,setNotice]=useState<{kind:"success"|"error";text:string}|null>(null);
@@ -173,12 +174,15 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
      if(chosen?.start_date&&periodStart<chosen.start_date){setNotice({kind:"error",text:"Billing period starts: cannot be earlier than the project's start date ("+chosen.start_date+")."});return}
      if(!chosen?.billing?.recipient_name){setNotice({kind:"error",text:"Billing recipient: open Project billing and save the recipient details first."});return}
      if(!Number.isFinite(Number(quantity))||Number(quantity)<=0){setNotice({kind:"error",text:"Verified billable quantity: enter a positive number."});return}
-     void save(()=>call("/invoices","POST",{
+     void save(async()=>{const row=await call("/invoices","POST",{
     project_id:Number(selected),period_start:periodStart,period_end:periodEnd,
-    quantity:Number(quantity),tax_rate_pct:Number(tax),issue_date:today()}),"Invoice draft created successfully.")}}>
-    <label>Project<select value={selected} onChange={e=>{setSelected(e.target.value);const p=projects.find(x=>String(x.id)===e.target.value);
+    quantity:Number(quantity),tax_rate_pct:Number(tax),issue_date:today(),
+    replaces_invoice_id:replacementInvoiceId});setReplacementInvoiceId(null);return row},
+    replacementInvoiceId?"Replacement invoice created with an audit link to the voided invoice.":"Invoice draft created successfully.")}}>
+    <label>Project<select value={selected} onChange={e=>{setSelected(e.target.value);setReplacementInvoiceId(null);const p=projects.find(x=>String(x.id)===e.target.value);
       setPeriodStart(p?.start_date||today());setPeriodEnd(today());setTax(String(p?.charges?.find((c:Row)=>c.recipient_type===(p.billing?.recipient_type||"client"))?.tax_rate_pct??0))}} required>
      <option value="">Select project</option>{projects.map(p=><option key={p.id} value={p.id}>{p.project_number} · {p.name} ({p.status})</option>)}</select></label>
+    {replacementInvoiceId&&<p className="field-help">Replacing voided invoice #{replacementInvoiceId}. The replacement keeps the same project and service period. Verify the quantity and tax before creating it.</p>}
     <label>Billing period starts<input type="date" required value={periodStart} onChange={e=>setPeriodStart(e.target.value)}/></label>
     <label>Billing period ends<input type="date" required min={periodStart} aria-invalid={periodEnd<periodStart} value={periodEnd} onChange={e=>setPeriodEnd(e.target.value)}/></label>
     <label>Verified billable quantity<input type="number" min="0.01" step="0.01" required value={quantity} onChange={e=>setQuantity(e.target.value)}/></label>
@@ -186,7 +190,8 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
     {chosen&&<div className="finance-preview"><span>Estimated total · {chosen.currency}</span>
       <strong>{currency((Number(chosen.charges?.find((c:Row)=>c.recipient_type===(chosen.billing?.recipient_type||"client"))?.pricing_value??chosen.rate)||0)*Number(quantity||0)*(1+Number(tax||0)/100),chosen.currency||"USD")}</strong>
       <small>The verified quantity must match the invoice rate basis. Review the billable period and hours before creating the draft.</small></div>}
-    <div className="finance-actions"><button disabled={busy||!selected} className="primary">Create invoice draft</button></div>
+    <div className="finance-actions"><button disabled={busy||!selected} className="primary">{replacementInvoiceId?"Create replacement invoice":"Create invoice draft"}</button>
+      {replacementInvoiceId&&<button type="button" className="secondary" onClick={()=>setReplacementInvoiceId(null)}>Cancel replacement</button>}</div>
    </form>
    <div className="table-wrap"><table><thead><tr><th>#</th><th>Project</th><th>Bill to</th><th>Period</th><th>Total</th><th>Due</th><th>Status</th><th>Actions</th></tr></thead>
     <tbody>{invoices.map(i=><tr key={i.id}><td>{i.id}</td><td>{projects.find(p=>p.id===i.project_id)?.project_number||i.project_id}</td>
@@ -197,6 +202,17 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
        ()=>call("/invoices/"+i.id+"/status","POST",{status:"sent"}),"Invoice marked sent. No email was sent automatically.")}>Mark sent</button>}
      {["sent","overdue"].includes(i.status)&&<button className="secondary" disabled={busy} onClick={()=>void save(
        ()=>call("/invoices/"+i.id+"/status","POST",{status:"paid"}),"Payment recorded.")}>Mark paid</button>}
+     {["draft","sent","overdue"].includes(i.status)&&<button className="secondary" disabled={busy}
+       onClick={()=>{const reason=window.prompt("Why is this invoice being voided? Provide at least 10 characters.");
+        if(reason?.trim()&&reason.trim().length>=10)void save(
+         ()=>call("/invoices/"+i.id+"/status","POST",{status:"void",reference:reason.trim()}),
+         "Invoice voided. Create a replacement to restore the billing period.");
+        else if(reason!==null)setNotice({kind:"error",text:"Explain the reason for voiding the invoice (10+ characters)."});}}>Void invoice</button>}
+     {i.stored_status==="void"&&<button className="secondary" disabled={busy}
+       onClick={()=>{setSelected(String(i.project_id));setPeriodStart(i.period_start);setPeriodEnd(i.period_end);
+        setQuantity(String(i.quantity));setTax(String(i.tax_rate_pct));setReplacementInvoiceId(i.id);
+        setNotice({kind:"success",text:"Preparing replacement for invoice #"+i.id+". Verify the quantities and create the new draft."});}}>
+       Prepare replacement</button>}
      </td></tr>)}</tbody></table></div>
   </>}
   {tab==="schedule"&&<>
@@ -229,7 +245,7 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
        value={approvedUnits[r.id]||""} onChange={e=>setApprovedUnits(v=>({...v,[r.id]:e.target.value}))}/></label>
       <button className="primary" disabled={!approvedUnits[r.id]||Number(approvedUnits[r.id])<=0||busy}
        onClick={()=>void save(()=>call("/reviews/"+r.id+"/invoice","POST",{
-         quantity:Number(approvedUnits[r.id]),tax_rate_pct:Number(tax)}),"Reviewed invoice draft created.")}>Create reviewed invoice draft</button>
+         quantity:Number(approvedUnits[r.id])}),"Reviewed invoice draft created using the configured project tax rate.")}>Create reviewed invoice draft</button>
      </div>}
     </div>)}
    </div>
