@@ -448,11 +448,16 @@ def run_schedule(body:ScheduleIn,user:Employee=Depends(current_user),db:Session=
 @router.post("/invoices/{invoice_id}/status")
 def change_status(invoice_id:int,body:InvoiceStatusIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     authorized(user)
-    x=db.get(ClientInvoice,invoice_id)
+    x=db.scalar(select(ClientInvoice).where(ClientInvoice.id==invoice_id).with_for_update())
     if not x:raise HTTPException(404,"Invoice not found")
-    if x.status in ("paid","void"):raise HTTPException(409,"Final invoice cannot be changed")
+    if x.status in ("paid","void","settled_by_credit"):raise HTTPException(409,"Final invoice cannot be changed")
     if body.status=="sent" and x.status!="draft":raise HTTPException(409,"Only draft can be sent")
     if body.status=="paid" and x.status!="sent":raise HTTPException(409,"Invoice must be marked sent first")
+    if body.status=="void":
+        from .finance_ledger import settlement
+        current=settlement(db,x)
+        if current["paid"]>0 or current["credited"]>0:
+            raise HTTPException(409,"Reverse recorded payments or credits before voiding this invoice.")
     if body.status=="void" and len(body.reference.strip())<10:
         raise HTTPException(422,detail={"field":"reference",
             "message":"Explain why the invoice is being voided (at least 10 characters)."})
@@ -461,7 +466,19 @@ def change_status(invoice_id:int,body:InvoiceStatusIn,user:Employee=Depends(curr
         from .billing_reviews import BillableReview
         for review in db.scalars(select(BillableReview).where(BillableReview.invoice_id==x.id)):
             review.status="voided"
-    if body.status=="paid":x.paid_at=now()
+    if body.status=="paid":
+        # Legacy one-click 'mark paid' must still create a cash ledger entry,
+        # otherwise ageing/settlement reports silently disagree with status.
+        from .finance_ledger import settlement, InvoicePayment
+        balance=settlement(db,x)
+        if balance["outstanding"]<=0:raise HTTPException(409,"No outstanding balance to record")
+        payment=InvoicePayment(invoice_id=x.id,amount=balance["outstanding"],
+            received_on=date.today(),reference=("manual-paid-"+str(x.id)+"-"+str(int(now().timestamp()))),
+            recorded_by=user.id)
+        db.add(payment)
+        x.paid_at=now()
+        audit(db,user,x.project_id,"invoice_payment_recorded",
+              f"Legacy mark-paid recorded {balance['outstanding']} {x.currency} as settlement.")
     audit(db,user,x.project_id,"invoice_"+body.status,body.reference)
     db.commit();return invoice_view(x)
 
