@@ -36,6 +36,9 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
  const [exitTemplates,setExitTemplates]=useState<Row[]>([]);
  const [templateTitle,setTemplateTitle]=useState("");
  const [templateRole,setTemplateRole]=useState("hr");
+ const [editingExitTemplate,setEditingExitTemplate]=useState<number|null>(null);
+ const [editExitTitle,setEditExitTitle]=useState("");
+ const [editExitRole,setEditExitRole]=useState("hr");
  const [exitTasks,setExitTasks]=useState<Record<number,Row[]>>({});
  const [exitTaskNotes,setExitTaskNotes]=useState<Record<number,string>>({});
  async function call(path:string,method="GET",body?:unknown){
@@ -89,6 +92,13 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
    await exitCall("/templates","POST",{title:templateTitle,assignee_role:templateRole,active:true});
    setExitTemplates(await exitCall("/templates"));setTemplateTitle("");
   },"Exit checklist task configured.");
+ }
+ async function saveExitTemplate(id:number,active:boolean,title:string,role:string){
+  await save(async()=>{
+    await exitCall("/templates/"+id,"PUT",{title,assignee_role:role,active});
+    setExitTemplates(await exitCall("/templates"));
+    setEditingExitTemplate(null);
+  },active?"Exit checklist template updated.":"Exit checklist template disabled for future exits.");
  }
  async function loadExitTasks(caseId:number){
   try{
@@ -223,7 +233,26 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
      </form>
      <details className="employee-surface exit-config-panel"><summary>Configure exit tasks</summary>
       <p className="muted">These tasks are automatically assigned whenever an exit case is opened. HR tasks go to HR; employee tasks go to the departing employee.</p>
-      <div className="exit-task-list">{exitTemplates.map((x,i)=><p key={i}>{x.title} <small>· {x.assignee_role==="hr"?"HR":"Employee"}</small></p>)}</div>
+      <div className="exit-task-list">{exitTemplates.map((x,i)=><div key={x.id??"default"+i} className="ops-row">
+        {editingExitTemplate===x.id&&x.id!=null?<div className="ops-form">
+         <label>Task name<input required minLength={5} maxLength={180} value={editExitTitle}
+           onChange={e=>setEditExitTitle(e.target.value)}/></label>
+         <label>Assigned to<select value={editExitRole} onChange={e=>setEditExitRole(e.target.value)}>
+          <option value="hr">HR team</option><option value="employee">Exiting employee</option>
+         </select></label>
+         <button type="button" className="employee-primary" disabled={busy||editExitTitle.trim().length<5}
+           onClick={()=>void saveExitTemplate(x.id,x.active,editExitTitle.trim(),editExitRole)}>Save template</button>
+         <button type="button" className="employee-cancel" onClick={()=>setEditingExitTemplate(null)}>Cancel</button>
+        </div>:<>
+         <strong>{x.title}</strong> <small>· {x.assignee_role==="hr"?"HR":"Employee"} · {x.active?"Active":"Disabled"}</small>
+         {x.id!=null&&<><button type="button" className="employee-cancel" disabled={busy}
+          onClick={()=>{setEditingExitTemplate(x.id);setEditExitTitle(x.title);setEditExitRole(x.assignee_role)}}>
+          Edit</button>
+         <button type="button" className="employee-cancel" disabled={busy}
+          onClick={()=>void saveExitTemplate(x.id,!x.active,x.title,x.assignee_role)}>
+          {x.active?"Disable":"Enable"}</button></>}
+        </>}
+       </div>)}</div>
       <form className="ops-form ops-compact-form" onSubmit={addExitTemplate}>
        <label>New task name<input required minLength={5} maxLength={180} value={templateTitle} onChange={e=>setTemplateTitle(e.target.value)} placeholder="e.g. Confirm returned access badge"/></label>
        <label>Assigned to<select value={templateRole} onChange={e=>setTemplateRole(e.target.value)}><option value="hr">HR team</option><option value="employee">Exiting employee</option></select></label>
