@@ -24,6 +24,7 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
  const [periodStart,setPeriodStart]=useState(today());
  const [periodEnd,setPeriodEnd]=useState(today());
  const [quantity,setQuantity]=useState("1");
+ const [approvedHours,setApprovedHours]=useState<Row|null>(null);
  const [replacementInvoiceId,setReplacementInvoiceId]=useState<number|null>(null);
  const [tax,setTax]=useState("0");
  const [scheduleDate,setScheduleDate]=useState(today());
@@ -185,8 +186,8 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
       setPeriodStart(p?.start_date||today());setPeriodEnd(today());setTax(String(p?.charges?.find((c:Row)=>c.recipient_type===(p.billing?.recipient_type||"client"))?.tax_rate_pct??0))}} required>
      <option value="">Select project</option>{projects.map(p=><option key={p.id} value={p.id}>{p.project_number} · {p.name} ({p.status})</option>)}</select></label>
     {replacementInvoiceId&&<p className="field-help">Replacing voided invoice #{replacementInvoiceId}. The replacement keeps the same project and service period. Verify the quantity and tax before creating it.</p>}
-    <label>Billing period starts<input type="date" required value={periodStart} onChange={e=>setPeriodStart(e.target.value)}/></label>
-    <label>Billing period ends<input type="date" required min={periodStart} aria-invalid={periodEnd<periodStart} value={periodEnd} onChange={e=>setPeriodEnd(e.target.value)}/></label>
+    <label>Billing period starts<input type="date" required value={periodStart} onChange={e=>{setPeriodStart(e.target.value);setApprovedHours(null)}}/></label>
+    <label>Billing period ends<input type="date" required min={periodStart} aria-invalid={periodEnd<periodStart} value={periodEnd} onChange={e=>{setPeriodEnd(e.target.value);setApprovedHours(null)}}/></label>
     <label>Verified billable quantity<input type="number" min="0.01" step="0.01" required value={quantity} onChange={e=>setQuantity(e.target.value)}/></label>
     <label>Tax (%)<input type="number" min={0} max={100} step="0.01" value={tax} onChange={e=>setTax(e.target.value)}/></label>
     {chosen&&<div className="finance-preview"><span>Estimated total · {chosen.currency}</span>
@@ -195,6 +196,27 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
     <div className="finance-actions"><button disabled={busy||!selected} className="primary">{replacementInvoiceId?"Create replacement invoice":"Create invoice draft"}</button>
       {replacementInvoiceId&&<button type="button" className="secondary" onClick={()=>setReplacementInvoiceId(null)}>Cancel replacement</button>}</div>
    </form>
+   <section className="employee-surface">
+    <h3>Bill approved timesheet hours</h3>
+    <p className="field-help">Uses manager/HR-approved, unbilled hours and the configured hourly rate. The invoice quantity is calculated automatically.</p>
+    <div className="finance-actions">
+      <button type="button" className="secondary" disabled={busy||!selected}
+       onClick={()=>void call("/projects/"+selected+"/approved-timesheets?period_start="+periodStart+"&period_end="+periodEnd)
+         .then(setApprovedHours).catch(e=>setNotice({kind:"error",text:(e as Error).message}))}>
+       Check approved hours
+      </button>
+      <button type="button" className="primary" disabled={busy||!selected||Boolean(replacementInvoiceId)}
+       onClick={()=>void save(()=>call("/invoices/from-approved-timesheets","POST",{
+         project_id:Number(selected),period_start:periodStart,period_end:periodEnd
+       }),"Invoice created from approved, unbilled timesheets.")}>
+       Create invoice from approved hours
+      </button>
+    </div>
+    {approvedHours&&<p className="field-help">
+     Approved: {String(approvedHours.approved_hours)} hours in {approvedHours.approved_count} entries.
+     Unbilled: <strong>{String(approvedHours.unbilled_hours)} hours</strong> in {approvedHours.unbilled_count} entries.
+    </p>}
+   </section>
    <div className="table-wrap"><table><thead><tr><th>#</th><th>Project</th><th>Bill to</th><th>Period</th><th>Total</th><th>Due</th><th>Status</th><th>Actions</th></tr></thead>
     <tbody>{invoices.map(i=><tr key={i.id}><td>{i.id}</td><td>{projects.find(p=>p.id===i.project_id)?.project_number||i.project_id}</td>
      <td>{i.recipient_name}</td><td>{i.period_start} – {i.period_end}</td>
