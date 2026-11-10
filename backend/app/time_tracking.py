@@ -428,10 +428,10 @@ def create_timesheet(body:TimesheetIn,user:Employee=Depends(current_user),db:Ses
     if body.project_id is not None:
         from .project_management import ProjectDetail
         detail=db.get(ProjectDetail,body.project_id)
-        if not db.get(Project,body.project_id) or (
-            user.role not in HR and (not detail or (detail.sourced_by_id!=user.id and
-                not (assignment:=db.get(TimeProjectAssignment,(user.id,body.project_id))) or
-                (detail.sourced_by_id!=user.id and not assignment.active))):
+        assignment=db.get(TimeProjectAssignment,(user.id,body.project_id))
+        has_project_access=(detail is not None and (detail.sourced_by_id==user.id or
+                            (assignment is not None and assignment.active)))
+        if not db.get(Project,body.project_id) or (user.role not in HR and not has_project_access):
             raise HTTPException(422,detail={"field":"project_id","message":
                 "Select a project assigned to you or sourced by you."})
     used=db.scalar(select(func.coalesce(func.sum(Timesheet.hours),0)).where(
