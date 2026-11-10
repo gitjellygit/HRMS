@@ -37,6 +37,7 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
  const [shiftForm,setShiftForm]=useState({name:"General",start_time:"09:00",end_time:"18:00",break_minutes:"60"});
  const [rosterForm,setRosterForm]=useState({employee_id:"",shift_id:"",work_date:today()});
  const [timeForm,setTimeForm]=useState({work_date:today(),task:"",hours:"",project_id:"",note:""});
+ const [editingTimesheetId,setEditingTimesheetId]=useState<number|null>(null);
  const focusRef=useRef<HTMLDivElement|null>(null);
  const [validatedGeo,setValidatedGeo]=useState(false);
  const call=useCallback(async(path:string,method="GET",body?:unknown)=>{
@@ -171,7 +172,11 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
   </div>}
 
   {tab==="timesheets"&&<div className="time-columns">
-   <section className="employee-surface"><h3>Log work hours</h3><form className="time-form" onSubmit={e=>{e.preventDefault();void execute(()=>call("/timesheets","POST",{...timeForm,hours:Number(timeForm.hours),project_id:timeForm.project_id?Number(timeForm.project_id):null}),"Timesheet entry saved.")}}>
+   <section className="employee-surface"><h3>Log work hours</h3><form className="time-form" onSubmit={e=>{e.preventDefault();void execute(async()=>{
+     const body={...timeForm,hours:Number(timeForm.hours),project_id:timeForm.project_id?Number(timeForm.project_id):null};
+     await call(editingTimesheetId?"/timesheets/"+editingTimesheetId:"/timesheets",editingTimesheetId?"PUT":"POST",body);
+     setEditingTimesheetId(null);setTimeForm({work_date:today(),task:"",hours:"",project_id:"",note:""});
+    },editingTimesheetId?"Timesheet draft updated. Submit it when ready.":"Timesheet entry saved.")}}>
     <label>Work date<input type="date" name="work_date" value={timeForm.work_date} onChange={e=>setTimeForm(v=>({...v,work_date:e.target.value}))}/></label>
     <label>Project (optional)<select name="project_id" value={timeForm.project_id} onChange={e=>setTimeForm(v=>({...v,project_id:e.target.value}))}><option value="">Internal / unassigned task</option>{projectOptions.filter(p=>isHR||p.sourced_by_id===user.id||
       projectAssignments.some(a=>a.project_id===p.id&&a.employee_id===user.id&&a.active))
@@ -179,11 +184,15 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
     <label>Task <span className="required">*</span><input name="task" required minLength={3} aria-invalid={errorField==="task"} value={timeForm.task} onChange={e=>setTimeForm(v=>({...v,task:e.target.value}))} placeholder="e.g. QA review / Sprint planning"/></label>
     <label>Hours <span className="required">*</span><input name="hours" required min=".25" max="24" step=".25" type="number" aria-invalid={errorField==="hours"} value={timeForm.hours} onChange={e=>setTimeForm(v=>({...v,hours:e.target.value}))}/></label>
     <label className="wide">Notes<textarea rows={3} maxLength={1000} value={timeForm.note} onChange={e=>setTimeForm(v=>({...v,note:e.target.value}))}/></label>
-    <button className="employee-primary" disabled={busy}>Save hours</button>
+    <button className="employee-primary" disabled={busy}>{editingTimesheetId?"Update draft timesheet":"Save hours"}</button>
+    {editingTimesheetId&&<button type="button" className="employee-cancel" onClick={()=>{
+      setEditingTimesheetId(null);setTimeForm({work_date:today(),task:"",hours:"",project_id:"",note:""});
+    }}>Cancel editing</button>
    </form></section>
    <section className="employee-surface"><h3>My time entries</h3><div className="time-list">{timesheets.length?timesheets.map(t=><div key={t.id}><strong>{t.task} · {t.hours}h</strong><span>{t.work_date} · {t.note||"No notes"}</span><small>{t.status}</small>{(t.status==="draft"||t.status==="rejected")&&<button className="employee-cancel" disabled={busy}
     onClick={()=>{setTimeForm({work_date:t.work_date,task:t.task,hours:String(t.hours),project_id:String(t.project_id||""),note:t.note||""});
-     if(t.status==="rejected")setNotice("Edit this timesheet in the form above, then save the draft again.");}}>
+     setEditingTimesheetId(t.id);
+     if(t.status==="rejected")setNotice("Update the rejected timesheet draft, then submit it again.");}}>
     Edit details</button>}
     {t.status==="draft"&&<button className="employee-cancel" disabled={busy} onClick={()=>void execute(()=>call("/timesheets/"+t.id+"/submit","POST"),"Timesheet submitted to manager/HR for approval.")}>Submit</button>}</div>):<p>No timesheets yet.</p>}</div></section>
    {isApprover&&<section className="employee-surface"><h3>Timesheets awaiting review</h3>
