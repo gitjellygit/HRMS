@@ -64,6 +64,28 @@ def archive(notification_id:int,user:Employee=Depends(current_user),db:Session=D
     db.commit()
     return {"id":row.id,"archived":True}
 
+@router.post("/archive-read")
+def archive_read(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    """Clear the user's read inbox items without deleting immutable audit history."""
+    rows=db.scalars(select(InboxNotification).where(
+        InboxNotification.employee_id==user.id,
+        InboxNotification.read_at.is_not(None),
+        InboxNotification.archived_at.is_(None))).all()
+    stamp=datetime.now(timezone.utc)
+    for row in rows:row.archived_at=stamp
+    db.commit()
+    return {"archived":len(rows)}
+
+
+@router.post("/{notification_id}/restore")
+def restore(notification_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    row=db.get(InboxNotification,notification_id)
+    if row is None or row.employee_id!=user.id:raise HTTPException(404,"Notification not found")
+    row.archived_at=None
+    db.commit()
+    return {"id":row.id,"archived":False}
+
+
 @router.post("/read-all")
 def mark_all_read(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     rows=db.scalars(select(InboxNotification).where(
