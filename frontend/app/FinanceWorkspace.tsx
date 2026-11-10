@@ -2,6 +2,7 @@
 import {useEffect,useRef,useState} from "react";
 import {BadgeCheck,ChevronDown,ChevronUp,X} from "lucide-react";
 import {explainError} from "./formErrors";
+import FinanceSettlementPanel from "./FinanceSettlementPanel";
 
 type Row=Record<string,any>;
 type User={id:number;name:string;role:string};
@@ -11,7 +12,7 @@ const initialBilling={recipient_type:"client",recipient_name:"",recipient_email:
  billing_day:"15",payment_terms_days:"15",billing_frequency:"monthly",rate_unit:"hour",invoice_rate:"",tax_rate_pct:"0"};
 
 export default function FinanceWorkspace({api,user}:{api:string;user:User}){
- const [tab,setTab]=useState<"projects"|"invoices"|"schedule">("projects");
+ const [tab,setTab]=useState<"projects"|"invoices"|"schedule"|"receivables">("projects");
  const [projects,setProjects]=useState<Row[]>([]);
  const [invoices,setInvoices]=useState<Row[]>([]);
  const [reviews,setReviews]=useState<Row[]>([]);
@@ -98,7 +99,7 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
  }
  return <div className="ops-area finance-workspace finance-premium">
   <p className="muted">Configure billing, prepare invoice drafts and track payments. Creating an invoice does not send an email.</p>
-  <div className="time-tabs" role="tablist">{([["projects","Project billing"],["invoices","Invoice ledger"],["schedule","Invoice schedule"]] as const).map(([id,title])=>
+  <div className="time-tabs" role="tablist">{([["projects","Project billing"],["invoices","Invoice ledger"],["schedule","Invoice schedule"],["receivables","Payments & ageing"]] as const).map(([id,title])=>
    <button key={id} role="tab" aria-selected={tab===id} className={tab===id?"active":""} onClick={()=>{setTab(id);setNotice(null);void refresh().catch(e=>setNotice({kind:"error",text:(e as Error).message}))}}>{title}</button>)}</div>
   {notice&&<div ref={successRef} role={notice.kind==="success"?"status":"alert"} tabIndex={-1}
    className={"finance-toast "+(notice.kind==="success"?"is-success":"is-error")}>
@@ -166,6 +167,7 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
     })}</tbody>
    </table></div>
   </>}
+  {tab==="receivables"&&<FinanceSettlementPanel api={api} invoices={invoices} refresh={refresh}/>}
   {tab==="invoices"&&<>
    <h2>Invoice ledger</h2>
    <form className="form" onSubmit={e=>{e.preventDefault();
