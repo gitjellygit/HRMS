@@ -93,9 +93,8 @@ def test_exiting_manager_reassigns_reports_and_pending_leave():
         assert request.status_code==201,request.text
         request_id=request.json()["id"]
         switch(c,"admin@example.com","test-admin-password-12345")
-        left=c.post(f"/core/employees/{manager}/lifecycle",headers=ORIGIN,json={
-            "event":"exited","note":"Manager exit with pending QA approval",
-            "effective_date":date.today().isoformat()})
+        left=c.post(f"/core/employees/{manager}/deactivate",headers=ORIGIN,json={
+            "reason":"Reporting manager deactivated during pending approval for QA testing"})
         assert left.status_code==200,left.text
         with SessionLocal() as db:
             assert db.get(EmployeeCore,worker).manager_id==admin
