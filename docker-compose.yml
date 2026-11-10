@@ -23,6 +23,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
+  leave-email-worker:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    command: ["python", "-m", "app.leave_email_worker", "--loop"]
+    depends_on:
+      db:
+        condition: service_healthy
   web:
     build:
       context: ./frontend
