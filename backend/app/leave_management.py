@@ -660,9 +660,7 @@ def review(request_id: int,body: ActionIn,user: Employee = Depends(current_user)
         for target in upcoming_approvers(db,row):
             notify(db,target,f"Leave request #{row.id} needs your approval.",row.id)
     db.commit()
-    owner=db.get(Employee,row.employee_id)
-    if owner:
-        email_notice(owner.email,"JellyGit HRMS leave update",f"Your leave request #{row.id} is {row.status}.")
+    # The transaction already queued an email and durable in-app notice.
     return record_view(row)
 
 
