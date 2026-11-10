@@ -414,13 +414,19 @@ def audits(request_id:int,user:Employee=Depends(current_user),db:Session=Depends
             for a in db.scalars(select(TimeAudit).where(TimeAudit.request_id==request_id)).all()]
 
 @router.get("/timesheets")
-def timesheets(scope:Literal["mine","all"]="mine",user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+def timesheets(scope:Literal["mine","all","approvals"]="mine",
+    user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     if scope=="all" and user.role not in HR:raise HTTPException(403)
     q=select(Timesheet).order_by(Timesheet.work_date.desc(),Timesheet.id.desc())
     if scope=="mine":q=q.where(Timesheet.employee_id==user.id)
+    elif scope=="approvals":
+        q=q.where(Timesheet.status=="submitted",Timesheet.employee_id!=user.id)
+        if user.role not in HR:
+            q=q.join(EmployeeCore,EmployeeCore.employee_id==Timesheet.employee_id).where(
+                EmployeeCore.manager_id==user.id)
     return [{"id":t.id,"employee_id":t.employee_id,"work_date":t.work_date,"project_id":t.project_id,
              "task":t.task,"hours":float(t.hours),"note":t.note,"status":t.status,
-             "reviewed_by":t.reviewed_by,"reviewed_at":t.reviewed_at} for t in db.scalars(q).all()]
+             "reviewed_by":t.reviewed_by,"reviewed_at":t.reviewed_at} for t in db.scalars(q.limit(500)).all()]
 
 @router.post("/timesheets",status_code=201)
 def create_timesheet(body:TimesheetIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
