@@ -361,50 +361,14 @@ def approved_days(leaves: list[Leave], *, year: int, kind: str) -> float:
     return float(total)
 
 
-@router.put("/leave-entitlements")
-def set_leave_entitlement(body: LeaveEntitlementIn, user: Employee = Depends(require_hr), db: Session = Depends(db_session)):
-    employee_or_404(db, body.employee_id)
-    row = db.scalar(select(LeaveEntitlement).where(
-        LeaveEntitlement.employee_id == body.employee_id, LeaveEntitlement.year == body.year,
-        LeaveEntitlement.leave_type == body.leave_type).with_for_update())
-    if row is None:
-        row = LeaveEntitlement(employee_id=body.employee_id, year=body.year, leave_type=body.leave_type, allocated_days=body.allocated_days)
-        db.add(row)
-    else:
-        row.allocated_days = body.allocated_days
-    db.commit()
-    return {"employee_id":body.employee_id, "year":body.year, "leave_type":body.leave_type, "allocated_days":float(body.allocated_days)}
+@router.put("/leave-entitlements",status_code=410)
+def set_leave_entitlement(user:Employee=Depends(require_hr)):
+    raise HTTPException(410,detail="Legacy calendar-year entitlement edits are retired. Use /leave/allocations with April–March financial years.")
 
 
-@router.get("/hr-overview")
-def hr_overview(year: int = Query(default=date.today().year, ge=2020, le=2100), user: Employee = Depends(require_hr),
-                db: Session = Depends(db_session)):
-    employees = db.scalars(select(Employee).order_by(Employee.name)).all()
-    entitlements = db.scalars(select(LeaveEntitlement).where(LeaveEntitlement.year == year)).all()
-    all_leaves = db.scalars(select(Leave).where(Leave.start_date <= date(year,12,31), Leave.end_date >= date(year,1,1))).all()
-    attendance = db.scalars(select(Attendance).where(Attendance.punch_out.is_(None))).all()
-    pending_count = sum(1 for leave in all_leaves if leave.status == "pending")
-    entitlements_by_employee: dict[int,list[LeaveEntitlement]] = {}
-    leaves_by_employee: dict[int,list[Leave]] = {}
-    for row in entitlements:
-        entitlements_by_employee.setdefault(row.employee_id, []).append(row)
-    for row in all_leaves:
-        leaves_by_employee.setdefault(row.employee_id, []).append(row)
-    open_shifts = {a.employee_id for a in attendance}
-    rows = []
-    for employee in employees:
-        balance = [
-            {"leave_type":e.leave_type, "allocated":float(e.allocated_days),
-             "used":approved_days(leaves_by_employee.get(employee.id,[]), year=year, kind=e.leave_type),
-             "remaining":float(e.allocated_days)-approved_days(leaves_by_employee.get(employee.id,[]), year=year, kind=e.leave_type)}
-            for e in entitlements_by_employee.get(employee.id,[])
-        ]
-        rows.append({"id":employee.id, "name":employee.name, "department":employee.department,
-                     "role":employee.role, "status":employee.status,
-                     "currently_checked_in":employee.id in open_shifts,
-                     "leave_balances":balance})
-    return {"year":year, "headcount":len([e for e in employees if e.status == "active"]),
-            "pending_leave_requests":pending_count, "currently_checked_in":len(open_shifts), "employees":rows}
+@router.get("/hr-overview",status_code=410)
+def hr_overview(user:Employee=Depends(require_hr)):
+    raise HTTPException(410,detail="Legacy leave dashboard is retired. Use /leave/hr-overview for consistent April–March balances.")
 
 
 @router.get("/roles")
@@ -629,6 +593,53 @@ def lifecycle_history(employee_id: int, user: Employee = Depends(current_user), 
     return [{"event":r.event,"note":r.note,"date":r.effective_date,"by":r.performed_by} for r in rows]
 
 
+def reassign_reports_for_inactive_manager(db:Session,employee_id:int,actor:Employee,effective_date:date):
+    """Keep direct reports and pending manager approvals routed on manager exit/deactivation."""
+    core=db.get(EmployeeCore,employee_id)
+    # A reporting-manager exit must not strand direct reports or pending
+    # manager approvals. Prefer each report's HOD, then the exiting
+    # manager's own manager, then a distinct active HR/admin.
+    from .leave_management import LeaveRequest, ApprovalEvent, notify
+    reports=db.scalars(select(EmployeeCore).where(
+        EmployeeCore.manager_id==employee_id).with_for_update()).all()
+    fallback_staff=list(db.scalars(select(Employee).where(
+        Employee.status=="active",Employee.role.in_(ADMIN)).order_by(Employee.id)))
+    for report in reports:
+        candidates=[report.hod_id,core.manager_id if core else None]+[x.id for x in fallback_staff]
+        replacement_id=None
+        for candidate in dict.fromkeys(candidates):
+            if candidate is None or candidate in (employee_id,report.employee_id):
+                continue
+            manager=db.get(Employee,candidate)
+            if not manager or manager.status!="active" or manager.role not in (
+                "manager","super_admin","admin","hr"):
+                continue
+            try:
+                validate_relationships(db,report.employee_id,MasterIn(manager_id=candidate))
+            except HTTPException:
+                continue
+            replacement_id=candidate
+            break
+        if replacement_id is None:
+            raise HTTPException(422,detail={"field":"manager_id",
+                "message":"Assign an active manager to every direct report before exiting this manager."})
+        report.manager_id=replacement_id
+        db.add(LifecycleEvent(employee_id=report.employee_id,event="manager_reassigned",
+            note=f"Reporting manager {employee_id} exited; reassigned to {replacement_id}.",
+            effective_date=effective_date,performed_by=actor.id))
+        pending=db.scalars(select(LeaveRequest).where(
+            LeaveRequest.employee_id==report.employee_id,
+            LeaveRequest.status=="pending",LeaveRequest.manager_snapshot_id==employee_id)).all()
+        for leave in pending:
+            stages=[x for x in leave.chain.split(",") if x]
+            if leave.current_stage<len(stages) and stages[leave.current_stage]=="manager":
+                leave.manager_snapshot_id=replacement_id
+                db.add(ApprovalEvent(request_id=leave.id,actor_id=actor.id,
+                    action="manager_reassigned",stage="manager",
+                    note=f"Manager exit: {employee_id} to {replacement_id}"))
+                notify(db,replacement_id,f"Leave request #{leave.id} needs your approval.",leave.id)
+
+
 @router.post("/employees/{employee_id}/lifecycle")
 def change_lifecycle(employee_id: int, body: LifecycleIn, user: Employee = Depends(require_hr), db: Session = Depends(db_session)):
     employee = employee_or_404(db, employee_id)
@@ -638,9 +649,16 @@ def change_lifecycle(employee_id: int, body: LifecycleIn, user: Employee = Depen
     if not core:
         core = EmployeeCore(employee_id=employee_id)
         db.add(core)
-    core.lifecycle = body.event
     if body.event == "exited":
-        employee.status = "inactive"  # deactivates access immediately
+        from .people_operations import ExitCase
+        settled=db.scalar(select(ExitCase.id).where(
+            ExitCase.employee_id==employee_id,ExitCase.status=="settled").order_by(ExitCase.id.desc()))
+        if not settled:
+            raise HTTPException(409,detail={"field":"exit_case",
+                "message":"Complete the employee exit case, checklist and F&F settlement before marking the employee as exited."})
+        reassign_reports_for_inactive_manager(db,employee_id,user,body.effective_date)
+        employee.status = "inactive"
+    core.lifecycle = body.event
     db.add(LifecycleEvent(employee_id=employee_id, event=body.event, note=body.note, effective_date=body.effective_date, performed_by=user.id))
     db.commit()
     return {"employee_id":employee_id, "lifecycle":body.event}
@@ -669,6 +687,14 @@ def deactivate_employee(employee_id:int,body:DeactivateEmployeeIn,user:Employee=
     protect_privileged_target(user,target)
     if target.status!="active":
         raise HTTPException(409,"Employee is already inactive.")
+    from .people_operations import ExitCase
+    pending_exit=db.scalar(select(ExitCase.id).where(
+        ExitCase.employee_id==employee_id,
+        ExitCase.status.in_(("requested","approved","clearance"))))
+    if pending_exit:
+        raise HTTPException(409,detail={"field":"exit_case",
+            "message":"An employee exit is in progress. Complete its checklist, clearances and F&F before deactivating the account."})
+    reassign_reports_for_inactive_manager(db,employee_id,user,date.today())
     target.status="inactive"
     db.add(LifecycleEvent(employee_id=employee_id,event="deactivated",note=body.reason.strip(),
                           effective_date=date.today(),performed_by=user.id))

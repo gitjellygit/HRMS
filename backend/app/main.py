@@ -455,12 +455,14 @@ def dashboard(user: Employee = Depends(current_user), db: Session = Depends(db_s
     from .project_management import ProjectDetail
     privileged = user.role in ("super_admin","admin","hr")
     total = db.scalar(select(func.count()).select_from(Employee).where(Employee.status=="active")) if privileged else None
-    pending = db.scalar(select(func.count()).select_from(Leave).where(Leave.status=="pending")) if privileged else None
+    from .leave_management import LeaveRequest
+    pending = db.scalar(select(func.count()).select_from(LeaveRequest).where(LeaveRequest.status=="pending")) if privileged else None
     query=select(func.count()).select_from(Project).where(Project.status=="active")
     if not privileged:
         query=query.join(ProjectDetail,ProjectDetail.project_id==Project.id).where(ProjectDetail.sourced_by_id==user.id)
     active_projects=db.scalar(query)
-    mine=db.scalar(select(func.count()).select_from(Leave).where(Leave.employee_id==user.id,Leave.status=="pending"))
+    mine=db.scalar(select(func.count()).select_from(LeaveRequest).where(
+        LeaveRequest.employee_id==user.id,LeaveRequest.status=="pending"))
     return {"employees":total,"pending_leaves":pending,"active_projects":active_projects,"my_pending_leaves":mine}
 
 
@@ -549,12 +551,9 @@ def attendance(employee_id: int | None = None, user: Employee = Depends(current_
 def apply_leave(user: Employee = Depends(current_user)):
     raise HTTPException(410, detail="Legacy leave submission retired; use /leave/requests.")
 
-@app.get("/leaves", response_model=list[LeaveOut])
-def leaves(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
-    query = select(Leave).order_by(Leave.id.desc())
-    if user.role not in ("admin", "hr"):
-        query = query.where(Leave.employee_id == user.id)
-    return db.scalars(query.limit(200)).all()
+@app.get("/leaves", status_code=410)
+def leaves(user: Employee = Depends(current_user)):
+    raise HTTPException(410, detail="Legacy leave records are retired; use /leave/requests. Leave years are April–March.")
 
 @app.patch("/leaves/{leave_id}", status_code=410)
 def review_leave(leave_id: int, user: Employee = Depends(require("admin", "hr"))):

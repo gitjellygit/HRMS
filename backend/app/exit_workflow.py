@@ -82,6 +82,19 @@ def add_template(data:TemplateIn,user:Employee=Depends(current_user),db:Session=
     db.add(row);db.commit();db.refresh(row)
     return {"id":row.id,"title":row.title,"assignee_role":row.assignee_role,"active":row.active}
 
+@router.put("/templates/{template_id}")
+def edit_template(template_id:int,data:TemplateIn,user:Employee=Depends(current_user),
+                  db:Session=Depends(db_session)):
+    require_hr(user)
+    row=db.get(ExitTaskTemplate,template_id)
+    if not row:raise HTTPException(404,"Exit checklist template not found")
+    previous=f"{row.title} / {row.assignee_role} / active={row.active}"
+    for key,value in data.model_dump().items():setattr(row,key,value)
+    audit(db,user,"exit_template",template_id,"updated",previous)
+    db.commit()
+    return {"id":row.id,"title":row.title,"assignee_role":row.assignee_role,"active":row.active}
+
+
 @router.post("/cases",status_code=201)
 def initiate(data:StartExitIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     require_hr(user)

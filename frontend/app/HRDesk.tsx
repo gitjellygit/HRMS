@@ -4,11 +4,14 @@ import {CalendarDays,CheckCircle2,Clock3,Search,Users} from "lucide-react";
 
 type Balance={leave_type:string;allocated:number;carried:number;used:number;remaining:number};
 type Staff={id:number;name:string;department:string;role:string;status:string;joining_date:string;manager_id:number|null;currently_checked_in:boolean;leave_balances:Balance[]};
+type Delivery={id:number;recipient_id:number;request_id:number|null;status:string;attempts:number;error:string;created_at:string};
 type Overview={fy:number;fy_label:string;headcount:number;pending_leave_requests:number;currently_checked_in:number;unassigned_managers:number;employees:Staff[]};
 const currentFY=()=>{const d=new Date();return d.getMonth()<3?d.getFullYear()-1:d.getFullYear()};
 export default function HRDesk({api}:{api:string}){
  const [fy,setFY]=useState(currentFY());
  const [overview,setOverview]=useState<Overview|null>(null);
+ const [deliveries,setDeliveries]=useState<Delivery[]>([]);
+ const [retrying,setRetrying]=useState<number|null>(null);
  const [search,setSearch]=useState("");
  const [selected,setSelected]=useState("");
  const [kind,setKind]=useState("");
@@ -22,6 +25,8 @@ export default function HRDesk({api}:{api:string}){
    const response=await fetch(api+"/leave/hr-overview?fy="+fy,{credentials:"include"});
    if(!response.ok)throw Error("Unable to load HR leave overview.");
    setOverview(await response.json());
+   const mail=await fetch(api+"/leave/email-outbox",{credentials:"include"});
+   if(mail.ok)setDeliveries(await mail.json());
   }catch(err){setError((err as Error).message)}
  }
  useEffect(()=>{void load()},[api,fy]);
@@ -39,6 +44,16 @@ export default function HRDesk({api}:{api:string}){
    setDays("");await load();
   }catch(err){setError((err as Error).message)}finally{setSaving(false)}
  }
+ async function retryEmail(id:number){
+  setRetrying(id);setError("");setNotice("");
+  try{
+   const response=await fetch(api+"/leave/email-outbox/"+id+"/retry",{method:"POST",credentials:"include"});
+   const data=await response.json().catch(()=>({}));
+   if(!response.ok)throw Error(typeof data.detail==="string"?data.detail:data.detail?.message||"Could not queue the email retry.");
+   setNotice("Leave email queued for retry. The mail worker will attempt delivery.");
+   await load();
+  }catch(err){setError((err as Error).message)}finally{setRetrying(null)}
+ }
  const filtered=(overview?.employees||[]).filter(e=>[e.name,e.department,e.role].some(v=>(v||"").toLowerCase().includes(search.toLowerCase())));
  const types=[...new Set((overview?.employees||[]).flatMap(e=>e.leave_balances.map(b=>b.leave_type)))];
  return <section className="employee-surface">
@@ -49,6 +64,16 @@ export default function HRDesk({api}:{api:string}){
   <div className="core-hr-controls"><div className="employee-search"><Search size={17}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search employees / department"/></div><label>FY begins <input type="number" min={2020} max={2100} value={fy} onChange={e=>setFY(Number(e.target.value))}/></label></div>
   <p className="field-help">Showing {overview?.fy_label||"financial year"} (1 April {fy}–31 March {fy+1}). Annual entitlements are automatically prorated using the employee's joining date. HR overrides are optional.</p>
   <div className="table-wrap"><table><thead><tr><th>Employee</th><th>Joined</th><th>Department</th><th>Attendance</th><th>Leave balance for FY</th></tr></thead><tbody>{filtered.map(e=><tr key={e.id}><td><strong>{e.name}</strong><div className="muted">{e.role.replace("_"," ")}{!e.manager_id&&!["admin","super_admin"].includes(e.role)?" · Manager needed":""}</div></td><td>{e.joining_date||"—"}</td><td>{e.department||"—"}</td><td><span className={"pill "+(e.currently_checked_in?"active":"pending")}>{e.currently_checked_in?"Checked in":"Not checked in"}</span></td><td>{e.leave_balances.length?e.leave_balances.map(b=><div key={b.leave_type} className="core-balance">{b.leave_type.replace("_"," ")}: <b>{b.remaining}</b> left ({b.allocated} allocated{b.carried?" + "+b.carried+" carried":""}, {b.used} reserved/used)</div>):<span className="muted">Configure a leave policy to generate entitlements</span>}</td></tr>)}</tbody></table>{!filtered.length&&<div className="empty">No employees match this filter.</div>}</div>
+  <div className="core-entitlement"><h3>Leave email delivery</h3>
+   <p className="field-help">Email is delivered by the scheduled mail worker. Leave requests and in-app notifications are saved even if SMTP is unavailable.</p>
+   <div className="table-wrap"><table><thead><tr><th>Recipient</th><th>Delivery</th><th>Attempts</th><th>Issue / action</th></tr></thead>
+   <tbody>{deliveries.filter(x=>x.status!=="sent").slice(0,20).map(item=><tr key={item.id}>
+    <td>Employee #{item.recipient_id}</td><td>{item.status}</td><td>{item.attempts}</td>
+    <td>{item.error||"Waiting for mail worker"} <button type="button" className="employee-cancel" disabled={retrying!==null}
+     onClick={()=>void retryEmail(item.id)}>{retrying===item.id?"Queuing…":"Retry"}</button></td>
+   </tr>)}</tbody></table></div>
+   {!deliveries.some(x=>x.status!=="sent")&&<p className="muted">No undelivered leave emails in the recent outbox.</p>}
+  </div>
   <div className="core-entitlement"><h3>Optional: override an employee's entitlement</h3><p className="muted">Normally no action is needed here. Configure 12 annual days in Leave requests → Policies, and new joiners receive a prorated entitlement automatically. Overrides replace the calculated allocation for the selected FY.</p>
    <form className="core-inline-form" onSubmit={save}><select value={selected} onChange={e=>setSelected(e.target.value)} required><option value="">Choose employee</option>{overview?.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select><select value={kind} onChange={e=>setKind(e.target.value)} required><option value="">Leave type</option>{types.map(t=><option key={t} value={t}>{t.replace("_"," ")}</option>)}</select><input value={days} onChange={e=>setDays(e.target.value)} type="number" min={0} max={365} step={0.5} placeholder="Override days" required/><button className="employee-primary" disabled={saving}>Save override</button></form>
   </div>

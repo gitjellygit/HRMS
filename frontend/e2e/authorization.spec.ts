@@ -4,7 +4,7 @@ import { API_URL } from '../playwright.config';
 
 const allRoles=['sales_a','developer_a','hr','accountant','manager'] as const;
 const restricted=[
-  { method:'GET', path:'/core/hr-overview', label:'HR data overview' },
+  { method:'GET', path:'/leave/hr-overview', label:'HR data overview' },
   { method:'GET', path:'/leave/reports?year=2026', label:'HR leave reports' },
   { method:'GET', path:'/policies/project-bonus', label:'company bonus policy' },
   { method:'GET', path:'/core/document-alerts', label:'confidential document expiry' },
@@ -58,4 +58,12 @@ test('HR can list test employees in employee directory', async ({ page }) => {
   expect(response.status()).toBe(200);
   const names=(await response.json()).map((p:{name:string})=>p.name);
   for(const person of users())expect(names).toContain(person.name);
+});
+
+test('legacy HR leave dashboard returns actionable retirement status', async ({ page }) => {
+  await login(page,users().find(u=>u.key==='hr')!);
+  const response=await page.request.get(API_URL+'/core/hr-overview');
+  expect(response.status()).toBe(410);
+  const body=await response.json();
+  expect(JSON.stringify(body)).toContain('/leave/hr-overview');
 });

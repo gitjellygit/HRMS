@@ -260,6 +260,13 @@ def test_exit_clearance_and_notification_outbox():
             cleared=c.post(f"/people/exits/{xid}/clearances",headers=ORIGIN,json={
                 "kind":kind,"note":"QA clearance verified for "+kind})
             assert cleared.status_code==201,cleared.text
+        checklist=c.get(f"/exit-workflow/cases/{xid}/tasks")
+        assert checklist.status_code==200,checklist.text
+        assert checklist.json(),"Exit settlement requires a configured clearance checklist"
+        for task in checklist.json():
+            finished=c.post(f'/exit-workflow/tasks/{task["id"]}/complete',
+                headers=ORIGIN,json={"note":"QA checklist clearance reviewed and completed."})
+            assert finished.status_code==200,finished.text
         settled=c.post(f"/people/exits/{xid}/review",headers=ORIGIN,json={
           "status":"settled","final_settlement_inr":"15000.00",
           "clearance_assets":True,"clearance_it":True,"clearance_finance":True})
