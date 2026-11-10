@@ -9,10 +9,10 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint, select
+from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint, Index, select, text
 from sqlalchemy.orm import Mapped, Session, mapped_column
 from .main import Base, Employee, db_session, current_user
-from .project_finance import ClientInvoice, authorized, audit
+from .project_finance import ClientInvoice, ProjectBilling, ProjectCharge, authorized, audit, project_detail, create_row, invoice_view
 
 router=APIRouter(prefix="/finance",tags=["Invoice Settlements"])
 CENT=Decimal("0.01")
@@ -48,6 +48,86 @@ class InvoiceCreditNote(Base):
     created_by:Mapped[int]=mapped_column(ForeignKey("employees.id"))
     created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=lambda:datetime.now(timezone.utc))
     __table_args__=(UniqueConstraint("invoice_id","reference",name="uq_invoice_credit_reference"),)
+
+
+class TimesheetInvoiceAllocation(Base):
+    """Only one active invoice can claim each approved timesheet."""
+    __tablename__="finance_timesheet_invoice_allocations"
+    id:Mapped[int]=mapped_column(primary_key=True)
+    timesheet_id:Mapped[int]=mapped_column(ForeignKey("time_timesheets.id"),index=True)
+    invoice_id:Mapped[int]=mapped_column(ForeignKey("finance_invoices.id"),index=True)
+    hours:Mapped[Decimal]=mapped_column(Numeric(7,2))
+    active:Mapped[bool]=mapped_column(default=True)
+    __table_args__=(Index("uq_active_timesheet_invoice", "timesheet_id", unique=True,
+                          postgresql_where=text("active = true")),)
+
+
+class ApprovedTimesheetInvoiceIn(BaseModel):
+    project_id:int=Field(gt=0)
+    period_start:date
+    period_end:date
+    @property
+    def valid_range(self):return self.period_start<=self.period_end
+
+
+@router.post("/invoices/from-approved-timesheets",status_code=201)
+def approved_timesheet_invoice(body:ApprovedTimesheetInvoiceIn,
+    user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    authorized(user)
+    if not body.valid_range:
+        raise HTTPException(422,detail={"field":"period_end","message":"End date must be on or after start date."})
+    from .time_tracking import Timesheet
+    project,detail=project_detail(db,body.project_id)
+    billing=db.get(ProjectBilling,project.id)
+    if billing is None:raise HTTPException(422,"Project billing must be configured first")
+    charge=db.get(ProjectCharge,(project.id,billing.recipient_type))
+    if charge is None or charge.rate_unit!="hour":
+        raise HTTPException(422,detail={"field":"rate_unit",
+            "message":"Approved-timesheet billing requires an hourly invoice rate."})
+    # Use project-row lock to serialize competing invoice jobs.
+    db.execute(select(type(project).id).where(type(project).id==project.id).with_for_update()).first()
+    source=db.scalars(select(Timesheet).where(
+        Timesheet.project_id==project.id,Timesheet.status=="approved",
+        Timesheet.work_date.between(body.period_start,body.period_end)).order_by(Timesheet.id).with_for_update()).all()
+    if not source:
+        raise HTTPException(422,detail={"field":"hours",
+            "message":"No approved timesheets exist for the selected project and period."})
+    ids=[row.id for row in source]
+    used=set(db.scalars(select(TimesheetInvoiceAllocation.timesheet_id).where(
+        TimesheetInvoiceAllocation.timesheet_id.in_(ids),
+        TimesheetInvoiceAllocation.active.is_(True))).all())
+    if used:
+        raise HTTPException(409,detail={"field":"timesheets",
+            "message":"Some approved hours are already billed. Choose only an unbilled service period.",
+            "timesheet_ids":sorted(used)})
+    quantity=sum((Decimal(row.hours) for row in source),Decimal("0"))
+    invoice=create_row(db,user,project,detail,billing,body.period_start,body.period_end,
+                       quantity,None,date.today(),"approved_timesheets")
+    for row in source:
+        db.add(TimesheetInvoiceAllocation(timesheet_id=row.id,invoice_id=invoice.id,
+                  hours=row.hours,active=True))
+    audit(db,user,project.id,"approved_timesheets_billed",
+        f"Invoice #{invoice.id}; {len(source)} approved timesheets; {quantity} hours")
+    db.commit();db.refresh(invoice)
+    return invoice_view(invoice) | {"approved_timesheet_count":len(source)}
+
+
+@router.get("/projects/{project_id}/approved-timesheets")
+def approved_timesheet_balance(project_id:int,period_start:date,period_end:date,
+    user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    authorized(user)
+    from .time_tracking import Timesheet
+    project_detail(db,project_id)
+    rows=db.scalars(select(Timesheet).where(
+        Timesheet.project_id==project_id,Timesheet.status=="approved",
+        Timesheet.work_date.between(period_start,period_end))).all()
+    ids=[row.id for row in rows]
+    used=set(db.scalars(select(TimesheetInvoiceAllocation.timesheet_id).where(
+        TimesheetInvoiceAllocation.active.is_(True),
+        TimesheetInvoiceAllocation.timesheet_id.in_(ids))).all()) if ids else set()
+    return {"project_id":project_id,"approved_hours":sum((Decimal(row.hours) for row in rows),Decimal(0)),
+            "unbilled_hours":sum((Decimal(row.hours) for row in rows if row.id not in used),Decimal(0)),
+            "approved_count":len(rows),"unbilled_count":len(rows)-len(used)}
 
 
 class PaymentIn(BaseModel):
