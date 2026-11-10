@@ -566,7 +566,7 @@ def invoice_pdf(invoice_id:int,user:Employee=Depends(current_user),db:Session=De
     buf=io.BytesIO();doc=SimpleDocTemplate(buf,pagesize=A4);styles=getSampleStyleSheet()
     safe=lambda s:escape(str(s or ""))
     story=[Paragraph("JellyGit — Invoice Draft / Recorded Invoice",styles["Heading1"]),
-      Spacer(1,12),Paragraph("Invoice #"+str(x.id)+" — "+safe(x.status).upper(),styles["Normal"]),
+      Spacer(1,12),Paragraph("Invoice "+safe(x.invoice_number or ("#"+str(x.id)))+" — "+safe(x.status).upper(),styles["Normal"]),
       Paragraph("Bill to: "+safe(x.recipient_name),styles["Normal"]),
       Paragraph("Email: "+safe(x.recipient_email)+" | Phone: "+safe(x.recipient_phone),styles["Normal"]),
       Paragraph("Address: "+safe(x.billing_address),styles["Normal"]),
@@ -574,7 +574,18 @@ def invoice_pdf(invoice_id:int,user:Employee=Depends(current_user),db:Session=De
       Paragraph("Issued: "+str(x.issue_date)+" | Due: "+str(x.due_date),styles["Normal"]),Spacer(1,12)]
     story.append(Table([["Qty","Rate","Subtotal","Tax","Total"],
        [str(x.quantity),str(x.unit_rate),str(x.subtotal),str(x.tax_amount),str(x.total)+" "+x.currency]]))
-    story.append(Spacer(1,15));story.append(Paragraph("Payment is tracked in HRMS; this document is not evidence of payment.",styles["Normal"]))
+    if x.tax_scheme in ("igst","cgst_sgst"):
+        story.extend([Spacer(1,10),
+            Paragraph("Draft Indian GST calculation - verify all tax fields and statutory requirements before issuance.",styles["Normal"]),
+            Paragraph("Supplier GSTIN: "+safe(x.supplier_gstin),styles["Normal"]),
+            Paragraph("Recipient GSTIN: "+safe(x.recipient_gstin),styles["Normal"]),
+            Paragraph("SAC: "+safe(x.sac_code)+" | Place of supply code: "+safe(x.place_of_supply),styles["Normal"]),
+            Paragraph("CGST: "+str(x.cgst_amount)+" | SGST: "+str(x.sgst_amount)+" | IGST: "+str(x.igst_amount),styles["Normal"])])
+    else:
+        story.append(Paragraph("Internal billing record - not a statutory tax invoice.",styles["Normal"]))
+    story.append(Spacer(1,15));story.append(Paragraph(
+        "Invoice draft for review. This document is not evidence of payment or certified tax compliance.",
+        styles["Normal"]))
     doc.build(story);buf.seek(0)
     return StreamingResponse(buf,media_type="application/pdf",
       headers={"Content-Disposition":f'attachment; filename="invoice-{x.id}.pdf"',
