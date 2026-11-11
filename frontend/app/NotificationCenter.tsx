@@ -1,6 +1,6 @@
 "use client";
 import {useCallback,useEffect,useRef,useState} from "react";
-import {Bell,Check,CheckCheck,Archive,ChevronRight,X} from "lucide-react";
+import {Bell,Check,CheckCheck,Archive,ChevronRight,X,RotateCcw,Trash2} from "lucide-react";
 
 type Notice={id:number;event:string;title:string;body:string;destination:string;
  created_at:string;read:boolean;archived:boolean};
@@ -57,7 +57,8 @@ export default function NotificationCenter({api,onNavigate,viewAll=false,onBack}
     </button>
     <div className="notification-row-actions">
       {!item.read&&!item.archived&&<button aria-label={"Mark "+item.title+" as read"} title="Mark as read" onClick={()=>void post("/"+item.id+"/read")}><Check size={16}/></button>}
-      {!item.archived&&<button aria-label={"Archive "+item.title} title="Archive (hide from inbox)" onClick={()=>void post("/"+item.id+"/archive")}><Archive size={16}/></button>}
+      {!item.archived?<button aria-label={"Remove "+item.title+" from inbox"} title="Remove from inbox (kept in history)" onClick={()=>void post("/"+item.id+"/archive")}><Trash2 size={16}/></button>:
+       <button aria-label={"Restore "+item.title} title="Restore to inbox" onClick={()=>void post("/"+item.id+"/restore")}><RotateCcw size={16}/></button>}
     </div>
    </div>
    {expanded===item.id&&<div className="notification-item-body"><p>{item.body}</p>
@@ -68,10 +69,11 @@ export default function NotificationCenter({api,onNavigate,viewAll=false,onBack}
  }
  const list=data.items.filter(n=>showArchived||!n.archived);
  return viewAll?<section className="notification-page">
-   <div className="notification-page-header"><div><h2>All notifications</h2><p>Read, archive, and review your notification history.</p></div>
+   <div className="notification-page-header"><div><h2>All notifications</h2><p>Mark messages as read or remove them from your inbox. Removed messages remain available in archived history.</p></div>
     <div className="notification-toolbar">
      <label className="notification-checkbox"><input type="checkbox" checked={showArchived} onChange={e=>setShowArchived(e.target.checked)}/>Show archived</label>
      <button className="notification-action" onClick={()=>void post("/read-all")}><CheckCheck size={15}/>Mark all read</button>
+     <button className="notification-action" onClick={()=>void post("/archive-read")}><Trash2 size={15}/>Clear read</button>
      {onBack&&<button className="notification-action" onClick={onBack}>Back</button>}
     </div></div>
    {error&&<p role="alert" className="error">{error}</p>}
@@ -85,6 +87,7 @@ export default function NotificationCenter({api,onNavigate,viewAll=false,onBack}
    {open&&<div role="dialog" aria-label="Recent notifications" className="notification-popover">
     <div className="notification-popover-heading"><strong>Notifications</strong>
       <div><button className="notification-action" onClick={()=>void post("/read-all")}><CheckCheck size={14}/>Read all</button>
+      <button className="notification-action" onClick={()=>void post("/archive-read")}><Trash2 size={14}/>Clear read</button>
       <button aria-label="Close notifications" className="notification-close" onClick={()=>setOpen(false)}><X size={17}/></button></div>
     </div>
     {error&&<p role="alert" className="error">{error}</p>}

@@ -412,7 +412,7 @@ def recalculate_draft(run_id:int,user:Employee=Depends(current_user),db:Session=
 def get_runs(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     role(user)
     return [{"id":r.id,"period":r.period,"status":r.status,"created_at":r.created_at,
-             "approved_at":r.approved_at} for r in db.scalars(select(PayrollRun).order_by(PayrollRun.period.desc())).all()]
+             "created_by":r.created_by,"approved_at":r.approved_at} for r in db.scalars(select(PayrollRun).order_by(PayrollRun.period.desc())).all()]
 
 @router.get("/runs/{run_id}")
 def view_run(run_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
@@ -420,7 +420,7 @@ def view_run(run_id:int,user:Employee=Depends(current_user),db:Session=Depends(d
     run=db.get(PayrollRun,run_id)
     if not run:raise HTTPException(404)
     rows=db.scalars(select(PayrollLine).where(PayrollLine.run_id==run_id)).all()
-    return {"id":run.id,"period":run.period,"status":run.status,"lines":[line_view(r) for r in rows],
+    return {"id":run.id,"period":run.period,"status":run.status,"created_by":run.created_by,"lines":[line_view(r) for r in rows],
             "gross_total":sum((r.gross for r in rows),Decimal(0)),
             "net_total":sum((r.net for r in rows),Decimal(0)),
             "exceptions":sum(bool(r.exceptions) for r in rows)}
