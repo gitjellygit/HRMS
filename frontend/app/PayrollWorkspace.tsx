@@ -75,10 +75,13 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
   setAttempted(kind);
   if(!chosen){setError("Select an employee in Monthly salary structure before requesting approval.");setFieldError("employee_id");return false}
   if(payReason.trim().length<10){setError("Enter an approval reason of at least 10 characters in the Approval reason section.");setFieldError("reason");return false}
-  const fields=kind==="salary"?salaryFields.map(([k])=>k):kind==="statutory"?statutoryFields.map(([k])=>k):["code","title","amount","effective_from"];
-  const values=kind==="salary"?salary:kind==="statutory"?statutory:component;
+  const fields=kind==="salary"?[...salaryFields.map(([k])=>k),"effective_from"]:kind==="statutory"?[...statutoryFields.map(([k])=>k),"effective_from"]:["code","title","amount","effective_from"];
+  const values:Row=kind==="salary"?salary:kind==="statutory"?statutory:component;
   const missing=fields.find(key=>values[key]===undefined||values[key]===null||String(values[key]).trim()==="");
   if(missing){const names:Record<string,string>={basic:"Basic salary",hra:"HRA",allowances:"Other allowances",other_deductions:"Other deductions",pf_employee_monthly:"PF employee",esi_employee_monthly:"ESI employee",professional_tax_monthly:"Professional Tax",tds_monthly:"TDS",gratuity_employer_provision:"Gratuity",code:"Unique code",title:"Display label",amount:"Monthly amount",effective_from:"Effective date"};setError("Complete "+(names[missing]||missing)+" before requesting approval.");setFieldError(missing);return false}
+  if(kind==="component"&&!/^[a-z][a-z0-9_]{1,34}$/.test(component.code)){setError("Unique code must start with a lowercase letter and contain 2–35 lowercase letters, numbers or underscores.");setFieldError("code");return false}
+  if(kind==="component"&&component.title.trim().length<2){setError("Display label must contain at least 2 characters.");setFieldError("title");return false}
+  if(fields.some(key=>key!=="code"&&key!=="title"&&key!=="effective_from"&&(!Number.isFinite(Number(values[key]))||Number(values[key])<0))){setError("Enter valid non-negative monthly amounts before requesting approval.");return false}
   setError("");setFieldError("");return true;
  }
  async function reviewRun(id:number){
