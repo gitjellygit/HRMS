@@ -1,7 +1,7 @@
 "use client";
 import {explainError} from "./formErrors";
 import {useEffect,useState} from "react";
-import {BadgeIndianRupee,ReceiptText,FileDown,ShieldCheck} from "lucide-react";
+import {ReceiptText,FileDown,AlertCircle,ChevronDown,UploadCloud,CheckCircle2} from "lucide-react";
 import FeedbackMotion from "./FeedbackMotion";
 type Row=Record<string,any>;
 type Tab="salary"|"runs"|"payslips"|"expenses";
@@ -26,6 +26,8 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
   tds_monthly:"",gratuity_employer_provision:"",effective_from:today()});
  const [month,setMonth]=useState(period());
  const [runDetail,setRunDetail]=useState<Row|null>(null);
+ const [reviewLoading,setReviewLoading]=useState<number|null>(null);
+ const [attempted,setAttempted]=useState<string>("");
  const [claim,setClaim]=useState({title:"",category:"travel",amount:"",incurred_on:today(),note:""});
  const [receipt,setReceipt]=useState<File|null>(null);
  const [message,setMessage]=useState("");
@@ -68,7 +70,23 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
    if(!chosen){setComponents([]);return}
    void call("/components?employee_id="+chosen).then(setComponents).catch(()=>setComponents([]));
  },[chosen,api]);
- function clear(){setError("");setMessage("");setFieldError("")}
+ function clear(){setError("");setMessage("");setFieldError("");setAttempted("")}
+ function validateApproval(kind:"salary"|"statutory"|"component"){
+  setAttempted(kind);
+  if(!chosen){setError("Select an employee in Monthly salary structure before requesting approval.");setFieldError("employee_id");return false}
+  if(payReason.trim().length<10){setError("Enter an approval reason of at least 10 characters in the Approval reason section.");setFieldError("reason");return false}
+  const fields=kind==="salary"?salaryFields.map(([k])=>k):kind==="statutory"?statutoryFields.map(([k])=>k):["code","title","amount","effective_from"];
+  const values=kind==="salary"?salary:kind==="statutory"?statutory:component;
+  const missing=fields.find(key=>values[key]===undefined||values[key]===null||String(values[key]).trim()==="");
+  if(missing){const names:Record<string,string>={basic:"Basic salary",hra:"HRA",allowances:"Other allowances",other_deductions:"Other deductions",pf_employee_monthly:"PF employee",esi_employee_monthly:"ESI employee",professional_tax_monthly:"Professional Tax",tds_monthly:"TDS",gratuity_employer_provision:"Gratuity",code:"Unique code",title:"Display label",amount:"Monthly amount",effective_from:"Effective date"};setError("Complete "+(names[missing]||missing)+" before requesting approval.");setFieldError(missing);return false}
+  setError("");setFieldError("");return true;
+ }
+ async function reviewRun(id:number){
+  setReviewLoading(id);setError("");setRunDetail(null);
+  try{const detail=await call("/runs/"+id);setRunDetail(detail);window.setTimeout(()=>document.getElementById("payroll-run-review")?.scrollIntoView({behavior:"smooth",block:"start"}),0)}
+  catch(e){setError("Unable to open payroll review: "+(e as Error).message)}
+  finally{setReviewLoading(null)}
+ }
  async function submit(fn:()=>Promise<unknown>,success:string){
   clear();setBusy(true);
   try{await fn();setMessage(success);await refresh()}catch(e){
@@ -90,32 +108,33 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
   {error&&<div className="time-form-error" role="alert">{error}</div>}
   {message&&<FeedbackMotion type="success" compact message={message}/>}
   {busy&&<FeedbackMotion type="loading" compact message="Processing…"/>}
-  {tab==="salary"&&finance&&<div className="ops-columns">
-   {hr&&<section className="employee-surface"><h3>Approval reason</h3>
+  {tab==="salary"&&finance&&<div className="ops-columns payroll-salary-layout">
+   {hr&&<section className="employee-surface payroll-reason"><h3>Approval reason</h3>
     <p className="field-help">Explain the proposed compensation change. An independent Admin must approve before it takes effect.</p>
-    <label>Reason (10+ characters)<textarea required minLength={10} maxLength={1000} value={payReason}
-      onChange={e=>setPayReason(e.target.value)} placeholder="Describe the salary or statutory change and its justification."/></label>
+    <label className="payroll-reason-label">Why is this change needed?<textarea rows={3} required minLength={10} maxLength={1000} aria-invalid={fieldError==="reason"} value={payReason}
+      onChange={e=>{setPayReason(e.target.value);if(fieldError==="reason")setFieldError("")}} placeholder="Example: Salary revision effective next month, approved by HR following annual review."/></label>
+    <div className="payroll-guidance"><span>{payReason.trim().length}/10 minimum characters</span><span>Used for all three approval requests below</span></div>
    </section>}
    {hr&&<section className="employee-surface"><h3>Monthly salary structure</h3><p className="field-help">All amounts in INR per month. Salary changes take effect only after independent Admin approval.</p>
-    <label className="ops-label">Employee<select value={chosen} onChange={e=>setChosen(e.target.value)}><option value="">Select employee</option>{employees.filter(e=>e.id!==user.id).map(e=><option key={e.id} value={e.id}>{e.name} · {e.department}</option>)}</select></label>
-    <form className="ops-form" onSubmit={e=>{e.preventDefault();if(!chosen){setError("Select the employee.");setFieldError("employee_id");return}
+    <label className="ops-label">Employee <span className="required">*</span><select aria-invalid={fieldError==="employee_id"} value={chosen} onChange={e=>setChosen(e.target.value)}><option value="">Select employee</option>{employees.filter(e=>e.id!==user.id).map(e=><option key={e.id} value={e.id}>{e.name} · {e.department}</option>)}</select></label>
+    <form className="ops-form" noValidate onSubmit={e=>{e.preventDefault();if(!validateApproval("salary"))return;
      void submit(()=>propose("salary_structure",{...salary,employee_id:Number(chosen)}),"Salary change submitted for independent admin approval.")}}>
      {salaryFields.map(([key,title])=><label key={key}>{title}<input type="number" min="0" step=".01" required
       aria-invalid={fieldError===key} value={salary[key]??""} onChange={e=>setSalary(v=>({...v,[key]:e.target.value}))}/></label>)}
      <label>Effective from<input type="date" required value={salary.effective_from||today()} onChange={e=>setSalary(v=>({...v,effective_from:e.target.value}))}/></label>
-     <button className="employee-primary" disabled={!chosen||busy||payReason.trim().length<10}>Request salary approval</button>
+     <button className="employee-primary" disabled={busy} title="Click to check requirements and request approval">Request salary approval</button>
     </form></section>}
-   {hr&&<section className="employee-surface"><h3>Reviewed statutory deductions</h3><p className="field-help">Enter employee-specific validated monthly amounts. This system does not choose tax brackets automatically.</p>
-    <form className="ops-form" onSubmit={e=>{e.preventDefault();if(!chosen){setError("Select an employee first.");return}void submit(()=>propose("statutory_settings",{...statutory,employee_id:Number(chosen)}),"Statutory change submitted for independent admin approval.")}}>
+   {hr&&<section className="employee-surface"><h3>Reviewed statutory deductions</h3><p className="payroll-selected">Employee: <strong>{employees.find(e=>String(e.id)===chosen)?.name||"Not selected — choose an employee above"}</strong></p><p className="field-help">Enter employee-specific validated monthly amounts. This system does not choose tax brackets automatically.</p>
+    <form className="ops-form" noValidate onSubmit={e=>{e.preventDefault();if(!validateApproval("statutory"))return;void submit(()=>propose("statutory_settings",{...statutory,employee_id:Number(chosen)}),"Statutory change submitted for independent admin approval.")}}>
      {statutoryFields.map(([key,title])=><label key={key}>{title}<input type="number" min="0" step=".01" required value={statutory[key]??""}
      onChange={e=>setStatutory(v=>({...v,[key]:e.target.value}))}/></label>)}
      <label>Effective from<input type="date" required value={statutory.effective_from||today()}
       onChange={e=>setStatutory(v=>({...v,effective_from:e.target.value}))}/></label>
-     <button className="employee-primary" disabled={!chosen||busy||payReason.trim().length<10}>Request statutory approval</button>
+     <button className="employee-primary" disabled={busy} title="Click to check requirements and request approval">Request statutory approval</button>
     </form></section>}
-   {hr&&<section className="employee-surface"><h3>Additional earnings and deductions</h3>
+   {hr&&<section className="employee-surface"><h3>Additional earnings and deductions</h3><p className="payroll-selected">Employee: <strong>{employees.find(e=>String(e.id)===chosen)?.name||"Not selected — choose an employee above"}</strong></p>
     <p className="field-help">Add custom monthly salary components. They appear in payroll calculations, published payslips and new offers using the salary breakdown placeholder.</p>
-    <form className="ops-form" onSubmit={e=>{e.preventDefault();if(!chosen){setError("Select an employee first.");return}
+    <form className="ops-form" noValidate onSubmit={e=>{e.preventDefault();if(!validateApproval("component"))return;
       void submit(()=>propose("salary_component",{...component,employee_id:Number(chosen),amount:Number(component.amount)}),
        "Salary component submitted for independent admin approval.")}}>
      <label>Unique code<input placeholder="shift_bonus" pattern="[a-z][a-z0-9_]{1,34}" required value={component.code} onChange={e=>setComponent(v=>({...v,code:e.target.value}))}/></label>
@@ -124,7 +143,7 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
      <label>Monthly amount (INR)<input type="number" min="0" step=".01" required value={component.amount} onChange={e=>setComponent(v=>({...v,amount:e.target.value}))}/></label>
      <label>Effective date<input type="date" required value={component.effective_from} onChange={e=>setComponent(v=>({...v,effective_from:e.target.value}))}/></label>
      <label className="ops-check"><input type="checkbox" checked={component.active} onChange={e=>setComponent(v=>({...v,active:e.target.checked}))}/>Active item</label>
-     <button className="employee-primary" disabled={!chosen||busy||payReason.trim().length<10}>Request component approval</button>
+     <button className="employee-primary" disabled={busy} title="Click to check requirements and request approval">Request component approval</button>
     </form>
     <div className="ops-table">{components.map(c=><div className="ops-row" key={c.code}>
       <strong>{c.title}</strong><span>{c.code} · {c.kind} · {cash(c.amount)} · {c.active?"active":"inactive"}</span>
@@ -137,18 +156,18 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
    <div className="ops-inline"><label>Payroll period<input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label>
     <button className="employee-primary" disabled={busy} onClick={()=>void submit(()=>call("/runs","POST",{period:month}),"Payroll draft calculated.")}>Calculate draft</button></div>
    <div className="ops-table">{runs.map(r=><div className="ops-row" key={r.id}><strong>{r.period}</strong><span>{r.status}</span>
-    <button className="employee-cancel" onClick={()=>void call("/runs/"+r.id).then(setRunDetail).catch(e=>setError(e.message))}>Review</button>
+    <button className="employee-cancel" onClick={()=>void reviewRun(r.id)} disabled={reviewLoading!==null}>{reviewLoading===r.id?"Opening…":"Review details"}</button>
     {r.status==="draft"&&hr&&<button className="employee-primary" disabled={busy} onClick={()=>void submit(()=>call("/runs/"+r.id+"/approve","POST"),"Payroll approved.")}>Approve</button>}
     {r.status==="approved"&&hr&&<button className="employee-primary" disabled={busy} onClick={()=>void submit(()=>call("/runs/"+r.id+"/publish","POST"),"Payslips published.")}>Publish</button>}
    </div>)}</div>
-   {runDetail&&<div className="ops-breakdown"><h4>Run {runDetail.period} · {runDetail.status}</h4><p>Gross {cash(runDetail.gross_total)} · Net {cash(runDetail.net_total)} · {runDetail.exceptions} attendance exceptions</p>
+   {runDetail&&<div id="payroll-run-review" className="ops-breakdown payroll-run-detail" role="region" aria-label="Payroll run review"><h4>Run {runDetail.period} · {runDetail.status}</h4><p>Gross {cash(runDetail.gross_total)} · Net {cash(runDetail.net_total)} · {runDetail.exceptions} attendance exceptions</p>
     <div className="table-wrap"><table><thead><tr><th>Employee</th><th>Gross</th><th>LOP days</th><th>LOP</th><th>Net</th><th>Exceptions</th></tr></thead><tbody>{runDetail.lines?.map((line:Row)=><tr key={line.id}><td>#{line.employee_id}</td><td>{cash(line.gross)}</td><td>{line.lop_days}</td><td>{cash(line.lop_amount)}</td><td>{cash(line.net)}</td><td>{line.exceptions||"None"}{line.exceptions&&hr&&<button className="employee-cancel" disabled={busy}
    onClick={()=>{const reason=window.prompt("Explain the verified attendance exception (20+ characters).");
     if(reason)void submit(()=>call("/runs/"+runDetail.id+"/lines/"+line.id+"/resolve-exception","POST",{reason}),"Attendance exception reviewed.");
    }}>Resolve with reason</button>}</td></tr>)}</tbody></table></div></div>}
   </section>}
   {tab==="payslips"&&<section className="employee-surface">
-   <h3><FileDown size={19}/> Published payslips</h3><p className="muted">Confidential; only published statements are available for download.</p>
+   <h3><FileDown size={19}/> Published payslips</h3><p className="muted">Confidential payslips are available for download only after payroll is published.</p>
    <div className="ops-table">{slips.length?slips.map(s=><div className="ops-row" key={s.line_id}><strong>{s.period}</strong><span>Gross {cash(s.gross)}</span><span>Net {cash(s.net)}</span>
     <a className="employee-primary" href={api+"/payroll/payslips/"+s.line_id+".pdf"} download>Download PDF</a></div>):<p>No payslips published yet.</p>}</div>
   </section>}
@@ -167,7 +186,7 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
       <label>Amount (INR)<input required min=".01" max="1000000" type="number" step=".01" value={claim.amount} onChange={e=>setClaim(v=>({...v,amount:e.target.value}))}/></label>
       <label>Expense date<input required type="date" value={claim.incurred_on} onChange={e=>setClaim(v=>({...v,incurred_on:e.target.value}))}/></label>
       <label className="wide">Explanation<textarea rows={3} value={claim.note} onChange={e=>setClaim(v=>({...v,note:e.target.value}))}/></label>
-      <label className="wide">Receipt (PDF/JPEG/PNG, 5 MB)<input type="file" required accept=".pdf,.jpg,.jpeg,.png" onChange={e=>setReceipt(e.target.files?.[0]||null)}/></label>
+      <label className="wide">Receipt (PDF/JPEG/PNG, max 5 MB)<span className="payroll-upload"><UploadCloud size={20}/><strong>{receipt?receipt.name:"Choose receipt"}</strong><small>{receipt?"Click to replace the selected file":"PDF, JPG or PNG · Maximum 5 MB"}</small><input type="file" required accept=".pdf,.jpg,.jpeg,.png" onChange={e=>{const f=e.target.files?.[0]||null;if(f&&f.size>5*1024*1024){setError("Receipt is larger than 5 MB. Choose a smaller PDF or image.");setReceipt(null);e.target.value="";return}setReceipt(f);setError("")}}/></span></label>
       <button className="employee-primary" disabled={busy}>Submit expense</button>
     </form></section>
    <section className="employee-surface"><h3>Claims</h3><div className="ops-table">{expenses.map(e=><div className="ops-row" key={e.id}><strong>{e.title}</strong><span>{cash(e.amount)} · {e.status}</span>
