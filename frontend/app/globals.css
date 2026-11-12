@@ -932,3 +932,7 @@ button.secondary:hover:not(:disabled),.employee-cancel:hover:not(:disabled),.pro
 .timesheet-empty-state p{font-size:12px;line-height:1.55;margin:0;max-width:350px}
 [data-theme="dark"] .timesheet-empty-state{background:#212b40;border-color:#4b5570;color:#bfc9dc}
 [data-theme="dark"] .timesheet-empty-state strong{color:#e4e9f3}
+
+/* A disabled control should never show a busy spinner unless a request is actually loading. */
+button.employee-primary:disabled,button.primary:disabled,button.secondary:disabled,
+button.employee-cancel:disabled,button.auth-submit:disabled{cursor:not-allowed!important}
