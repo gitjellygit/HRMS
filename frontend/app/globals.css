@@ -936,3 +936,10 @@ button.secondary:hover:not(:disabled),.employee-cancel:hover:not(:disabled),.pro
 /* A disabled control should never show a busy spinner unless a request is actually loading. */
 button.employee-primary:disabled,button.primary:disabled,button.secondary:disabled,
 button.employee-cancel:disabled,button.auth-submit:disabled{cursor:not-allowed!important}
+
+/* Equal-height card rows throughout the existing operational two-column layouts. */
+.time-workspace .time-columns:not(.timesheet-workspace-grid),
+.ops-area .ops-columns{align-items:stretch}
+.time-workspace .time-columns>.employee-surface,
+.ops-area .ops-columns>.employee-surface{min-width:0;height:100%;border-radius:var(--hrms-card-radius)}
+:where(.panel,.card,.employee-surface,.overview-feature-card){border-radius:var(--hrms-card-radius)}
