@@ -44,13 +44,18 @@ test('timesheet cards stack cleanly on a narrow mobile screen',async({page})=>{
  }
 });
 
-test('primary and secondary actions use one consistent theme throughout HRMS',async({page})=>{
+test('primary and secondary actions use one consistent theme throughout all HRMS sections and tabs',async({page})=>{
+ test.setTimeout(180000);
  await page.setViewportSize({width:1440,height:900});
  await login(page,hr());
- for(const pageName of ['Overview','Attendance','Time & shifts','Payroll & expenses','Appraisals','Performance & growth','Projects','People operations','Finance & invoicing']){
+ for(const pageName of ['Overview','Notifications','Employees','Attendance','Time & shifts','Payroll & expenses',
+  'Finance & invoicing','Admin approvals','People operations','Leave requests','Projects','Bonuses','Appraisals',
+  'Performance & growth','HR overview','Policies','Organization','Org chart','My profile',
+  'Profile requests','Bulk data & expiries']){
   const nav=page.locator('.sidebar nav').getByRole('button',{name:pageName,exact:true});
   if(!(await nav.isVisible()))continue;
   await navigate(page,pageName);
+  const assertTheme=async(label:string)=>{
   const colors=await page.locator('main.content').evaluate(root=>{
    const isVisible=(el:HTMLElement)=>el.getClientRects().length>0;
    const buttons=Array.from(root.querySelectorAll<HTMLElement>('button.primary,button.secondary,button.employee-primary,button.employee-cancel'));
@@ -59,8 +64,19 @@ test('primary and secondary actions use one consistent theme throughout HRMS',as
   });
   const primary=[...new Set(colors.filter(c=>c.type==='primary').map(c=>c.color))];
   const secondary=[...new Set(colors.filter(c=>c.type==='secondary').map(c=>c.color))];
-  expect(primary.length,'Inconsistent primary buttons on '+pageName+': '+JSON.stringify(colors)).toBeLessThanOrEqual(1);
-  expect(secondary.length,'Inconsistent secondary buttons on '+pageName+': '+JSON.stringify(colors)).toBeLessThanOrEqual(1);
+  expect(primary.length,'Inconsistent primary buttons on '+label+': '+JSON.stringify(colors)).toBeLessThanOrEqual(1);
+  expect(secondary.length,'Inconsistent secondary buttons on '+label+': '+JSON.stringify(colors)).toBeLessThanOrEqual(1);
+  };
+  await assertTheme(pageName);
+  // Check visible subtabs as well as every sidebar page. Only tabs are clicked: no writes.
+  const tabs=await page.getByRole('tab').allTextContents();
+  for(const title of tabs.map(x=>x.trim()).filter(Boolean).slice(0,12)){
+   const tab=page.getByRole('tab',{name:title,exact:true}).first();
+   if(await tab.isVisible()){
+    await tab.click();
+    await assertTheme(pageName+' / '+title);
+   }
+  }
  }
 });
 
