@@ -39,6 +39,7 @@ class Shift(Base):
     start_time:Mapped[str]=mapped_column(String(5))
     end_time:Mapped[str]=mapped_column(String(5))
     break_minutes:Mapped[int]=mapped_column(Integer,default=0)
+    timezone:Mapped[str]=mapped_column(String(64),default="Asia/Kolkata",server_default="Asia/Kolkata")
     active:Mapped[bool]=mapped_column(Boolean,default=True)
 
 class Roster(Base):
@@ -128,6 +129,7 @@ class ShiftIn(BaseModel):
     start_time:time
     end_time:time
     break_minutes:int=Field(default=0,ge=0,le=240)
+    timezone:Literal["America/New_York","America/Chicago","Asia/Kolkata","UTC"]="Asia/Kolkata"
 
 class RosterIn(BaseModel):
     employee_id:int
@@ -267,13 +269,13 @@ def biometric_event(body:BiometricEventIn,x_device_token:str|None=Header(default
 @router.get("/shifts")
 def shifts(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     return [{"id":s.id,"name":s.name,"start_time":s.start_time,"end_time":s.end_time,
-             "break_minutes":s.break_minutes,"active":s.active}
+             "break_minutes":s.break_minutes,"timezone":s.timezone,"active":s.active}
             for s in db.scalars(select(Shift).order_by(Shift.name)).all()]
 
 @router.post("/shifts",status_code=201)
 def create_shift(body:ShiftIn,user:Employee=Depends(only_hr),db:Session=Depends(db_session)):
     row=Shift(name=body.name,start_time=body.start_time.strftime("%H:%M"),
-              end_time=body.end_time.strftime("%H:%M"),break_minutes=body.break_minutes)
+              end_time=body.end_time.strftime("%H:%M"),break_minutes=body.break_minutes,timezone=body.timezone)
     db.add(row);db.commit();db.refresh(row)
     return {"id":row.id,"name":row.name}
 
@@ -291,7 +293,8 @@ def roster(employee_id:int|None=None,user:Employee=Depends(current_user),db:Sess
     owner=employee_id or user.id
     if owner!=user.id and not permitted(db,user,owner):raise HTTPException(403,"Team access required")
     return [{"id":r.id,"employee_id":r.employee_id,"work_date":r.work_date,"shift_id":r.shift_id,
-             "shift_name":db.get(Shift,r.shift_id).name}
+             "shift_name":db.get(Shift,r.shift_id).name,
+             "timezone":db.get(Shift,r.shift_id).timezone}
             for r in db.scalars(select(Roster).where(Roster.employee_id==owner).order_by(Roster.work_date.desc())).all()]
 
 @router.get("/daily")
@@ -304,24 +307,37 @@ def daily(employee_id:int|None=None,month:int=0,user:Employee=Depends(current_us
     threshold=float(policy.half_day_under_hours) if policy else 4
     overtime_threshold=float(policy.overtime_after_hours) if policy else 9
     grace=policy.grace_minutes if policy else 15
-    tz=ZoneInfo("Asia/Kolkata")  # Indian office shifts use IST; location-specific zones are future work.
+    roster_map={r.work_date.isoformat():db.get(Shift,r.shift_id) for r in
+      db.scalars(select(Roster).where(Roster.employee_id==owner)).all()}
+    configured_zones={shift.timezone for shift in roster_map.values() if shift}
+    # Preserve Indian office behavior for unrostered punches. For rostered days,
+    # match each instant against the shift's own named zone; this also handles
+    # employees rotating between US Eastern and Central near local midnight.
+    preferred_zone=next(iter(configured_zones)) if len(configured_zones)==1 else "Asia/Kolkata"
+    zone_cache={name:ZoneInfo(name) for name in configured_zones | {preferred_zone}}
     entries={}
     for punch in punches:
-        local_punch=punch.punch_in.astimezone(tz)
-        if month and local_punch.month!=month:continue
+        local_punch=None
+        for name in sorted(configured_zones):
+            candidate=punch.punch_in.astimezone(zone_cache[name])
+            assigned=roster_map.get(candidate.date().isoformat())
+            if assigned and assigned.timezone==name:
+                local_punch=candidate
+                break
+        if local_punch is None:
+            local_punch=punch.punch_in.astimezone(zone_cache[preferred_zone])
         key=local_punch.date().isoformat()
+        if month and local_punch.month!=month:continue
         if key not in entries:entries[key]={"date":key,"sessions":0,"hours":0.0,"open":False,"first_punch":local_punch}
         entries[key]["sessions"]+=1
         if punch.punch_out:entries[key]["hours"]+=max(0,(punch.punch_out-punch.punch_in).total_seconds()/3600)
         else:entries[key]["open"]=True
         if local_punch<entries[key]["first_punch"]:entries[key]["first_punch"]=local_punch
-    roster_map={r.work_date.isoformat():db.get(Shift,r.shift_id) for r in
-      db.scalars(select(Roster).where(Roster.employee_id==owner)).all()}
     for key,v in entries.items():
         shift=roster_map.get(key)
         v["late"]=False
         if shift:
-            start=datetime.combine(date.fromisoformat(key),time.fromisoformat(shift.start_time),tzinfo=tz)
+            start=datetime.combine(date.fromisoformat(key),time.fromisoformat(shift.start_time),tzinfo=ZoneInfo(shift.timezone))
             v["late"]=v["first_punch"]>start+timedelta(minutes=grace)
         v["half_day"]=not v["open"] and v["hours"]<threshold
         v["overtime_hours"]=round(max(0,v["hours"]-overtime_threshold),2) if not v["open"] else 0

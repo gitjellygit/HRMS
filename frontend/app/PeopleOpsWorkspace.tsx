@@ -262,8 +262,8 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
      <p className="muted">Final settlement requires documented asset, IT and Finance clearance. This process does not send a payment.</p>
     </>}
    </section>
-   <section className="employee-surface"><h3>Exit cases</h3><div className="ops-table">{(hr?allExits:exits).map(x=><div className="ops-row" key={x.id}>
-     <strong>Case #{x.id} · {x.status}</strong><span>{staff.find(p=>p.id===x.employee_id)?.name||"Employee #"+x.employee_id} · Last day {x.planned_last_day}</span><p>{x.reason}</p>
+   <section className="employee-surface"><h3>Exit cases</h3><div className="ops-table">{(hr?allExits:exits).map(x=><div className="ops-row exit-case-row" key={x.id}>
+     <div className="exit-case-heading"><strong>Case #{x.id} · {x.status}</strong><span>{staff.find(p=>p.id===x.employee_id)?.name||"Employee #"+x.employee_id} · Last day {x.planned_last_day}</span></div><p>{x.reason}</p>
       <div className="exit-task-controls"><button className="employee-cancel" type="button" onClick={()=>void loadExitTasks(x.id)}>View assigned exit tasks</button>
        {(exitTasks[x.id]||[]).map(t=><div className="exit-task-entry" key={t.id}>
         <strong>{t.title}</strong><small>{t.assignee_role==="hr"?"HR task":"Employee task"} · {t.status}</small>
@@ -273,7 +273,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
           onClick={()=>void completeExitTask(x.id,t.id)}>Complete task</button></>}
        </div>)}
       </div>
-     {hr&&x.status!=="settled"&&x.status!=="rejected"&&<><label>F&F amount<input type="number" min="0" step=".01" value={selected===String(x.id)?draft.amount||"":""}
+     {hr&&x.status!=="settled"&&x.status!=="rejected"&&<div className="exit-case-actions"><label>Final settlement (F&F) amount in INR<input type="number" min="0" step=".01" placeholder="Enter amount before final settlement" value={selected===String(x.id)?draft.amount||"":""}
       onFocus={()=>setSelected(String(x.id))} onChange={e=>setDraft(v=>({...v,amount:e.target.value}))}/></label>
       <button className="employee-primary" onClick={()=>void save(()=>call("/exits/"+x.id+"/review","POST",{
        status:"approved",clearance_assets:false,clearance_it:false,clearance_finance:false}),"Exit request approved.")}>Approve</button>
@@ -282,7 +282,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
        onClick={()=>void save(()=>call("/exits/"+x.id+"/review","POST",{
         status:"settled",clearance_assets:true,clearance_it:true,clearance_finance:true,
         final_settlement_inr:Number(draft.amount),final_settlement_note:"HR reviewed all clearances and F&F draft."}),"Clearances recorded and settlement finalized.")}>Confirm clearances & F&F</button>
-     </>}
+     <p className="exit-case-help">Complete the assigned exit tasks and documented clearances before final settlement. Approval alone does not release payment.</p></div>}
     </div>)}</div></section>
   </div>}
   {tab==="analytics"&&hr&&<section className="employee-surface"><h3><BarChart3 size={17}/> Workforce analytics</h3>

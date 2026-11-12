@@ -52,7 +52,7 @@ export default function PeopleOpsExtras({api,user}:{api:string;user:{id:number;r
   {error&&<p className="error" role="alert">{error}</p>}
   {message&&<p role="status">{message}</p>}
   {tab==="assets"&&<>
-   {hr&&<form className="form" onSubmit={e=>{e.preventDefault();void save(
+   {hr&&<form className="form asset-allocation-form" onSubmit={e=>{e.preventDefault();void save(
     ()=>call("/assets","POST",{employee_id:Number(employee),name,serial_number:serial}),"Company asset allocated.")}}>
     <label>Employee<select value={employee} onChange={e=>setEmployee(e.target.value)}>
       {employees.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
@@ -60,7 +60,7 @@ export default function PeopleOpsExtras({api,user}:{api:string;user:{id:number;r
     <label>Serial number<input required minLength={3} value={serial} onChange={e=>setSerial(e.target.value)}/></label>
     <button className="primary">Allocate asset</button>
    </form>}
-   <div className="table-wrap"><table><thead><tr><th>Asset</th><th>Serial</th><th>Employee</th><th>Returned</th></tr></thead>
+   <div className="table-wrap asset-register-table"><table><thead><tr><th>Asset</th><th>Serial</th><th>Employee</th><th>Returned</th></tr></thead>
    <tbody>{assets.map(a=><tr key={a.id}><td>{a.name}</td><td>{a.serial_number}</td><td>#{a.employee_id}</td>
     <td>{a.returned_at?"Yes":hr?<button className="secondary" onClick={()=>void save(
      ()=>call("/assets/"+a.id+"/return","POST"),"Asset return recorded.")}>Record return</button>:"No"}</td></tr>)}</tbody></table></div>

@@ -4,10 +4,11 @@ import {useCallback,useEffect,useRef,useState} from "react";
 import {Clock3,CalendarDays,MapPin,FileClock,Users,BriefcaseBusiness,Settings2,AlertCircle} from "lucide-react";
 import FeedbackMotion from "./FeedbackMotion";
 import PunchControl from "./PunchControl";
+import {TIME_ZONES,zonedLocalToIso} from "./timeZones";
 type Row=Record<string,any>;
 type Tab="today"|"requests"|"shifts"|"timesheets"|"policies";
 const today=()=>new Date().toLocaleDateString("en-CA");
-const kindName=(value:string)=>value.replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase());
+const kindName=(value:string)=>value==="on_duty"?"Official work outside office":value.replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase());
 const dateForInput=(v:string)=>new Date(v).toISOString().slice(0,16);
 const initialPolicy={location:"all",grace_minutes:15,half_day_under_hours:4,overtime_after_hours:9,
  auto_deduct:false,geo_required:false,office_lat:"",office_lon:"",radius_meters:250};
@@ -34,7 +35,10 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
  const [projectOptions,setProjectOptions]=useState<Row[]>([]);
  const [requestForm,setRequestForm]=useState<Row>({kind:"wfh",work_date:today(),end_date:"",
    reason:"",hours:"",proposed_in:"",proposed_out:"",target_employee_id:""});
- const [shiftForm,setShiftForm]=useState({name:"General",start_time:"09:00",end_time:"18:00",break_minutes:"60"});
+ const [shiftForm,setShiftForm]=useState({name:"General",start_time:"09:00",end_time:"18:00",break_minutes:"60",timezone:"America/New_York"});
+ const [requestZone,setRequestZone]=useState("America/New_York");
+ const [geoHelp,setGeoHelp]=useState(false);
+ const [geoLocating,setGeoLocating]=useState(false);
  const [rosterForm,setRosterForm]=useState({employee_id:"",shift_id:"",work_date:today()});
  const [timeForm,setTimeForm]=useState({work_date:today(),task:"",hours:"",project_id:"",note:""});
  const [editingTimesheetId,setEditingTimesheetId]=useState<number|null>(null);
@@ -79,17 +83,26 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
   clear();setBusy(true);
   try{await run();setNotice(success);await load()}catch(e){showError(e)}finally{setBusy(false)}
  }
- const requestOptions=[["wfh","Work from home"],["on_duty","On duty"],["regularization","Missed punch correction"],
+ const requestOptions=[["wfh","Work from home"],["on_duty","Official work outside office"],["regularization","Missed punch correction"],
    ["overtime","Overtime"],["shift_swap","Shift swap"]];
  async function submitRequest(e:React.FormEvent){
   e.preventDefault();
   if(requestForm.reason.trim().length<10){setError("Please explain this request (10+ characters).");setErrorField("reason");return}
+  let proposedIn:string|null=null;
+  let proposedOut:string|null=null;
+  if(requestForm.kind==="regularization"){
+   try{
+    proposedIn=zonedLocalToIso(requestForm.proposed_in,requestZone);
+    proposedOut=zonedLocalToIso(requestForm.proposed_out,requestZone);
+    if(Date.parse(proposedOut)<=Date.parse(proposedIn))throw Error("Punch-out must be later than punch-in.");
+   }catch(err){showError(err,"proposed_in");return}
+  }
   await execute(()=>call("/requests","POST",{
     kind:requestForm.kind,work_date:requestForm.work_date,end_date:requestForm.end_date||null,
     reason:requestForm.reason,hours:requestForm.hours===""?null:Number(requestForm.hours),
     target_employee_id:requestForm.target_employee_id?Number(requestForm.target_employee_id):null,
-    proposed_in:requestForm.proposed_in?new Date(requestForm.proposed_in).toISOString():null,
-    proposed_out:requestForm.proposed_out?new Date(requestForm.proposed_out).toISOString():null
+    proposed_in:proposedIn,
+    proposed_out:proposedOut
    }),"Request sent to your reporting manager for review.");
  }
  async function punchGPS(){
@@ -134,10 +147,11 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
    <section className="employee-surface"><h3>Submit a time request</h3>
     <form className="time-form" onSubmit={submitRequest} noValidate>
      <label>Request type<select name="kind" value={requestForm.kind} onChange={e=>setRequestForm(v=>({...v,kind:e.target.value}))}>{requestOptions.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
+     <p className="time-request-description wide">{requestForm.kind==="on_duty"?"Use this when your manager sends you to a client site or another approved work location. This is not a normal office punch.":requestForm.kind==="wfh"?"Request approval to work remotely from home.":requestForm.kind==="regularization"?"Correct a missing or incorrect attendance punch; choose the timezone where you worked.":requestForm.kind==="overtime"?"Request approval for extra working hours.":"Request to exchange an assigned shift with a colleague."}</p>
      <label>Work date<input name="work_date" type="date" required value={requestForm.work_date} onChange={e=>setRequestForm(v=>({...v,work_date:e.target.value}))}/></label>
      {["wfh","on_duty"].includes(requestForm.kind)&&<label>End date (optional)<input name="end_date" type="date" min={requestForm.work_date} value={requestForm.end_date} onChange={e=>setRequestForm(v=>({...v,end_date:e.target.value}))}/></label>}
      {requestForm.kind==="overtime"&&<label>Overtime hours<input name="hours" type="number" min=".25" max="24" step=".25" required aria-invalid={errorField==="hours"} value={requestForm.hours} onChange={e=>setRequestForm(v=>({...v,hours:e.target.value}))}/></label>}
-     {requestForm.kind==="regularization"&&<><label>Corrected punch-in<input name="proposed_in" type="datetime-local" required aria-invalid={errorField==="proposed_in"} value={requestForm.proposed_in} onChange={e=>setRequestForm(v=>({...v,proposed_in:e.target.value}))}/></label><label>Corrected punch-out<input name="proposed_out" type="datetime-local" required aria-invalid={errorField==="proposed_out"} value={requestForm.proposed_out} onChange={e=>setRequestForm(v=>({...v,proposed_out:e.target.value}))}/></label></>}
+     {requestForm.kind==="regularization"&&<><label>Time zone (daylight saving automatic)<select name="timezone" value={requestZone} onChange={e=>setRequestZone(e.target.value)}>{TIME_ZONES.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select><small className="time-hint">Choose the work location, not your laptop clock. EST/EDT and CST/CDT change automatically by date.</small></label><label>Corrected punch-in<input name="proposed_in" type="datetime-local" required aria-invalid={errorField==="proposed_in"} value={requestForm.proposed_in} onChange={e=>setRequestForm(v=>({...v,proposed_in:e.target.value}))}/></label><label>Corrected punch-out<input name="proposed_out" type="datetime-local" required aria-invalid={errorField==="proposed_out"} value={requestForm.proposed_out} onChange={e=>setRequestForm(v=>({...v,proposed_out:e.target.value}))}/></label></>}
      {requestForm.kind==="shift_swap"&&<label>Colleague's employee ID<input name="target_employee_id" type="number" min="1" required value={requestForm.target_employee_id} onChange={e=>setRequestForm(v=>({...v,target_employee_id:e.target.value}))}/></label>}
      <label className="wide">Reason <span className="required">*</span><textarea name="reason" required minLength={10} maxLength={1000} rows={3} aria-invalid={errorField==="reason"} value={requestForm.reason} onChange={e=>setRequestForm(v=>({...v,reason:e.target.value}))} placeholder="Why is this request needed?"/></label>
      <button className="employee-primary" disabled={busy}>Send for manager approval</button>
@@ -156,9 +170,10 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
      <label>Start<input name="start_time" type="time" required value={shiftForm.start_time} onChange={e=>setShiftForm(v=>({...v,start_time:e.target.value}))}/></label>
      <label>End<input name="end_time" type="time" required value={shiftForm.end_time} onChange={e=>setShiftForm(v=>({...v,end_time:e.target.value}))}/></label>
      <label>Break minutes<input name="break_minutes" type="number" min="0" max="240" value={shiftForm.break_minutes} onChange={e=>setShiftForm(v=>({...v,break_minutes:e.target.value}))}/></label>
+     <label>Shift time zone<select name="timezone" value={shiftForm.timezone} onChange={e=>setShiftForm(v=>({...v,timezone:e.target.value}))}>{TIME_ZONES.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select><small className="time-hint">Shift hours are local to this zone; daylight saving is automatic.</small></label>
      <button className="employee-primary" disabled={busy}>Create shift</button>
     </form>}
-    <div className="time-list">{shifts.length?shifts.map(s=><div key={s.id}><strong>{s.name}</strong><span>{s.start_time}–{s.end_time} · {s.break_minutes} min break</span></div>):<p>No shifts configured.</p>}</div>
+    <div className="time-list">{shifts.length?shifts.map(s=><div key={s.id}><strong>{s.name}</strong><span>{s.start_time}–{s.end_time} · {s.break_minutes} min break · {TIME_ZONES.find(([id])=>id===s.timezone)?.[1]||s.timezone||"India (IST)"}</span></div>):<p>No shifts configured.</p>}</div>
    </section>
    <section className="employee-surface"><h3>{isHR?"Assign a roster":"My roster"}</h3>
     {isHR&&<form className="time-form" onSubmit={e=>{e.preventDefault();void execute(()=>call("/roster","PUT",{employee_id:Number(rosterForm.employee_id),shift_id:Number(rosterForm.shift_id),work_date:rosterForm.work_date}),"Roster saved.")}}>
@@ -167,7 +182,7 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
      <label>Work date<input name="work_date" type="date" value={rosterForm.work_date} onChange={e=>setRosterForm(v=>({...v,work_date:e.target.value}))}/></label>
      <button className="employee-primary" disabled={busy}>Assign shift</button>
     </form>}
-    <div className="time-list">{rosters.map(r=><div key={r.id}><strong>{r.work_date}</strong><span>{r.shift_name}</span></div>)}{!rosters.length&&<p>No roster assigned for your account.</p>}</div>
+    <div className="time-list">{rosters.map(r=><div key={r.id}><strong>{r.work_date}</strong><span>{r.shift_name} · {TIME_ZONES.find(([id])=>id===r.timezone)?.[1]||r.timezone||"India (IST)"}</span></div>)}{!rosters.length&&<p>No roster assigned for your account.</p>}</div>
    </section>
   </div>}
 
@@ -236,7 +251,7 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
    </section>}
   </div>}
 
-  {tab==="policies"&&isHR&&<section className="employee-surface"><h3>Attendance and GPS rules</h3><p className="muted">Policy flags classify late/half days. Deduction and payroll posting are not automated in this release.</p>
+  {tab==="policies"&&isHR&&<section className="employee-surface"><h3>Attendance and GPS rules</h3><p className="muted">Set attendance thresholds and optionally verify office punches happen near your office. These rules do not automatically deduct salary.</p>
    <form className="time-form policy" onSubmit={e=>{e.preventDefault();void execute(()=>call("/policy","PUT",{
     ...policy,office_lat:policy.office_lat===""?null:Number(policy.office_lat),
     office_lon:policy.office_lon===""?null:Number(policy.office_lon),
@@ -244,10 +259,10 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
     overtime_after_hours:Number(policy.overtime_after_hours),radius_meters:Number(policy.radius_meters)
    }),"Attendance rules saved.")}}>
     {([["grace_minutes","Late grace (minutes)"],["half_day_under_hours","Half-day below hours"],["overtime_after_hours","Overtime threshold (hours)"],["radius_meters","Office radius (meters)"]] as const).map(([key,label])=><label key={key}>{label}<input type="number" name={key} min="0" required value={policy[key]??""} onChange={e=>setPolicy(v=>({...v,[key]:e.target.value}))}/></label>)}
-    <label className="time-check wide"><input type="checkbox" checked={Boolean(policy.geo_required)} onChange={e=>setPolicy(v=>({...v,geo_required:e.target.checked}))}/> Require GPS location at punch in/out</label>
-    {policy.geo_required&&<><label>Office latitude<input name="office_lat" type="number" step="any" required aria-invalid={errorField==="office_lat"} value={policy.office_lat??""} onChange={e=>setPolicy(v=>({...v,office_lat:e.target.value}))}/></label><label>Office longitude<input name="office_lon" type="number" step="any" required aria-invalid={errorField==="office_lon"} value={policy.office_lon??""} onChange={e=>setPolicy(v=>({...v,office_lon:e.target.value}))}/></label></>}
+    <div className="time-gps-setup wide"><label className="time-check"><input type="checkbox" checked={Boolean(policy.geo_required)} onChange={e=>setPolicy(v=>({...v,geo_required:e.target.checked}))}/> Verify office location when punching in/out</label><button type="button" className="time-help-trigger" title="When enabled, employees must share their device location. HR sets the office location and permitted distance. GPS accuracy can vary indoors." onClick={()=>setGeoHelp(v=>!v)}>What does this do?</button>{geoHelp&&<p className="time-hint">Employees must allow location access when punching in or out. The system checks that they are near the office. Remote work uses an approved time request instead.</p>}</div>
+    {policy.geo_required&&<div className="time-gps-location wide"><div><strong>Where is your office?</strong><p className="time-hint">While at the office, choose “Use my current location”. Otherwise copy the coordinates from a map service. Hover over either field for an explanation.</p></div><div className="time-gps-fields"><label title="Latitude is the north/south coordinate, between -90 and 90. Example: 40.7128.">Latitude (north / south)<input name="office_lat" type="number" min="-90" max="90" step="any" required aria-invalid={errorField==="office_lat"} placeholder="e.g. 40.7128" value={policy.office_lat??""} onChange={e=>setPolicy(v=>({...v,office_lat:e.target.value}))}/></label><label title="Longitude is the east/west coordinate, between -180 and 180. Example: -74.0060.">Longitude (east / west)<input name="office_lon" type="number" min="-180" max="180" step="any" required aria-invalid={errorField==="office_lon"} placeholder="e.g. -74.0060" value={policy.office_lon??""} onChange={e=>setPolicy(v=>({...v,office_lon:e.target.value}))}/></label></div><button type="button" className="employee-cancel" disabled={geoLocating} onClick={()=>{if(!navigator.geolocation){showError(new Error("Your browser does not support GPS location."));return}setGeoLocating(true);navigator.geolocation.getCurrentPosition(p=>{setPolicy(v=>({...v,office_lat:String(p.coords.latitude),office_lon:String(p.coords.longitude)}));setGeoLocating(false);setNotice("Office coordinates filled from your current location. Review and save the rules.");},()=>{setGeoLocating(false);showError(new Error("Could not get your location. Allow location access or enter the office coordinates manually."))},{enableHighAccuracy:true,timeout:15000})}}>{geoLocating?"Locating…":"Use my current location"}</button></div>}
     <label className="time-check wide"><input type="checkbox" checked={Boolean(policy.auto_deduct)} onChange={e=>setPolicy(v=>({...v,auto_deduct:e.target.checked}))}/> Record intended auto-deduction policy (not wired to payroll)</label>
-    <button className="employee-primary" disabled={busy}>Save attendance rules</button>
+    <div className="time-form-actions wide"><button className="employee-primary" disabled={busy}>Save attendance rules</button></div>
    </form>
    <p className="field-help">The biometric endpoint accepts signed, idempotent vendor events if you configure HRMS_BIOMETRIC_SHARED_TOKEN. Vendor mapping/reconciliation remains a separate integration.</p>
   </section>}
