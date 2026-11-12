@@ -724,3 +724,198 @@ textarea[aria-invalid=true],input[aria-invalid=true]{
  .overview-shortcuts{width:100%}
  .exit-case-actions>label{max-width:none;flex-basis:100%}
 }
+
+
+/* HRMS UNIFIED DESIGN SYSTEM
+   One semantic palette and consistent primary / secondary button treatments.
+   Apply to legacy .primary as well as new .employee-primary components. */
+:root{
+ --hrms-action:#37345f;
+ --hrms-action-hover:#4c4779;
+ --hrms-action-text:#ffffff;
+ --hrms-secondary:#f1f0fa;
+ --hrms-secondary-hover:#e8e6f5;
+ --hrms-secondary-text:#403a76;
+ --hrms-control-border:#d7ddec;
+ --hrms-control-focus:#6157a0;
+ --hrms-control-height:42px;
+ --hrms-card-border:#e2e7f1;
+ --hrms-card-radius:14px;
+}
+:where(button.primary,button.secondary,.employee-primary,.employee-cancel,.auth-submit,.project-status-action){
+ min-height:var(--hrms-control-height);
+ height:auto;
+ display:inline-flex;
+ align-items:center;
+ justify-content:center;
+ gap:8px;
+ padding:9px 16px;
+ border-radius:9px;
+ font-size:13px;
+ font-weight:650;
+ line-height:1.3;
+ text-align:center;
+ vertical-align:middle;
+ white-space:normal;
+ cursor:pointer;
+ transition:background-color .14s ease,border-color .14s ease;
+}
+button.primary,.employee-primary,.auth-submit{
+ background:var(--hrms-action);
+ border:1px solid var(--hrms-action);
+ color:var(--hrms-action-text);
+}
+button.primary:hover:not(:disabled),.employee-primary:hover:not(:disabled),.auth-submit:hover:not(:disabled){
+ background:var(--hrms-action-hover);
+ border-color:var(--hrms-action-hover);
+ color:var(--hrms-action-text);
+}
+button.secondary,.employee-cancel,.project-status-action{
+ background:var(--hrms-secondary);
+ border:1px solid var(--hrms-control-border);
+ color:var(--hrms-secondary-text);
+}
+button.secondary:hover:not(:disabled),.employee-cancel:hover:not(:disabled),.project-status-action:hover:not(:disabled){
+ background:var(--hrms-secondary-hover);
+ border-color:#b8b2d4;
+ color:var(--hrms-secondary-text);
+}
+:where(button.primary,button.secondary,.employee-primary,.employee-cancel,.auth-submit,.project-status-action):disabled{
+ cursor:not-allowed;
+ opacity:.58;
+}
+:where(button.primary,button.secondary,.employee-primary,.employee-cancel,.auth-submit,.project-status-action):focus-visible{
+ outline:2px solid var(--hrms-control-focus);
+ outline-offset:3px;
+}
+.ops-area .payroll-submit-row .payroll-submit{
+ background:var(--hrms-action)!important;
+ border-color:var(--hrms-action)!important;
+ color:var(--hrms-action-text)!important;
+}
+.ops-area .payroll-submit-row .payroll-submit:hover:not(:disabled){
+ background:var(--hrms-action-hover)!important;
+ border-color:var(--hrms-action-hover)!important;
+}
+/* Common controls: normalize form density in all workspaces, without changing tabs or icon-only controls. */
+:where(.form,.time-form,.ops-form,.employee-form-grid,.payroll-fields,.project-status-form,.leave-form) :is(input:not([type=checkbox]):not([type=radio]),select){
+ min-height:var(--hrms-control-height);
+ border-radius:9px;
+ border-color:var(--hrms-control-border);
+ max-width:100%;
+}
+:where(.form,.time-form,.ops-form,.employee-form-grid,.payroll-fields,.project-status-form,.leave-form) :is(textarea){
+ max-width:100%;
+ border-radius:9px;
+ border-color:var(--hrms-control-border);
+}
+:where(.form,.time-form,.ops-form,.employee-form-grid,.payroll-fields,.project-status-form,.leave-form) :is(label){
+ min-width:0;
+}
+:where(.form,.time-form,.ops-form,.employee-form-grid,.payroll-fields,.project-status-form,.leave-form) :is(input,select,textarea):focus-visible{
+ outline:2px solid var(--hrms-control-focus);
+ outline-offset:1px;
+}
+:where(.form,.time-form,.ops-form) > button{
+ grid-column:1/-1;
+ justify-self:start;
+ align-self:end;
+}
+.time-form .field-label-line{
+ display:inline-flex;
+ align-items:baseline;
+ justify-content:flex-start;
+ gap:4px;
+ min-height:17px;
+ font-weight:650;
+ line-height:1.3;
+}
+.time-form .field-label-line .required{
+ display:inline;
+ margin:0;
+ padding:0;
+ line-height:inherit;
+ vertical-align:baseline;
+}
+.field-optional{font-weight:400;font-size:11px;color:#7c889d}
+.time-form-actions{grid-column:1/-1;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.time-form-actions>button{min-height:var(--hrms-control-height)}
+/* Timesheets: intentionally stable 2x2 layout, not independent masonry columns. */
+.time-workspace .timesheet-workspace-grid{
+ display:grid;
+ grid-template-columns:repeat(2,minmax(0,1fr));
+ grid-template-areas:"entry mine" "review assign";
+ align-items:start;
+ gap:16px;
+}
+.timesheet-workspace-grid>.timesheet-log-card{grid-area:entry}
+.timesheet-workspace-grid>.timesheet-entries-card{grid-area:mine}
+.timesheet-workspace-grid>.timesheet-review-card{grid-area:review}
+.timesheet-workspace-grid>.timesheet-assignments-card{grid-area:assign}
+.timesheet-workspace-grid>.employee-surface{
+ width:100%;
+ min-width:0;
+ margin:0;
+ border:1px solid var(--hrms-card-border);
+ border-radius:var(--hrms-card-radius);
+}
+.timesheet-workspace-grid .time-list{max-height:420px}
+.timesheet-workspace-grid .time-form{align-items:start}
+.timesheet-workspace-grid .time-form label{min-width:0}
+.timesheet-workspace-grid .time-form-actions{align-self:end}
+/* Payroll: existing runs first, draft creation next in a clearly separated panel. */
+.payroll-runs-heading{margin:20px 0 10px;font-size:13px;font-weight:700;color:#3b4560}
+.payroll-create-draft{
+ display:grid;
+ grid-template-columns:minmax(210px,1fr) minmax(300px,auto);
+ align-items:end;
+ gap:18px;
+ margin-top:20px;
+ padding:17px 20px;
+ border:1px solid var(--hrms-card-border);
+ border-radius:12px;
+ background:#f8f9fd;
+}
+.payroll-create-copy h4{margin:0 0 5px;font-size:14px;color:#2f3658}
+.payroll-create-copy p{margin:0;color:#6a768e;font-size:12px;line-height:1.55}
+.payroll-create-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
+.payroll-create-actions label{display:grid;gap:6px;font-size:12px;font-weight:650;color:#53617b}
+.payroll-create-actions input{min-height:var(--hrms-control-height);padding:8px 12px;border:1px solid var(--hrms-control-border);border-radius:9px;background:white}
+.payroll-create-actions button{min-height:var(--hrms-control-height)}
+/* Card headers and action group alignment across People, payroll and finance. */
+:where(.time-workspace,.ops-area,.overview-personalized) .employee-surface{min-width:0}
+:where(.time-workspace,.ops-area) .employee-surface>h3{line-height:1.35}
+:where(.form,.ops-form,.time-form) .wide{grid-column:1/-1}
+:where(.form,.ops-form,.time-form) :is(input,select,textarea){box-sizing:border-box}
+.ops-row>button,.time-row-actions>button{align-self:center}
+@media(max-width:1000px){
+ .payroll-create-draft{grid-template-columns:minmax(0,1fr)}
+ .time-workspace .timesheet-workspace-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:760px){
+ .time-workspace .timesheet-workspace-grid{
+  grid-template-columns:minmax(0,1fr);
+  grid-template-areas:"entry" "mine" "review" "assign";
+ }
+ .payroll-create-actions{align-items:stretch}
+ .payroll-create-actions>label{flex:1 1 170px}
+ .payroll-create-actions>button{flex:1 1 180px}
+}
+@media(prefers-reduced-motion:reduce){
+ :where(button.primary,button.secondary,.employee-primary,.employee-cancel,.auth-submit,.project-status-action){transition:none}
+}
+[data-theme="dark"]{
+ --hrms-action:#7972c2;
+ --hrms-action-hover:#8a83d2;
+ --hrms-action-text:#101426;
+ --hrms-secondary:#252b42;
+ --hrms-secondary-hover:#353c54;
+ --hrms-secondary-text:#e4e4f5;
+ --hrms-control-border:#4b5369;
+ --hrms-card-border:#434b64;
+}
+[data-theme="dark"] .payroll-create-draft{background:#1c2639;border-color:var(--hrms-card-border)}
+[data-theme="dark"] .payroll-create-copy h4,[data-theme="dark"] .payroll-runs-heading{color:#e4e8f5}
+[data-theme="dark"] .payroll-create-copy p{color:#aab7cd}
+[data-theme="dark"] .payroll-create-actions label{color:#cbd4e4}
+[data-theme="dark"] .payroll-create-actions input{background:#202a3f;color:#e6ecf7}
