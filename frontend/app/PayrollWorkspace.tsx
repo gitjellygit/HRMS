@@ -230,8 +230,7 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
   </div>}
   {tab==="runs"&&finance&&<section className="employee-surface">
    <h3>Monthly payroll processing</h3><p className="field-help">Draft → separate HR approver → publish payslips. No funds or statutory returns are transferred.</p>
-   <div className="ops-inline"><label>Payroll period<input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label>
-    <button className="employee-primary" disabled={busy} onClick={()=>void submit(()=>call("/runs","POST",{period:month}),"Payroll draft calculated.")}>Calculate draft</button></div>
+   <h4 className="payroll-runs-heading">Existing payroll runs</h4>
    <div className="ops-table payroll-runs-list">{runs.map(r=><div className="ops-row payroll-run-row" key={r.id}><strong>{r.period}</strong><span>{r.status}</span>
     <button className="employee-cancel" disabled={reviewLoading!==null} onClick={()=>void reviewRun(r.id)}>{reviewLoading===r.id?"Opening…":"Review details"}</button>
     {r.status==="draft"&&hr&&(r.created_by===user.id?
@@ -239,6 +238,12 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
       <button className="employee-primary" disabled={busy} onClick={()=>void submit(()=>call("/runs/"+r.id+"/approve","POST"),"Payroll approved.")}>Approve payroll</button>)}
     {r.status==="approved"&&hr&&<button className="employee-primary" disabled={busy} onClick={()=>void submit(()=>call("/runs/"+r.id+"/publish","POST"),"Payslips published.")}>Publish</button>}
    </div>)}</div>
+   <div className="payroll-create-draft">
+    <div className="payroll-create-copy"><h4>Start a monthly payroll draft</h4><p>Choose a payroll month after reviewing the existing runs above. The draft can be recalculated before independent approval.</p></div>
+    <div className="payroll-create-actions"><label>Payroll month<input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label>
+     <button type="button" className="employee-primary" disabled={busy} onClick={()=>void submit(()=>call("/runs","POST",{period:month}),"Payroll draft calculated.")}>Calculate payroll draft</button>
+    </div>
+   </div>
    {runDetail&&<div className="ops-breakdown payroll-run-review" ref={reviewRef} tabIndex={-1}><div className="payroll-review-header"><strong>Payroll review details</strong><button type="button" className="employee-cancel" onClick={()=>setRunDetail(null)}>Close review</button></div><h4>Run {runDetail.period} · {runDetail.status}</h4><p>Gross {cash(runDetail.gross_total)} · Net {cash(runDetail.net_total)} · {runDetail.exceptions} attendance exceptions</p>
     {runDetail.status==="draft"&&hr&&<div className="payroll-review-actions">
       <p className="field-help">Changed salary or statutory settings? Recalculate the draft to refresh its payroll lines and exceptions. Previously approved or published runs cannot be recalculated.</p>

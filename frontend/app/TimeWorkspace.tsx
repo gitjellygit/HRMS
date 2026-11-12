@@ -153,7 +153,7 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
      {requestForm.kind==="overtime"&&<label>Overtime hours<input name="hours" type="number" min=".25" max="24" step=".25" required aria-invalid={errorField==="hours"} value={requestForm.hours} onChange={e=>setRequestForm(v=>({...v,hours:e.target.value}))}/></label>}
      {requestForm.kind==="regularization"&&<><label>Time zone (daylight saving automatic)<select name="timezone" value={requestZone} onChange={e=>setRequestZone(e.target.value)}>{TIME_ZONES.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select><small className="time-hint">Choose the work location, not your laptop clock. EST/EDT and CST/CDT change automatically by date.</small></label><label>Corrected punch-in<input name="proposed_in" type="datetime-local" required aria-invalid={errorField==="proposed_in"} value={requestForm.proposed_in} onChange={e=>setRequestForm(v=>({...v,proposed_in:e.target.value}))}/></label><label>Corrected punch-out<input name="proposed_out" type="datetime-local" required aria-invalid={errorField==="proposed_out"} value={requestForm.proposed_out} onChange={e=>setRequestForm(v=>({...v,proposed_out:e.target.value}))}/></label></>}
      {requestForm.kind==="shift_swap"&&<label>Colleague's employee ID<input name="target_employee_id" type="number" min="1" required value={requestForm.target_employee_id} onChange={e=>setRequestForm(v=>({...v,target_employee_id:e.target.value}))}/></label>}
-     <label className="wide">Reason <span className="required">*</span><textarea name="reason" required minLength={10} maxLength={1000} rows={3} aria-invalid={errorField==="reason"} value={requestForm.reason} onChange={e=>setRequestForm(v=>({...v,reason:e.target.value}))} placeholder="Why is this request needed?"/></label>
+     <label className="wide"><span className="field-label-line">Reason <span className="required" aria-hidden="true">*</span></span><textarea name="reason" required minLength={10} maxLength={1000} rows={3} aria-invalid={errorField==="reason"} value={requestForm.reason} onChange={e=>setRequestForm(v=>({...v,reason:e.target.value}))} placeholder="Why is this request needed?"/></label>
      <button className="employee-primary" disabled={busy}>Send for manager approval</button>
     </form>
    </section>
@@ -186,8 +186,8 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
    </section>
   </div>}
 
-  {tab==="timesheets"&&<div className="time-columns">
-   <section className="employee-surface"><h3>Log work hours</h3><form className="time-form" onSubmit={e=>{e.preventDefault();void execute(async()=>{
+  {tab==="timesheets"&&<div className="time-columns timesheet-workspace-grid">
+   <section className="employee-surface timesheet-log-card"><h3>Log work hours</h3><form className="time-form" onSubmit={e=>{e.preventDefault();void execute(async()=>{
      const body={...timeForm,hours:Number(timeForm.hours),project_id:timeForm.project_id?Number(timeForm.project_id):null};
      await call(editingTimesheetId?"/timesheets/"+editingTimesheetId:"/timesheets",editingTimesheetId?"PUT":"POST",body);
      setEditingTimesheetId(null);setTimeForm({work_date:today(),task:"",hours:"",project_id:"",note:""});
@@ -196,21 +196,21 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
     <label>Project (optional)<select name="project_id" value={timeForm.project_id} onChange={e=>setTimeForm(v=>({...v,project_id:e.target.value}))}><option value="">Internal / unassigned task</option>{projectOptions.filter(p=>isHR||p.sourced_by_id===user.id||
       projectAssignments.some(a=>a.project_id===p.id&&a.employee_id===user.id&&a.active))
       .map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label>
-    <label>Task <span className="required">*</span><input name="task" required minLength={3} aria-invalid={errorField==="task"} value={timeForm.task} onChange={e=>setTimeForm(v=>({...v,task:e.target.value}))} placeholder="e.g. QA review / Sprint planning"/></label>
-    <label>Hours <span className="required">*</span><input name="hours" required min=".25" max="24" step=".25" type="number" aria-invalid={errorField==="hours"} value={timeForm.hours} onChange={e=>setTimeForm(v=>({...v,hours:e.target.value}))}/></label>
-    <label className="wide">Notes<textarea rows={3} maxLength={1000} value={timeForm.note} onChange={e=>setTimeForm(v=>({...v,note:e.target.value}))}/></label>
-    <button className="employee-primary" disabled={busy}>{editingTimesheetId?"Update draft timesheet":"Save hours"}</button>
+    <label><span className="field-label-line">Task <span className="required" aria-hidden="true">*</span></span><input name="task" required minLength={3} aria-invalid={errorField==="task"} value={timeForm.task} onChange={e=>setTimeForm(v=>({...v,task:e.target.value}))} placeholder="e.g. QA review / Sprint planning"/></label>
+    <label><span className="field-label-line">Hours <span className="required" aria-hidden="true">*</span></span><input name="hours" required min=".25" max="24" step=".25" type="number" aria-invalid={errorField==="hours"} value={timeForm.hours} onChange={e=>setTimeForm(v=>({...v,hours:e.target.value}))}/></label>
+    <label className="wide">Notes <span className="field-optional">(optional)</span><textarea rows={3} maxLength={1000} value={timeForm.note} onChange={e=>setTimeForm(v=>({...v,note:e.target.value}))}/></label>
+    <div className="time-form-actions wide"><button className="employee-primary" disabled={busy}>{editingTimesheetId?"Update draft timesheet":"Save hours"}</button>
     {editingTimesheetId&&<button type="button" className="employee-cancel" onClick={()=>{
       setEditingTimesheetId(null);setTimeForm({work_date:today(),task:"",hours:"",project_id:"",note:""});
-    }}>Cancel editing</button>}
+    }}>Cancel editing</button>}</div>
    </form></section>
-   <section className="employee-surface"><h3>My time entries</h3><div className="time-list">{timesheets.length?timesheets.map(t=><div key={t.id}><strong>{t.task} · {t.hours}h</strong><span>{t.work_date} · {t.note||"No notes"}</span><small>{t.status}</small>{(t.status==="draft"||t.status==="rejected")&&<button className="employee-cancel" disabled={busy}
+   <section className="employee-surface timesheet-entries-card"><h3>My time entries</h3><div className="time-list">{timesheets.length?timesheets.map(t=><div key={t.id}><strong>{t.task} · {t.hours}h</strong><span>{t.work_date} · {t.note||"No notes"}</span><small>{t.status}</small>{(t.status==="draft"||t.status==="rejected")&&<button className="employee-cancel" disabled={busy}
     onClick={()=>{setTimeForm({work_date:t.work_date,task:t.task,hours:String(t.hours),project_id:String(t.project_id||""),note:t.note||""});
      setEditingTimesheetId(t.id);
      if(t.status==="rejected")setNotice("Update the rejected timesheet draft, then submit it again.");}}>
     Edit details</button>}
-    {t.status==="draft"&&<button className="employee-cancel" disabled={busy} onClick={()=>void execute(()=>call("/timesheets/"+t.id+"/submit","POST"),"Timesheet submitted to manager/HR for approval.")}>Submit</button>}</div>):<p>No timesheets yet.</p>}</div></section>
-   {isApprover&&<section className="employee-surface"><h3>Timesheets awaiting review</h3>
+    {t.status==="draft"&&<button className="employee-cancel" disabled={busy} onClick={()=>void execute(()=>call("/timesheets/"+t.id+"/submit","POST"),"Timesheet submitted to manager/HR for approval.")}>Submit</button>}</div>):<div className="timesheet-empty-state"><strong>No time entries yet</strong><p>Saved work hours will appear here. You can edit drafts and submit them for review.</p></div>}</div></section>
+   {isApprover&&<section className="employee-surface timesheet-review-card"><h3>Timesheets awaiting review</h3>
     <p className="field-help">Only approved hours can be included in verified project billing. Approval requires a specific reason.</p>
     <div className="time-list">{timesheetApprovals.map(t=><div key={t.id}>
      <strong>{t.task} · {t.hours}h · Employee #{t.employee_id}</strong>
@@ -227,9 +227,9 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
        {approve:false,reason:reason.trim()}),"Timesheet rejected and returned for correction.");
       else if(reason!==null)setError("Provide a rejection reason with at least 10 characters.");
      }}>Reject</button>
-    </div>)}{!timesheetApprovals.length&&<p>No submitted timesheets are awaiting your review.</p>}</div>
+    </div>)}{!timesheetApprovals.length&&<div className="timesheet-empty-state"><strong>All caught up</strong><p>Submitted timesheets that need your approval will appear here.</p></div>}</div>
    </section>}
-   {isHR&&<section className="employee-surface"><h3>Project assignments</h3>
+   {isHR&&<section className="employee-surface timesheet-assignments-card"><h3>Project assignments</h3>
     <p className="field-help">Assign employees to client projects so they can submit billable work hours.</p>
     <form className="time-form" onSubmit={e=>{e.preventDefault();void execute(()=>call("/project-assignments","PUT",
       {employee_id:Number(assignmentEmployee),project_id:Number(assignmentProject),active:true}),
