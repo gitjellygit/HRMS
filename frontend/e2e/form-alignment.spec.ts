@@ -5,7 +5,7 @@ const hr=()=>users().find(u=>u.key==='hr')!;
 
 test('shared form buttons stay below inputs in asset allocation',async({page})=>{
  await login(page,hr());await navigate(page,'People operations');
- await page.getByRole('tab',{name:'Assets & helpdesk'}).click();
+ await page.getByRole('tab',{name:'Assets & clearances'}).click();
  const form=page.locator('.asset-allocation-form');
  await expect(form).toBeVisible();
  const fields=await form.locator('select,input').all();
