@@ -845,7 +845,7 @@ button.secondary:hover:not(:disabled),.employee-cancel:hover:not(:disabled),.pro
  display:grid;
  grid-template-columns:repeat(2,minmax(0,1fr));
  grid-template-areas:"entry mine" "review assign";
- align-items:start;
+ align-items:stretch;
  gap:16px;
 }
 .timesheet-workspace-grid>.timesheet-log-card{grid-area:entry}
@@ -919,3 +919,16 @@ button.secondary:hover:not(:disabled),.employee-cancel:hover:not(:disabled),.pro
 [data-theme="dark"] .payroll-create-copy p{color:#aab7cd}
 [data-theme="dark"] .payroll-create-actions label{color:#cbd4e4}
 [data-theme="dark"] .payroll-create-actions input{background:#202a3f;color:#e6ecf7}
+
+/* Empty-state messaging scales with the matching card rather than leaving a floating sentence. */
+.timesheet-entries-card,.timesheet-review-card{display:flex;flex-direction:column}
+.timesheet-entries-card>.time-list,.timesheet-review-card>.time-list{flex:1}
+.timesheet-empty-state{
+ display:flex;flex-direction:column;justify-content:center;align-items:flex-start;
+ min-height:130px;padding:18px;border:1px dashed #dce1ed;background:#fafbfe;
+ border-radius:10px;color:#65718a;gap:6px;
+}
+.timesheet-empty-state strong{font-size:13px;font-weight:700;color:#414e69}
+.timesheet-empty-state p{font-size:12px;line-height:1.55;margin:0;max-width:350px}
+[data-theme="dark"] .timesheet-empty-state{background:#212b40;border-color:#4b5570;color:#bfc9dc}
+[data-theme="dark"] .timesheet-empty-state strong{color:#e4e9f3}
