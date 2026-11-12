@@ -638,3 +638,89 @@ textarea[aria-invalid=true],input[aria-invalid=true]{
 .payroll-exception-editor p{color:#9d4a39;font-size:12px;line-height:1.5;margin:0}
 .payroll-exception-editor textarea{width:100%;min-height:70px;resize:vertical;background:white;border:1px solid #d0daea;border-radius:9px;padding:10px;font:inherit;font-size:12px;color:#273852}
 .payroll-exception-editor button{justify-self:start}
+
+
+/* Shared app form layout: consistent control heights and dedicated action rows. */
+:where(.form,.time-form,.ops-form,.payroll-config,.employee-form-grid) > *{min-width:0}
+:where(.form,.time-form,.ops-form) :is(input:not([type=checkbox]):not([type=radio]),select){
+ min-height:42px;max-width:100%;border-radius:9px
+}
+:where(.form,.time-form,.ops-form) textarea{max-width:100%;min-height:86px;border-radius:9px}
+:where(.form,.time-form,.ops-form) > button:not(.time-help-trigger){
+ grid-column:1/-1;justify-self:start;align-self:end;min-height:40px
+}
+:where(.form,.time-form,.ops-form) :is(label,fieldset){min-width:0}
+:where(.employee-primary,.employee-cancel,button.primary,button.secondary){
+ display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;
+ line-height:1.25;white-space:normal;text-align:center;vertical-align:middle
+}
+:where(.employee-primary,.employee-cancel,button.primary,button.secondary):focus-visible,
+:where(input,textarea,select):focus-visible{outline:2px solid #5368b9;outline-offset:2px}
+:where(.ops-row,.time-row-actions,.actions)>button{align-self:center}
+:where(.ops-row,.time-row-actions,.actions)>label{min-width:0}
+:where(.ops-row,.time-row-actions,.actions){row-gap:10px}
+:where(.form,.time-form,.ops-form) label{line-height:1.35}
+:where(.form,.time-form,.ops-form) label>small{font-weight:400}
+
+/* Dashboard punch and related shortcuts stay on one baseline at desktop widths. */
+.overview-quick-actions{display:flex;flex-wrap:wrap;align-items:stretch;gap:12px}
+.overview-quick-actions .punch-control{flex:1 1 420px;width:auto;min-width:0;min-height:60px}
+.overview-shortcuts{display:flex;flex:0 1 auto;flex-wrap:wrap;gap:8px;align-items:center;align-content:center}
+.overview-shortcuts button{min-height:40px}
+
+/* Payroll: period / calculate align; status, details and approval message form a stable row. */
+.payroll-runs-list .payroll-run-row{display:grid;grid-template-columns:minmax(75px,auto) minmax(60px,auto) auto minmax(190px,1fr);align-items:center;justify-content:start;column-gap:12px;row-gap:9px;padding:14px 16px}
+.payroll-runs-list .payroll-run-row>button{justify-self:start}
+.payroll-runs-list .payroll-run-row>.payroll-approval-note{justify-self:start;min-width:0}
+.payroll-runs-list .payroll-run-row>.payroll-approval-note svg{flex-shrink:0}
+.ops-inline>label{min-width:170px}
+.ops-inline>.employee-primary{align-self:end}
+.payroll-runs-list .payroll-run-row>span{white-space:normal}
+
+/* Shift, time request and geolocation forms. */
+.time-request-description{margin:0;padding:10px 13px;color:#556783;background:#f5f7fd;border:1px solid #e1e7f4;border-radius:10px;font-size:12px;line-height:1.6}
+.time-hint{font-size:12px;color:#677792;line-height:1.55;font-weight:400;margin:0}
+.time-gps-setup,.time-gps-location{display:grid;gap:12px;background:#f9faff;border:1px solid #e0e7f4;border-radius:11px;padding:15px;min-width:0}
+.time-gps-setup{grid-template-columns:minmax(0,1fr) auto;align-items:center}
+.time-gps-setup>.time-hint{grid-column:1/-1}
+.time-help-trigger{border:0;background:transparent;color:#4b56a6;font-size:12px;font-weight:700;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.time-gps-location>div>strong{display:block;font-size:13px;color:#263b5e;margin-bottom:5px}
+.time-gps-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+.time-gps-location>button{justify-self:start}
+.time-form-actions{display:flex;gap:10px;align-items:center}
+.time-form-actions .employee-primary{min-width:175px}
+.time-form.policy>label:not(.time-check){min-width:0}
+.time-form select{padding-right:32px}
+
+/* Exit cases: separate case summary, task list and final decision controls. */
+.exit-case-row{display:grid;grid-template-columns:minmax(0,1fr);align-items:stretch;gap:12px;padding:16px}
+.exit-case-heading{display:flex;gap:8px 16px;flex-wrap:wrap;align-items:center}
+.exit-case-row>.exit-task-controls{margin:0}
+.exit-case-actions{display:flex;align-items:end;flex-wrap:wrap;gap:10px;padding:14px;border:1px solid #e3e7f0;border-radius:10px;background:white}
+.exit-case-actions>label{display:grid;gap:6px;flex:1 1 205px;max-width:310px;color:#596980;font-size:12px;font-weight:650}
+.exit-case-actions>label input{width:100%;min-height:40px;border:1px solid #d7dfeb;border-radius:9px;padding:9px 11px}
+.exit-case-actions>button{flex:0 0 auto;min-height:40px}
+.exit-case-help{flex-basis:100%;color:#65758c;font-size:12px;margin:0!important}
+.exit-task-controls>button{justify-self:start}
+
+/* Asset register form: no button occupying an input column. */
+.asset-allocation-form{grid-template-columns:repeat(3,minmax(0,1fr));align-items:end}
+.asset-allocation-form>button{grid-column:1/-1;justify-self:start;min-height:40px}
+.asset-register-table td:last-child{text-align:left}
+.asset-register-table button{min-height:37px}
+
+/* Accessible narrow and tablet layouts. */
+@media(max-width:1000px){
+ .payroll-runs-list .payroll-run-row{grid-template-columns:minmax(85px,auto) minmax(70px,1fr) auto}
+ .payroll-runs-list .payroll-run-row>.payroll-approval-note{grid-column:1/-1}
+ .asset-allocation-form{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:700px){
+ .payroll-runs-list .payroll-run-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .payroll-runs-list .payroll-run-row>.payroll-approval-note{grid-column:1/-1}
+ .time-gps-fields,.asset-allocation-form{grid-template-columns:minmax(0,1fr)}
+ .time-gps-setup{grid-template-columns:1fr}
+ .time-help-trigger{justify-self:start}
+ .overview-shortcuts{width:100%}
+ .exit-case-actions>label{max-width:none;flex-basis:100%}
+}
