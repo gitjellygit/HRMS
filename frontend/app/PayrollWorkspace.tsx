@@ -232,7 +232,7 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
    <h3>Monthly payroll processing</h3><p className="field-help">Draft → separate HR approver → publish payslips. No funds or statutory returns are transferred.</p>
    <div className="ops-inline"><label>Payroll period<input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label>
     <button className="employee-primary" disabled={busy} onClick={()=>void submit(()=>call("/runs","POST",{period:month}),"Payroll draft calculated.")}>Calculate draft</button></div>
-   <div className="ops-table">{runs.map(r=><div className="ops-row" key={r.id}><strong>{r.period}</strong><span>{r.status}</span>
+   <div className="ops-table payroll-runs-list">{runs.map(r=><div className="ops-row payroll-run-row" key={r.id}><strong>{r.period}</strong><span>{r.status}</span>
     <button className="employee-cancel" disabled={reviewLoading!==null} onClick={()=>void reviewRun(r.id)}>{reviewLoading===r.id?"Opening…":"Review details"}</button>
     {r.status==="draft"&&hr&&(r.created_by===user.id?
       <span className="payroll-approval-note" title="The payroll creator cannot approve their own run"><ShieldCheck size={15}/> Another HR/Admin must approve this run.</span>:
