@@ -209,7 +209,7 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
      setEditingTimesheetId(t.id);
      if(t.status==="rejected")setNotice("Update the rejected timesheet draft, then submit it again.");}}>
     Edit details</button>}
-    {t.status==="draft"&&<button className="employee-cancel" disabled={busy} onClick={()=>void execute(()=>call("/timesheets/"+t.id+"/submit","POST"),"Timesheet submitted to manager/HR for approval.")}>Submit</button>}</div>):<p>No timesheets yet.</p>}</div></section>
+    {t.status==="draft"&&<button className="employee-cancel" disabled={busy} onClick={()=>void execute(()=>call("/timesheets/"+t.id+"/submit","POST"),"Timesheet submitted to manager/HR for approval.")}>Submit</button>}</div>):<div className="timesheet-empty-state"><strong>No time entries yet</strong><p>Saved work hours will appear here. You can edit drafts and submit them for review.</p></div>}</div></section>
    {isApprover&&<section className="employee-surface timesheet-review-card"><h3>Timesheets awaiting review</h3>
     <p className="field-help">Only approved hours can be included in verified project billing. Approval requires a specific reason.</p>
     <div className="time-list">{timesheetApprovals.map(t=><div key={t.id}>
@@ -227,7 +227,7 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
        {approve:false,reason:reason.trim()}),"Timesheet rejected and returned for correction.");
       else if(reason!==null)setError("Provide a rejection reason with at least 10 characters.");
      }}>Reject</button>
-    </div>)}{!timesheetApprovals.length&&<p>No submitted timesheets are awaiting your review.</p>}</div>
+    </div>)}{!timesheetApprovals.length&&<div className="timesheet-empty-state"><strong>All caught up</strong><p>Submitted timesheets that need your approval will appear here.</p></div>}</div>
    </section>}
    {isHR&&<section className="employee-surface timesheet-assignments-card"><h3>Project assignments</h3>
     <p className="field-help">Assign employees to client projects so they can submit billable work hours.</p>
