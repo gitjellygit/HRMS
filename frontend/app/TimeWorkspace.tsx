@@ -8,7 +8,7 @@ import {TIME_ZONES,zonedLocalToIso} from "./timeZones";
 type Row=Record<string,any>;
 type Tab="today"|"requests"|"shifts"|"timesheets"|"policies";
 const today=()=>new Date().toLocaleDateString("en-CA");
-const kindName=(value:string)=>value.replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase());
+const kindName=(value:string)=>value==="on_duty"?"Official work outside office":value.replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase());
 const dateForInput=(v:string)=>new Date(v).toISOString().slice(0,16);
 const initialPolicy={location:"all",grace_minutes:15,half_day_under_hours:4,overtime_after_hours:9,
  auto_deduct:false,geo_required:false,office_lat:"",office_lon:"",radius_meters:250};
