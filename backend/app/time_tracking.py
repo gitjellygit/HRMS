@@ -310,16 +310,23 @@ def daily(employee_id:int|None=None,month:int=0,user:Employee=Depends(current_us
     roster_map={r.work_date.isoformat():db.get(Shift,r.shift_id) for r in
       db.scalars(select(Roster).where(Roster.employee_id==owner)).all()}
     configured_zones={shift.timezone for shift in roster_map.values() if shift}
+    # Preserve Indian office behavior for unrostered punches. For rostered days,
+    # match each instant against the shift's own named zone; this also handles
+    # employees rotating between US Eastern and Central near local midnight.
     preferred_zone=next(iter(configured_zones)) if len(configured_zones)==1 else "Asia/Kolkata"
+    zone_cache={name:ZoneInfo(name) for name in configured_zones | {preferred_zone}}
     entries={}
     for punch in punches:
-        zone=ZoneInfo(preferred_zone)
-        local_punch=punch.punch_in.astimezone(zone)
+        local_punch=None
+        for name in sorted(configured_zones):
+            candidate=punch.punch_in.astimezone(zone_cache[name])
+            assigned=roster_map.get(candidate.date().isoformat())
+            if assigned and assigned.timezone==name:
+                local_punch=candidate
+                break
+        if local_punch is None:
+            local_punch=punch.punch_in.astimezone(zone_cache[preferred_zone])
         key=local_punch.date().isoformat()
-        scheduled=roster_map.get(key)
-        if scheduled and scheduled.timezone!=preferred_zone:
-            local_punch=punch.punch_in.astimezone(ZoneInfo(scheduled.timezone))
-            key=local_punch.date().isoformat()
         if month and local_punch.month!=month:continue
         if key not in entries:entries[key]={"date":key,"sessions":0,"hours":0.0,"open":False,"first_punch":local_punch}
         entries[key]["sessions"]+=1
