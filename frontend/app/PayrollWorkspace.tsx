@@ -230,7 +230,8 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
   </div>}
   {tab==="runs"&&finance&&<section className="employee-surface">
    <h3>Monthly payroll processing</h3><p className="field-help">Draft → separate HR approver → publish payslips. No funds or statutory returns are transferred.</p>
-   <h4 className="payroll-runs-heading">Existing payroll runs</h4>
+   <div className="payroll-runs-header"><h4 className="payroll-runs-heading">Existing payroll runs</h4><span className="payroll-run-count">{runs.length} {runs.length===1?"run":"runs"}</span></div>
+   {runs.length===0?<div className="payroll-runs-empty" role="status"><strong>No payroll runs yet</strong><p>Your monthly payroll runs will appear here once you calculate your first draft. Select a month below to begin.</p></div>:null}
    <div className="ops-table payroll-runs-list">{runs.map(r=><div className="ops-row payroll-run-row" key={r.id}><strong>{r.period}</strong><span>{r.status}</span>
     <button className="employee-cancel" disabled={reviewLoading!==null} onClick={()=>void reviewRun(r.id)}>{reviewLoading===r.id?"Opening…":"Review details"}</button>
     {r.status==="draft"&&hr&&(r.created_by===user.id?
