@@ -38,3 +38,20 @@ test('employee directory explains why inactive employees have no deactivate acti
  await expect(directory).toBeVisible();
  await expect(directory.getByRole('columnheader',{name:'HR actions'})).toBeVisible();
 });
+
+test('payroll runs show an actionable empty state and aligned draft controls',async({page})=>{
+ await login(page,hr());
+ await navigate(page,'Payroll & expenses');
+ await page.getByRole('tab',{name:'Payroll runs'}).click();
+ const runs=page.locator('.payroll-runs-list .payroll-run-row');
+ if(await runs.count()===0){
+  await expect(page.getByText('No payroll runs yet')).toBeVisible();
+  await expect(page.getByText('Your monthly payroll runs will appear here once you calculate your first draft.')).toBeVisible();
+ }
+ const month=page.locator('.payroll-create-actions input[type="month"]');
+ const action=page.getByRole('button',{name:'Calculate payroll draft'});
+ await expect(month).toBeVisible();await expect(action).toBeVisible();
+ const m=await month.boundingBox(),b=await action.boundingBox();
+ expect(m).not.toBeNull();expect(b).not.toBeNull();
+ if(page.viewportSize()!.width>620)expect(Math.abs((m!.y+m!.height)-(b!.y+b!.height))).toBeLessThan(6);
+});
