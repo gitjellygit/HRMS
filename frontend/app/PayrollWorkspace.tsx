@@ -1,3 +1,4 @@
+import {useTransientMessage} from "./useTransientMessage";
 "use client";
 import {explainError} from "./formErrors";
 import {useEffect,useRef,useState} from "react";
@@ -34,7 +35,7 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
  const [payslipFile,setPayslipFile]=useState<File|null>(null);
  const payslipInputRef=useRef<HTMLInputElement>(null);
  const [payslipMode,setPayslipMode]=useState<"single"|"bulk">("single");
- const [message,setMessage]=useState("");
+ const [message,setMessage]=useTransientMessage();
  const [error,setError]=useState("");const [fieldError,setFieldError]=useState("");
  const [busy,setBusy]=useState(false);
  const [payReason,setPayReason]=useState("");
