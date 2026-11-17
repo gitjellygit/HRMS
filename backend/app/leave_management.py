@@ -370,6 +370,28 @@ def used_days(db: Session, employee_id: int, year: int, kind: str) -> Decimal:
     return Decimal(value or 0)
 
 
+def tiered_monthly_entitlement(joined:date,fy:int,through:date,first_rate:Decimal,late_rate:Decimal)->Decimal:
+    """April-Nov accrual and December-March accrual; joining month prorated."""
+    start,end=fy_bounds(fy)
+    through=min(through,end)
+    if through<max(start,joined):return Decimal("0")
+    start_month=max(start,joined)
+    credited=Decimal("0")
+    cursor=date(start_month.year,start_month.month,1)
+    until=date(through.year,through.month,1)
+    while cursor<=until:
+        fy_month=((cursor.month-4)%12)+1
+        monthly=Decimal(late_rate) if fy_month>=9 and late_rate>0 else Decimal(first_rate)
+        month_after=date(cursor.year+1,1,1) if cursor.month==12 else date(cursor.year,cursor.month+1,1)
+        month_end=month_after-timedelta(days=1)
+        if cursor.year==joined.year and cursor.month==joined.month:
+            eligible=(month_end-max(cursor,joined)).days+1
+            monthly=monthly*Decimal(eligible)/Decimal((month_end-cursor).days+1)
+        credited+=monthly
+        cursor=month_after
+    return (credited*2).quantize(Decimal("1"),rounding=ROUND_HALF_UP)/Decimal(2)
+
+
 def base_entitlement(db: Session,employee_id: int,year: int,kind: str, config: LeavePolicy)->Decimal:
     staff=employee(db,employee_id)
     start,end=fy_bounds(year)
@@ -384,25 +406,9 @@ def base_entitlement(db: Session,employee_id: int,year: int,kind: str, config: L
         if through<max(start,staff.joining_date):
             return Decimal("0")
         start_month=max(start,staff.joining_date)
-        # Monthly credit is earned as months arrive, never granted upfront.
-        # India FY months 1-8 are April-November; 9-12 are December-March.
-        # The first joining month is prorated for the days employed.
-        credited=Decimal("0")
-        cursor=date(start_month.year,start_month.month,1)
-        until=date(through.year,through.month,1)
-        while cursor<=until:
-            fy_month=((cursor.month-4)%12)+1
-            monthly=Decimal(config.monthly_accrual)
-            if fy_month>=9 and config.late_year_monthly_accrual>0:
-                monthly=Decimal(config.late_year_monthly_accrual)
-            month_after=date(cursor.year+1,1,1) if cursor.month==12 else date(cursor.year,cursor.month+1,1)
-            month_end=month_after-timedelta(days=1)
-            if cursor.year==staff.joining_date.year and cursor.month==staff.joining_date.month:
-                eligible=(month_end-max(cursor,staff.joining_date)).days+1
-                monthly=monthly*Decimal(eligible)/Decimal((month_end-cursor).days+1)
-            credited+=monthly
-            cursor=month_after
-        return (credited*2).quantize(Decimal("1"),rounding=ROUND_HALF_UP)/Decimal(2)
+        return tiered_monthly_entitlement(staff.joining_date,year,through,
+                                            Decimal(config.monthly_accrual),
+                                            Decimal(config.late_year_monthly_accrual))
     return prorated_entitlement(Decimal(config.annual_days),staff.joining_date,year)
 
 
