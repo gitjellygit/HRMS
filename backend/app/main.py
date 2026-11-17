@@ -598,14 +598,20 @@ def project_team(project_id: int, user: Employee = Depends(current_user), db: Se
     return db.scalars(select(Employee).join(Assignment, Assignment.employee_id == Employee.id).where(Assignment.project_id == project_id)).all()
 
 @app.get("/bonuses", response_model=list[BonusOut])
-def bonuses(user: Employee = Depends(require("admin", "hr", "accountant")), db: Session = Depends(db_session)):
-    return db.scalars(select(Bonus).order_by(Bonus.id.desc())).all()
+def bonuses(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
+    query=select(Bonus).order_by(Bonus.id.desc())
+    if user.role not in ("admin","super_admin","hr","accountant"):
+        query=query.where(Bonus.employee_id==user.id)
+    return db.scalars(query).all()
 
 @app.post("/bonuses", response_model=BonusOut, status_code=201)
 def add_bonus(body: BonusIn, user: Employee = Depends(require("admin", "hr")), db: Session = Depends(db_session)):
     employee_exists(db, body.employee_id)
     row = Bonus(**body.model_dump())
     db.add(row)
+    from .notification_center import add_inbox
+    add_inbox(db,body.employee_id,"bonus","New bonus recorded",
+              f"A bonus for {body.period} has been recorded for you. View your private bonus summary.","dashboard")
     db.commit()
     db.refresh(row)
     return row
@@ -622,6 +628,9 @@ def change_bonus(bonus_id: int, body: StatusIn, user: Employee = Depends(require
     if row.status == "paid":
         raise HTTPException(409, "Already paid")
     row.status = body.status
+    from .notification_center import add_inbox
+    add_inbox(db,row.employee_id,"bonus",f"Bonus {body.status}",
+              f"Your bonus for {row.period} is now {body.status}.","dashboard")
     db.commit()
     db.refresh(row)
     return row
