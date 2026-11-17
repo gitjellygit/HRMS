@@ -44,3 +44,29 @@ test('success confirmation automatically clears while screen remains active',asy
  await expect(success).toBeVisible();
  await expect(success).toHaveCount(0,{timeout:8500});
 });
+
+test('profile menu actions retain readable contrast in both themes',async({page})=>{
+ await login(page,actor('hr'));
+ const trigger=page.getByRole('button',{name:'Profile and appearance'});
+ const ratio=async()=>{
+  await trigger.click();
+  const menu=page.getByRole('menu',{name:'Profile settings'});
+  const action=menu.getByRole('button',{name:/Switch to dark mode|Switch to light mode/});
+  await action.hover();
+  const contrast=await action.evaluate(el=>{
+   const parse=(value:string)=>{const match=value.match(/rgba?\\(([^)]+)\\)/);return match?match[1].split(',').slice(0,3).map(Number):[0,0,0]};
+   const lum=(rgb:number[])=>rgb.map(v=>{v/=255;return v<=0.04045?v/12.92:Math.pow((v+0.055)/1.055,2.4)}).reduce((sum,v,i)=>sum+v*[0.2126,0.7152,0.0722][i],0);
+   const text=lum(parse(getComputedStyle(el).color));
+   const background=lum(parse(getComputedStyle(el).backgroundColor));
+   return (Math.max(text,background)+0.05)/(Math.min(text,background)+0.05);
+  });
+  await action.click();
+  await expect(menu).toHaveCount(0);
+  return contrast;
+ };
+ const light=await ratio();
+ const dark=await ratio();
+ expect(light).toBeGreaterThan(4.5);
+ expect(dark).toBeGreaterThan(4.5);
+ await expect(trigger).toBeVisible();
+});
