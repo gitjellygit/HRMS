@@ -16,7 +16,7 @@ from pathlib import Path
 from uuid import uuid4
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
+from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, select, func
@@ -548,7 +548,7 @@ def _save_manual_payslips(db:Session,docs:list[tuple[int,str,bytes]],period:str,
 
 
 @router.post("/manual-payslips",status_code=201)
-async def upload_manual_payslip(employee_id:int,period:str,reason:str,
+async def upload_manual_payslip(employee_id:int=Form(...),period:str=Form(...),reason:str=Form(...),
                                 document:UploadFile=File(...),
                                 user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     role(user,HR)
@@ -558,7 +558,7 @@ async def upload_manual_payslip(employee_id:int,period:str,reason:str,
 
 
 @router.post("/manual-payslips/bulk",status_code=201)
-async def bulk_manual_payslips(period:str,reason:str,archive:UploadFile=File(...),
+async def bulk_manual_payslips(period:str=Form(...),reason:str=Form(...),archive:UploadFile=File(...),
                                user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     role(user,HR)
     payload=await archive.read(16*1024*1024+1)
