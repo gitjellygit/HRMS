@@ -598,9 +598,9 @@ def project_team(project_id: int, user: Employee = Depends(current_user), db: Se
     return db.scalars(select(Employee).join(Assignment, Assignment.employee_id == Employee.id).where(Assignment.project_id == project_id)).all()
 
 @app.get("/bonuses", response_model=list[BonusOut])
-def bonuses(user: Employee = Depends(current_user), db: Session = Depends(db_session)):
+def bonuses(scope: Literal["mine","all"]="all",user: Employee = Depends(current_user), db: Session = Depends(db_session)):
     query=select(Bonus).order_by(Bonus.id.desc())
-    if user.role not in ("admin","super_admin","hr","accountant"):
+    if scope=="mine" or user.role not in ("admin","super_admin","hr","accountant"):
         query=query.where(Bonus.employee_id==user.id)
     return db.scalars(query).all()
 
