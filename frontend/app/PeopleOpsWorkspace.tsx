@@ -292,7 +292,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
    {metrics&&<><div className="ops-metrics">{[["Active employees",metrics.active_headcount],["Inactive",metrics.inactive_headcount],
     ["Pending leave",metrics.pending_leave],["Open helpdesk",metrics.open_tickets],["Inactive share",metrics.attrition_proxy_pct+"%"]].map(([label,value])=><div key={String(label)}><span>{label}</span><strong>{value}</strong></div>)}</div>
     <p className="field-help">{metrics.note}</p>
-    <div className="ops-columns"><div><h4>Department distribution</h4>{metrics.departments?.map((d:Row)=><div className="ops-row" key={d.department}>{d.department}: {d.employees} employees</div>)}</div>
+    <div className="ops-columns"><div><h4>Department distribution</h4>{metrics.departments?.map((d:Row)=><div className="ops-row" key={d.department}>{d.department}: {d.employees} {Number(d.employees)===1?"employee":"employees"}</div>)}</div>
     <div><h4>Published payroll cost</h4>{metrics.published_monthly_net?.map((p:Row)=><div className="ops-row" key={p.period}>{p.period} · ₹{Number(p.net).toLocaleString("en-IN")}</div>)}</div></div></>}
    </section>}
   {tab==="notifications"&&hr&&<section className="employee-surface"><h3><Bell size={17}/> Notification channel rules</h3>
