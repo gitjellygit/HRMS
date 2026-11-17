@@ -1,4 +1,5 @@
 "use client";
+import {useTransientMessage} from "./useTransientMessage";
 import {explainError} from "./formErrors";
 import {useEffect,useMemo,useState} from "react";
 import {CheckCircle2,ChevronDown,Clock3,FileText,History,ShieldCheck,XCircle} from "lucide-react";
@@ -47,7 +48,7 @@ export default function GovernancePanel({api,user}:{api:string;user:{id:number;r
  const admin=["super_admin","admin"].includes(user.role);
  const [rows,setRows]=useState<Row[]>([]);
  const [notes,setNotes]=useState<Record<number,string>>({});
- const [message,setMessage]=useState("");
+ const [message,setMessage]=useTransientMessage();
  const [error,setError]=useState("");
  const [busy,setBusy]=useState<number|null>(null);
  const [showHistory,setShowHistory]=useState(false);
