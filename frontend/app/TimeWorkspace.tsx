@@ -215,7 +215,7 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
    {isApprover&&<section className="employee-surface timesheet-review-card"><h3>Timesheets awaiting review</h3>
     <p className="field-help">Only approved hours can be included in verified project billing. Approval requires a specific reason.</p>
     <div className="time-list">{timesheetApprovals.map(t=><div key={t.id}>
-     <strong>{t.task} · {t.hours}h · Employee #{t.employee_id}</strong>
+     <strong>{t.task} · {t.hours}h · {employeeName(t)}</strong>
      <span>{t.work_date} · Project #{t.project_id||"Internal"}</span>
      <button disabled={busy} className="employee-primary" onClick={()=>{
       const reason=window.prompt("Reason for approving these hours (at least 10 characters)");
