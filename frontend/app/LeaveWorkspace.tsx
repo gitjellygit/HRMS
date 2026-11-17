@@ -50,7 +50,7 @@ export default function LeaveWorkspace({api,user}:{api:string;user:User}){
  const [end,setEnd]=useState(today());
  const [part,setPart]=useState("full");
  const [reason,setReason]=useState("");
- const [newPolicy,setNewPolicy]=useState<EditablePolicy>({leave_type:"casual",annual_days:0,monthly_accrual:0,late_year_monthly_accrual:0,carry_forward_limit:0,encashment_allowed:false,probation_allowed:true,approval_chain:["manager","hr"],active:true});
+ const [newPolicy,setNewPolicy]=useState<EditablePolicy>({leave_type:"casual",annual_days:0,monthly_accrual:0,late_year_monthly_accrual:0,late_year_monthly_accrual:0,carry_forward_limit:0,encashment_allowed:false,probation_allowed:true,approval_chain:["manager","hr"],active:true});
  const [holidayName,setHolidayName]=useState("");
  const [holidayDate,setHolidayDate]=useState(today());
  const [optional,setOptional]=useState(false);
