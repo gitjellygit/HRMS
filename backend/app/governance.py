@@ -7,7 +7,7 @@ from sqlalchemy import DateTime, ForeignKey, String, Text, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 from .main import Base, Employee, current_user, db_session
 from .bonus_policy import CompanyPolicy, CompanyPolicyRecord, BonusPolicyIn, PolicyRecordIn
-from .leave_management import LeavePolicy, PolicyIn, EntitlementIn
+from .leave_management import LeavePolicy, PolicyIn, EntitlementIn, apply_leave_policy
 from .employee_core import LeaveEntitlement
 from .payroll import SalaryIn, StatutoryIn, apply_salary_structure, apply_statutory_settings
 from .payroll_components import ComponentIn, apply_component
@@ -123,10 +123,7 @@ def apply(db,row):
         x.updated_at=datetime.now(timezone.utc)
     elif row.kind=="leave_policy":
         p=PolicyIn.model_validate(data)
-        x=db.scalar(select(LeavePolicy).where(LeavePolicy.leave_type==p.leave_type).with_for_update())
-        if not x:x=LeavePolicy(leave_type=p.leave_type);db.add(x)
-        for key,value in p.model_dump(exclude={"leave_type","approval_chain"}).items():setattr(x,key,value)
-        x.approval_chain=",".join(p.approval_chain)
+        apply_leave_policy(db,p,row.reviewed_by,reason=row.reason if hasattr(row,"reason") else "")
     elif row.kind in PAYROLL_KINDS:
         target_id=data["employee_id"]
         if target_id==row.reviewed_by:
