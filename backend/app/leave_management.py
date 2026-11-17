@@ -411,6 +411,16 @@ def terms_at(versions:list[tuple[date,dict]],on:date)->dict|None:
     return result
 
 
+def active_policies(db:Session)->list:
+    """Evaluate active flags using versions effective today, not future drafts."""
+    result=[]
+    for row in db.scalars(select(LeavePolicy).order_by(LeavePolicy.leave_type)).all():
+        terms=terms_at(policy_versions(db,row),date.today())
+        if terms and terms.get("active",True):
+            result.append(SimpleNamespace(leave_type=row.leave_type,year_type=row.year_type or "financial"))
+    return result
+
+
 def apply_leave_policy(db:Session,body:PolicyIn,actor_id:int|None=None,reason:str="")->LeavePolicy:
     row=db.scalar(select(LeavePolicy).where(LeavePolicy.leave_type==body.leave_type).with_for_update())
     is_new=row is None
@@ -639,7 +649,7 @@ def financial_year_hr_overview(fy: int | None=Query(default=None,ge=2020,le=2100
     requested_year=fy
     fy=fy if fy is not None else fy_start_year(date.today())
     staff=db.scalars(select(Employee).where(Employee.status=="active").order_by(Employee.name)).all()
-    kinds=db.scalars(select(LeavePolicy.leave_type).where(LeavePolicy.active.is_(True))).all()
+    kinds=[p.leave_type for p in active_policies(db)]
     ongoing=set(db.scalars(select(Attendance.employee_id).where(Attendance.punch_out.is_(None))).all())
     pending=db.scalar(select(func.count()).select_from(LeaveRequest).where(LeaveRequest.status=="pending"))
     result=[]
@@ -648,7 +658,7 @@ def financial_year_hr_overview(fy: int | None=Query(default=None,ge=2020,le=2100
         result.append({"id":person.id,"name":person.name,"manager_id":core.manager_id if core else None,"department":person.department,
                        "role":person.role,"status":person.status,"joining_date":person.joining_date,
                        "currently_checked_in":person.id in ongoing,
-                       "leave_balances":[balance(db,person.id,requested_year if requested_year is not None else policy_start_year(date.today(),p.year_type),p.leave_type) for p in db.scalars(select(LeavePolicy).where(LeavePolicy.active.is_(True))).all()]})
+                       "leave_balances":[balance(db,person.id,requested_year if requested_year is not None else policy_start_year(date.today(),p.year_type),p.leave_type) for p in active_policies(db)]})
     return {"fy":fy,"fy_label":f"FY {fy}-{str(fy+1)[-2:]}",
             "headcount":sum(1 for x in staff if x.status=="active"),
             "currently_checked_in":len(ongoing),
@@ -706,7 +716,7 @@ def balances(employee_id: int | None = None,year: int | None=Query(default=None,
     target=employee_id or user.id
     if target!=user.id and user.role not in ADMIN:
         raise HTTPException(403,"Only HR can view another employee's balances")
-    configs=db.scalars(select(LeavePolicy).where(LeavePolicy.active.is_(True)).order_by(LeavePolicy.leave_type)).all()
+    configs=active_policies(db)
     return [balance(db,target,year if year is not None else policy_start_year(date.today(),p.year_type),p.leave_type) for p in configs]
 
 
