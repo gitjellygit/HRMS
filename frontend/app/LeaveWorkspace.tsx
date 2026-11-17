@@ -117,7 +117,7 @@ export default function LeaveWorkspace({api,user}:{api:string;user:User}){
  function applyPolicy(p:Policy){setNewPolicy({...p,approval_chain:[...p.approval_chain]})}
  async function savePolicy(event:React.FormEvent){
   event.preventDefault();
-  const payload={...newPolicy,annual_days:Number(newPolicy.annual_days||0),monthly_accrual:Number(newPolicy.monthly_accrual||0),late_year_monthly_accrual:newPolicy.monthly_schedule?0:Number(newPolicy.late_year_monthly_accrual||0),annual_days:newPolicy.monthly_schedule?0:Number(newPolicy.annual_days||0),monthly_accrual:newPolicy.monthly_schedule?0:Number(newPolicy.monthly_accrual||0),monthly_schedule:newPolicy.monthly_schedule,carry_forward_limit:Number(newPolicy.carry_forward_limit||0)};
+  const payload={...newPolicy,late_year_monthly_accrual:newPolicy.monthly_schedule?0:Number(newPolicy.late_year_monthly_accrual||0),annual_days:newPolicy.monthly_schedule?0:Number(newPolicy.annual_days||0),monthly_accrual:newPolicy.monthly_schedule?0:Number(newPolicy.monthly_accrual||0),monthly_schedule:newPolicy.monthly_schedule,carry_forward_limit:Number(newPolicy.carry_forward_limit||0)};
   await execute(()=>user.role==="hr"?fetch(api+"/governance/requests",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:"leave_policy",payload,reason:approvalReason})}).then(async r=>{if(!r.ok)throw Error(messageFor(await r.json()));return r.json()}):call("/policies","PUT",payload),user.role==="hr"?"Leave policy change submitted to admin.":"Leave policy saved.");
  }
  async function addHoliday(event:React.FormEvent){
