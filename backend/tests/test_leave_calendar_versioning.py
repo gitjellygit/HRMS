@@ -68,11 +68,17 @@ def test_calendar_policy_versions_and_current_terms_are_immutable():
             pytest.skip("Calendar policy type already initialized in this test database")
         created=client.put("/leave/policies",headers=ORIGIN,json=first)
         assert created.status_code==200,created.text
+        before=client.get(f"/leave/balances?employee_id={worker}").json()
+        prior=next(b for b in before if b["leave_type"]=="paternity")
+        assert prior["year_type"]=="calendar"
         next_day=today+timedelta(days=1)
         revised={**first,"annual_days":24,"effective_from":next_day.isoformat(),
                  "change_reason":"QA: approved prospective leave policy revision"}
         response=client.put("/leave/policies",headers=ORIGIN,json=revised)
         assert response.status_code==200,response.text
+        after=client.get(f"/leave/balances?employee_id={worker}").json()
+        current=next(b for b in after if b["leave_type"]=="paternity")
+        assert current["allocated"]==prior["allocated"],"Future policy must not revise already granted entitlement"
         history=client.get("/leave/policies/paternity/history")
         assert history.status_code==200,history.text
         entries=history.json()
