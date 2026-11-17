@@ -37,13 +37,25 @@ class LeavePolicy(Base):
     annual_days: Mapped[Decimal] = mapped_column(Numeric(7, 2), default=Decimal("0"))
     monthly_accrual: Mapped[Decimal] = mapped_column(Numeric(7, 2), default=Decimal("0"))
     late_year_monthly_accrual: Mapped[Decimal] = mapped_column(Numeric(7, 2), default=Decimal("0"),server_default="0")
-    monthly_schedule: Mapped[str | None] = mapped_column(Text, nullable=True)  # 12 FY-month values, Apr-Mar
+    monthly_schedule: Mapped[str | None] = mapped_column(Text, nullable=True)  # 12 policy-year months
+    year_type: Mapped[str] = mapped_column(String(12), default="financial", server_default="financial")
     carry_forward_limit: Mapped[Decimal] = mapped_column(Numeric(7, 2), default=Decimal("0"))
     encashment_allowed: Mapped[bool] = mapped_column(Boolean, default=False)
     probation_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
     approval_chain: Mapped[str] = mapped_column(String(100), default="manager,hr")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+class LeavePolicyVersion(Base):
+    """Immutable policy terms in force from effective_from (inclusive)."""
+    __tablename__="leave_policy_versions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    leave_type: Mapped[str] = mapped_column(String(30), index=True)
+    effective_from: Mapped[date] = mapped_column(Date, index=True)
+    snapshot_json: Mapped[str] = mapped_column(Text)
+    actor_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"), nullable=True)
+    reason: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=lambda:datetime.now(timezone.utc))
+    __table_args__=(UniqueConstraint("leave_type","effective_from",name="uq_leave_policy_version_effective"),)
 
 class LeaveRequest(Base):
     __tablename__ = "leave_requests_v2"
@@ -139,6 +151,9 @@ class PolicyIn(BaseModel):
     monthly_accrual: Decimal = Field(default=0,ge=0,le=31)
     late_year_monthly_accrual: Decimal = Field(default=0,ge=0,le=31)
     monthly_schedule: list[Decimal] | None = Field(default=None,min_length=12,max_length=12)
+    year_type: Literal["financial","calendar"] = "financial"
+    effective_from: date = Field(default_factory=date.today)
+    change_reason: str = Field(default="",max_length=500)
     carry_forward_limit: Decimal = Field(default=0,ge=0,le=365)
     encashment_allowed: bool = False
     probation_allowed: bool = True
@@ -149,6 +164,8 @@ class PolicyIn(BaseModel):
     def valid_chain(self):
         if not self.approval_chain or len(self.approval_chain)>3 or len(set(self.approval_chain))!=len(self.approval_chain):
             raise ValueError("Approval stages must be unique and limited to manager, HR and admin.")
+        if self.effective_from < date.today():
+            raise ValueError("Policy effective date must be today or a future date.")
         if self.monthly_schedule is not None:
             if any(not value.is_finite() or value < 0 or value > 31 for value in self.monthly_schedule):
                 raise ValueError("Each month must contain a leave credit between 0 and 31 days.")
@@ -174,8 +191,6 @@ class LeaveIn(BaseModel):
             raise ValueError("Half-day and short leave must be for a single date.")
         if (self.end_date-self.start_date).days>365:
             raise ValueError("A request must not exceed 366 calendar days.")
-        if fy_start_year(self.start_date)!=fy_start_year(self.end_date):
-            raise ValueError("Split requests crossing an April–March financial year.")
         return self
 
 
