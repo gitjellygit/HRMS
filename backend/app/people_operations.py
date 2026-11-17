@@ -4,6 +4,7 @@ These are internal workflows, not a certified e-signature or messaging provider.
 """
 import io
 import json
+import re
 import os
 import hashlib
 import uuid
@@ -71,6 +72,13 @@ class Offer(Base):
     signed_name:Mapped[str|None]=mapped_column(String(150),nullable=True)
     signed_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
     created_by:Mapped[int]=mapped_column(ForeignKey("employees.id"))
+
+class OnboardingCategory(Base):
+    __tablename__="people_onboarding_categories"
+    id:Mapped[int]=mapped_column(primary_key=True)
+    slug:Mapped[str]=mapped_column(String(30),unique=True,index=True)
+    display_name:Mapped[str]=mapped_column(String(80))
+    active:Mapped[bool]=mapped_column(Boolean,default=True)
 
 class OnboardingTask(Base):
     __tablename__="people_onboarding_tasks"
@@ -166,7 +174,7 @@ class SignIn(BaseModel):
 
 class TaskIn(BaseModel):
     employee_id:int
-    category:Literal["document","asset","induction","hr","it"]
+    category:str=Field(min_length=2,max_length=30,pattern=r"^[a-z][a-z0-9_]*$")
     title:str=Field(min_length=3,max_length=150)
     due_date:date|None=None
     assigned_to:int|None=None
@@ -392,10 +400,57 @@ def offer_pdf(offer_id:int,user:Employee=Depends(current_user),db:Session=Depend
     return StreamingResponse(b,media_type="application/pdf",headers={
        "Content-Disposition":f'attachment; filename="offer-{offer_id}.pdf"',"Cache-Control":"private, no-store"})
 
+class CategoryIn(BaseModel):
+    slug:str=Field(min_length=2,max_length=30,pattern=r"^[a-z][a-z0-9_]*$")
+    display_name:str=Field(min_length=2,max_length=80)
+
+class CategoryEdit(BaseModel):
+    display_name:str=Field(min_length=2,max_length=80)
+    active:bool=True
+
+@router.get("/onboarding/categories")
+def onboarding_categories(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    rows=db.scalars(select(OnboardingCategory).order_by(OnboardingCategory.display_name)).all()
+    return [{"id":r.id,"slug":r.slug,"display_name":r.display_name,"active":r.active} for r in rows]
+
+@router.post("/onboarding/categories",status_code=201)
+def create_onboarding_category(body:CategoryIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    if db.scalar(select(OnboardingCategory.id).where(OnboardingCategory.slug==body.slug)):
+        raise HTTPException(409,"Onboarding category already exists.")
+    category=OnboardingCategory(slug=body.slug,display_name=body.display_name)
+    db.add(category);db.flush()
+    audit(db,user,"onboarding_category",category.id,"created")
+    db.commit()
+    return {"id":category.id,"slug":category.slug}
+
+@router.put("/onboarding/categories/{category_id}")
+def edit_onboarding_category(category_id:int,body:CategoryEdit,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    category=db.get(OnboardingCategory,category_id)
+    if not category:raise HTTPException(404,"Onboarding category not found.")
+    category.display_name=body.display_name
+    category.active=body.active
+    audit(db,user,"onboarding_category",category.id,"updated")
+    db.commit()
+    return {"id":category.id,"active":category.active}
+
+@router.delete("/onboarding/categories/{category_id}")
+def archive_onboarding_category(category_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    category=db.get(OnboardingCategory,category_id)
+    if not category:raise HTTPException(404,"Onboarding category not found.")
+    category.active=False
+    audit(db,user,"onboarding_category",category.id,"archived")
+    db.commit()
+    return {"id":category.id,"active":False}
+
 @router.post("/onboarding",status_code=201)
 def add_task(body:TaskIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     require_hr(user)
     if not db.get(Employee,body.employee_id):raise HTTPException(422,"Employee not found.")
+    if not db.scalar(select(OnboardingCategory.id).where(OnboardingCategory.slug==body.category,OnboardingCategory.active.is_(True))):
+        raise HTTPException(422,"Choose an active onboarding category.")
     if body.assigned_to and not db.get(Employee,body.assigned_to):raise HTTPException(422,"Assignee not found.")
     row=OnboardingTask(**body.model_dump());db.add(row);db.flush()
     audit(db,user,"onboarding",row.id,"created")
