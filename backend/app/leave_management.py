@@ -13,6 +13,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from email.message import EmailMessage
 from typing import Literal
+from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -250,11 +251,14 @@ def employee(db: Session,id: int):
     return record
 
 
-def policy(db: Session,kind: str) -> LeavePolicy:
-    row=db.scalar(select(LeavePolicy).where(LeavePolicy.leave_type==kind,LeavePolicy.active.is_(True)))
+def policy(db: Session,kind: str):
+    row=db.scalar(select(LeavePolicy).where(LeavePolicy.leave_type==kind))
     if not row:
-        raise HTTPException(422,"Leave type is not configured or is inactive; contact HR.")
-    return row
+        raise HTTPException(422,"Leave type is not configured; contact HR.")
+    current=terms_at(policy_versions(db,row),date.today())
+    if not current or not current.get("active",True):
+        raise HTTPException(422,"Leave type is not currently active; contact HR.")
+    return SimpleNamespace(id=row.id,leave_type=kind,**current)
 
 
 def chain_for(policy_row: LeavePolicy, manager_id: int | None) -> list[str]:
@@ -532,7 +536,7 @@ def base_entitlement(db:Session,employee_id:int,year:int,kind:str,config:LeavePo
     # Only monthly accrual is restricted to months reached by today's date.
     cursor=through+timedelta(days=1)
     while cursor<=end:
-        terms=terms_at(versions,cursor)
+        terms=terms_at(versions,min(cursor,today))
         if terms and terms.get("active",True):
             schedule=terms.get("monthly_schedule")
             if schedule is None and Decimal(str(terms.get("monthly_accrual",0)))==0 and cursor>=staff.joining_date:
@@ -545,13 +549,16 @@ def balance(db: Session, employee_id: int, year: int,kind: str) -> dict:
     config=policy(db,kind)
     allocated=base_entitlement(db,employee_id,year,kind,config)
     carry=Decimal("0")
-    if config.carry_forward_limit:
+    first_day,_=policy_bounds(year,config.year_type)
+    carried_terms=terms_at(policy_versions(db,config),first_day) or {}
+    limit=Decimal(str(carried_terms.get("carry_forward_limit",0)))
+    if limit:
         prior=base_entitlement(db,employee_id,year-1,kind,config)
         prior_used=used_days(db,employee_id,year-1,kind,config.year_type)
         prior_encashed=Decimal(db.scalar(select(func.coalesce(func.sum(Encashment.days),0)).where(
             Encashment.employee_id==employee_id,Encashment.year==year-1,
             Encashment.leave_type==kind,Encashment.status=="approved")) or 0)
-        carry=min(max(prior-prior_used-prior_encashed,Decimal("0")),Decimal(config.carry_forward_limit))
+        carry=min(max(prior-prior_used-prior_encashed,Decimal("0")),limit)
     used=used_days(db,employee_id,year,kind,config.year_type)
     encashed=Decimal(db.scalar(select(func.coalesce(func.sum(Encashment.days),0)).where(
         Encashment.employee_id==employee_id,Encashment.year==year,
