@@ -36,7 +36,7 @@ export async function navigate(page: Page, label: string) {
 }
 export const NAV = [
   'Overview', 'Employees', 'Attendance', 'Time & shifts', 'Leave requests', 'Projects',
-  'Bonuses', 'Appraisals', 'HR overview', 'Policies', 'Organization',
+  'Bonuses', 'HR overview', 'Policies', 'Organization',
   'Org chart', 'My profile', 'Profile requests', 'Bulk data & expiries',
 ] as const;
 export function permitted(role: string): Set<string> {
