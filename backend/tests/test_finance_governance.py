@@ -190,17 +190,33 @@ def test_policy_requires_independent_admin_and_reason_for_leave_override():
           "effective_date":today.isoformat(),"active":True}})
         assert proposed.status_code==201,proposed.text
         req=proposed.json()["id"]
+        pending=c.get("/governance/requests").json()
+        assert any(row["id"]==req and row["submitted_by_name"]=="Payroll HR QA" for row in pending) or any(row["id"]==req and row["submitted_by_name"] for row in pending)
+        same_payload=next(row["payload"] for row in pending if row["id"]==req)
+        duplicate=c.post("/governance/requests",headers=ORIGIN,json={
+            "kind":"company_policy","reason":"Attempting duplicate submission for the same policy",
+            "payload":same_payload})
+        assert duplicate.status_code==409,duplicate.text
+        assert "already awaiting approval" in duplicate.json()["detail"]["message"]
+
         assert c.post(f"/governance/requests/{req}/review",headers=ORIGIN,json={
          "approve":True,"reason":"HR should not approve its own request."}).status_code==403
         switch(c,"payroll.person.qa@example.org")
         assert c.get("/governance/requests").status_code==403
         switch(c)
+        admin_inbox=c.get("/notification-center").json()
+        assert any(n["destination"]=="governance" and "Approval needed: company policy"==n["title"] for n in admin_inbox["items"])
         review=c.post(f"/governance/requests/{req}/review",headers=ORIGIN,json={
           "approve":True,"reason":"Reviewed and approved as company policy"})
         assert review.status_code==200,review.text
         assert c.post(f"/governance/requests/{req}/review",headers=ORIGIN,json={
           "approve":True,"reason":"Duplicate admin approval request"}).status_code==409
         assert any(x["title"].startswith("QA Orientation") for x in c.get("/policies/records").json())
+        switch(c,"payroll.person.qa@example.org")
+        employee_inbox=c.get("/notification-center").json()
+        assert any(n["destination"]=="policies" and n["title"].startswith("New company policy: QA Orientation") for n in employee_inbox["items"])
+        switch(c,"payroll.hr.qa@example.org")
+        assert any(n["destination"]=="governance" and "approved" in n["title"] for n in c.get("/notification-center").json()["items"])
 
 def test_leave_manual_allocation_requires_approval_and_updates_balance():
     with TestClient(app) as c:

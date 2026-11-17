@@ -70,3 +70,34 @@ test('non-HR cannot edit attendance policy or list all requests',async({page})=>
  const all=await page.request.get(API_URL+'/time/requests?scope=all');
  expect(all.status()).toBe(403);
 });
+
+test('overtime hours are highlighted before a manager approval request can be sent',async({page})=>{
+ await login(page,persona('developer_a'));
+ await navigate(page,'Time & shifts');
+ await page.getByRole('tab',{name:'Requests'}).click();
+ await page.locator('[name=kind]').selectOption('overtime');
+ await page.locator('[name=reason]').fill('Testing overtime hours validation before manager approval');
+ await page.getByRole('button',{name:'Send for manager approval'}).click();
+ await expect(page.locator('[name=hours]')).toHaveAttribute('aria-invalid','true');
+ await expect(page.locator('#overtime-hours-error')).toContainText('Enter overtime hours');
+ await expect(page.locator('[name=hours]')).toBeFocused();
+});
+
+test('manager reviews display employee names, not numeric IDs',async({page})=>{
+ await login(page,persona('developer_b'));
+ await navigate(page,'Time & shifts');
+ await page.getByRole('tab',{name:'Requests'}).click();
+ const reason='WFH name visibility check '+Date.now();
+ await page.locator('[name=reason]').fill(reason);
+ await page.getByRole('button',{name:'Send for manager approval'}).click();
+ await expect(page.locator('.motion-feedback').last()).toContainText('Request sent');
+ await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
+ await login(page,persona('manager'));
+ const inbox=await page.request.get(API_URL+'/notification-center');
+ expect(inbox.ok()).toBeTruthy();
+ expect((await inbox.json()).items.some((n:{destination:string;title:string})=>n.destination==='time'&&n.title.includes(persona('developer_b').name))).toBeTruthy();
+ await navigate(page,'Time & shifts');
+ await page.getByRole('tab',{name:'Requests'}).click();
+ const row=page.locator('.time-list>div').filter({hasText:reason});
+ await expect(row).toContainText(persona('developer_b').name);
+});

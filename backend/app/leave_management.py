@@ -244,6 +244,10 @@ def org_manager(db: Session, employee_id: int) -> int | None:
 
 def notify(db: Session, recipient_id: int, message: str, request_id: int | None = None):
     """In-app and email outbox entries share the leave workflow transaction."""
+    from .notification_center import add_inbox
+    add_inbox(db,recipient_id,"approval",
+              "Leave request update" if request_id is None else f"Leave request #{request_id}",
+              message[:500],"leaves")
     db.add(LeaveNotice(recipient_id=recipient_id,request_id=request_id,message=message[:500]))
     db.add(LeaveEmailDelivery(recipient_id=recipient_id,request_id=request_id,
         subject="JellyGit HRMS: leave update",message=message[:500],status="queued"))

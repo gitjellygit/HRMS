@@ -49,7 +49,7 @@ test('primary and secondary actions use one consistent theme throughout all HRMS
  await page.setViewportSize({width:1440,height:900});
  await login(page,hr());
  for(const pageName of ['Overview','Notifications','Employees','Attendance','Time & shifts','Payroll & expenses',
-  'Finance & invoicing','Admin approvals','People operations','Leave requests','Projects','Bonuses','Appraisals',
+  'Finance & invoicing','Admin approvals','People operations','Leave requests','Projects','Bonuses',
   'Performance & growth','HR overview','Policies','Organization','Org chart','My profile',
   'Profile requests','Bulk data & expiries']){
   const nav=page.locator('.sidebar nav').getByRole('button',{name:pageName,exact:true});

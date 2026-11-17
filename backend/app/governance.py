@@ -59,8 +59,25 @@ def submit(db,user,kind,payload,reason):
             pay=SalaryIn.model_validate(data)
             if pay.other_deductions>pay.basic+pay.hra+pay.allowances:
                 raise HTTPException(422,detail={"field":"other_deductions","message":"Deductions exceed gross pay."})
+    # Reject duplicate pending proposals by the same requester, without deleting
+    # any previously submitted or completed audit history.
+    comparable=json.dumps(data,sort_keys=True,separators=(",",":"))
+    pending=db.scalars(select(ChangeRequest).where(
+        ChangeRequest.kind==kind,ChangeRequest.submitted_by==user.id,
+        ChangeRequest.status=="pending")).all()
+    for existing in pending:
+        if json.dumps(json.loads(existing.payload),sort_keys=True,separators=(",",":"))==comparable:
+            raise HTTPException(409,detail={"field":"request","message":
+                f"An identical {kind.replace('_',' ')} request is already awaiting approval (#{existing.id}). Open Admin approvals to review it."})
     row=ChangeRequest(kind=kind,payload=json.dumps(data),reason=reason.strip(),submitted_by=user.id)
-    db.add(row);db.commit();db.refresh(row)
+    db.add(row);db.flush()
+    from .notification_center import add_inbox
+    admins=db.scalars(select(Employee.id).where(Employee.role.in_(ADMINS),Employee.status=="active",
+                                Employee.id!=user.id)).all()
+    for admin_id in admins:
+        add_inbox(db,admin_id,"approval",f"Approval needed: {kind.replace('_',' ')}",
+                  f"{user.name} requested approval for {kind.replace('_',' ')}. Open Admin approvals to review.","governance")
+    db.commit();db.refresh(row)
     return {"id":row.id,"status":"pending","kind":row.kind,"admin_approval_required":True}
 
 @router.post("/requests",status_code=201)
@@ -72,17 +89,30 @@ def list_requests(user:Employee=Depends(current_user),db:Session=Depends(db_sess
     if user.role not in HRS:raise HTTPException(403,"HR access required")
     q=select(ChangeRequest).order_by(ChangeRequest.id.desc())
     if user.role not in ADMINS:q=q.where(ChangeRequest.submitted_by==user.id)
+    rows=db.scalars(q.limit(500)).all()
+    people_ids={n for row in rows for n in (row.submitted_by,row.reviewed_by) if n is not None}
+    people={p.id:p.name for p in db.scalars(select(Employee).where(Employee.id.in_(people_ids))).all()} if people_ids else {}
     return [{"id":x.id,"kind":x.kind,"payload":json.loads(x.payload),
              "reason":x.reason,"status":x.status,"submitted_by":x.submitted_by,
-             "reviewed_by":x.reviewed_by,"review_note":x.review_note}
-            for x in db.scalars(q.limit(500)).all()]
+             "submitted_by_name":people.get(x.submitted_by,"Former employee"),
+             "reviewed_by":x.reviewed_by,
+             "reviewed_by_name":people.get(x.reviewed_by,"Former employee") if x.reviewed_by else None,
+             "review_note":x.review_note,"created_at":x.created_at,"reviewed_at":x.reviewed_at}
+            for x in rows]
 
 def apply(db,row):
     data=json.loads(row.payload)
     if row.kind=="company_policy":
         p=PolicyRecordIn.model_validate(data)
-        db.add(CompanyPolicyRecord(title=p.title,category=p.category,description=p.description,
-              effective_date=p.effective_date,active=p.active,audience_ids=json.dumps(p.audience_ids),created_by=row.submitted_by))
+        published=CompanyPolicyRecord(title=p.title,category=p.category,description=p.description,
+              effective_date=p.effective_date,active=p.active,audience_ids=json.dumps(p.audience_ids),created_by=row.submitted_by)
+        db.add(published)
+        if p.active:
+            from .notification_center import add_inbox
+            recipients=p.audience_ids or list(db.scalars(select(Employee.id).where(Employee.status=="active")).all())
+            for recipient_id in recipients:
+                add_inbox(db,recipient_id,"policy",f"New company policy: {p.title}",
+                          f"A new {p.category} policy is available in the Policy Hub. Effective {p.effective_date}.","policies")
     elif row.kind=="bonus_policy":
         p=BonusPolicyIn.model_validate(data)
         x=db.get(CompanyPolicy,"default_project_bonus_inr")
@@ -139,5 +169,9 @@ def review(request_id:int,body:Decision,user:Employee=Depends(current_user),db:S
     x.reviewed_at=datetime.now(timezone.utc)
     if body.approve:apply(db,x)
     x.status="approved" if body.approve else "rejected"
+    from .notification_center import add_inbox
+    add_inbox(db,x.submitted_by,"approval",
+              f"Your {x.kind.replace('_',' ')} request was {x.status}",
+              f"{user.name} {x.status} your admin approval request. Open Admin approvals to review the result.","governance")
     db.commit()
     return {"id":x.id,"status":x.status,"reviewed_by":x.reviewed_by}

@@ -26,6 +26,8 @@ def test_targeted_policy_and_private_attachment_download():
         assert all(p["id"]!=pid for p in c.get("/policies/records").json())
         assert c.get(f"/policies/records/{pid}/attachments/{aid}").status_code==404
         switch(c,"payroll.person.qa@example.org")
+        notification=c.get("/notification-center").json()
+        assert any(n["destination"]=="policies" and "Employee pilot confidentiality policy" in n["title"] for n in notification["items"])
         visible=c.get("/policies/records")
         assert any(p["id"]==pid for p in visible.json())
         assert c.get(f"/policies/records/{pid}/attachments/{aid}").status_code==200

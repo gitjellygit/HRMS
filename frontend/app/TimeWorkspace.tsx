@@ -61,7 +61,7 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
   const fetches=await Promise.allSettled([
    call("/daily"),call("/policy"),call("/shifts"),call("/roster"),call("/requests"),call("/requests?scope=approvals"),
    call("/timesheets"),
-   isHR?fetch(api+"/employees",{credentials:"include"}).then(r=>r.ok?r.json():[]):Promise.resolve([]),
+   isApprover?fetch(api+"/core/employees",{credentials:"include"}).then(r=>r.ok?r.json():[]):Promise.resolve([]),
    fetch(api+"/project-management/projects",{credentials:"include"}).then(r=>r.ok?r.json():[]),
    isApprover?call("/timesheets?scope=approvals"):Promise.resolve([]),
    call("/project-assignments")
@@ -83,11 +83,13 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
   clear();setBusy(true);
   try{await run();setNotice(success);await load()}catch(e){showError(e)}finally{setBusy(false)}
  }
- const requestOptions=[["wfh","Work from home"],["on_duty","Official work outside office"],["regularization","Missed punch correction"],
+ const employeeName=(r:Row)=>r.employee_name||staff.find(p=>p.id===r.employee_id)?.name||"Employee #"+r.employee_id;
+  const requestOptions=[["wfh","Work from home"],["on_duty","Official work outside office"],["regularization","Missed punch correction"],
    ["overtime","Overtime"],["shift_swap","Shift swap"]];
  async function submitRequest(e:React.FormEvent){
   e.preventDefault();
-  if(requestForm.reason.trim().length<10){setError("Please explain this request (10+ characters).");setErrorField("reason");return}
+  if(requestForm.kind==="overtime"&&(requestForm.hours===""||!Number.isFinite(Number(requestForm.hours))||Number(requestForm.hours)<0.25||Number(requestForm.hours)>24)){setError("Overtime hours: enter a number between 0.25 and 24.");setErrorField("hours");requestAnimationFrame(()=>focusRef.current?.querySelector<HTMLElement>('[name="hours"]')?.focus());return}
+  if(requestForm.reason.trim().length<10){setError("Please explain this request (10+ characters).");setErrorField("reason");requestAnimationFrame(()=>focusRef.current?.querySelector<HTMLElement>('[name="reason"]')?.focus());return}
   let proposedIn:string|null=null;
   let proposedOut:string|null=null;
   if(requestForm.kind==="regularization"){
@@ -128,7 +130,7 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
      ]).map(({id,label,Icon})=>
     <button role="tab" aria-selected={tab===id} className={tab===id?"active":""} key={id} onClick={()=>{setTab(id);clear()}}><Icon size={16}/>{label}</button>)}
   </div>
-  {error&&<div className="time-form-error" role="alert"><AlertCircle size={17}/><div><strong>Check the highlighted field</strong><p>{error}</p></div></div>}
+  {error&&<div className="time-form-error" role="alert"><AlertCircle size={17}/><div><strong>{errorField==="manager_id"?"Reporting manager not assigned":"Check the highlighted field"}</strong><p>{errorField==="manager_id"?"Your employee record has no reporting manager. Ask HR/Admin to open Employees → Edit details → Reporting & organization, assign a manager and save.":error}</p></div></div>}
   {notice&&<FeedbackMotion type={notice==="Request approved."?"congrats":"success"} compact message={notice}/>}
   {busy&&<FeedbackMotion type="loading" compact message="Saving your changes…"/>}
 
@@ -150,7 +152,7 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
      <p className="time-request-description wide">{requestForm.kind==="on_duty"?"Use this when your manager sends you to a client site or another approved work location. This is not a normal office punch.":requestForm.kind==="wfh"?"Request approval to work remotely from home.":requestForm.kind==="regularization"?"Correct a missing or incorrect attendance punch; choose the timezone where you worked.":requestForm.kind==="overtime"?"Request approval for extra working hours.":"Request to exchange an assigned shift with a colleague."}</p>
      <label>Work date<input name="work_date" type="date" required value={requestForm.work_date} onChange={e=>setRequestForm(v=>({...v,work_date:e.target.value}))}/></label>
      {["wfh","on_duty"].includes(requestForm.kind)&&<label>End date (optional)<input name="end_date" type="date" min={requestForm.work_date} value={requestForm.end_date} onChange={e=>setRequestForm(v=>({...v,end_date:e.target.value}))}/></label>}
-     {requestForm.kind==="overtime"&&<label>Overtime hours<input name="hours" type="number" min=".25" max="24" step=".25" required aria-invalid={errorField==="hours"} value={requestForm.hours} onChange={e=>setRequestForm(v=>({...v,hours:e.target.value}))}/></label>}
+     {requestForm.kind==="overtime"&&<label>Overtime hours <span className="required" aria-hidden="true">*</span><input name="hours" type="number" min=".25" max="24" step=".25" required aria-invalid={errorField==="hours"} aria-describedby={errorField==="hours"?"overtime-hours-error":undefined} value={requestForm.hours} onChange={e=>{setRequestForm(v=>({...v,hours:e.target.value}));if(errorField==="hours"){setErrorField("");setError("")}}}/>{errorField==="hours"&&<small id="overtime-hours-error" className="field-error" role="alert">Enter overtime hours between 0.25 and 24.</small>}</label>}
      {requestForm.kind==="regularization"&&<><label>Time zone (daylight saving automatic)<select name="timezone" value={requestZone} onChange={e=>setRequestZone(e.target.value)}>{TIME_ZONES.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select><small className="time-hint">Choose the work location, not your laptop clock. EST/EDT and CST/CDT change automatically by date.</small></label><label>Corrected punch-in<input name="proposed_in" type="datetime-local" required aria-invalid={errorField==="proposed_in"} value={requestForm.proposed_in} onChange={e=>setRequestForm(v=>({...v,proposed_in:e.target.value}))}/></label><label>Corrected punch-out<input name="proposed_out" type="datetime-local" required aria-invalid={errorField==="proposed_out"} value={requestForm.proposed_out} onChange={e=>setRequestForm(v=>({...v,proposed_out:e.target.value}))}/></label></>}
      {requestForm.kind==="shift_swap"&&<label>Colleague's employee ID<input name="target_employee_id" type="number" min="1" required value={requestForm.target_employee_id} onChange={e=>setRequestForm(v=>({...v,target_employee_id:e.target.value}))}/></label>}
      <label className="wide"><span className="field-label-line">Reason <span className="required" aria-hidden="true">*</span></span><textarea name="reason" required minLength={10} maxLength={1000} rows={3} aria-invalid={errorField==="reason"} value={requestForm.reason} onChange={e=>setRequestForm(v=>({...v,reason:e.target.value}))} placeholder="Why is this request needed?"/></label>
@@ -158,8 +160,8 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
     </form>
    </section>
    <section className="employee-surface"><h3>My requests</h3><div className="time-list">{requests.length?requests.map(r=><div key={r.id}><strong>{kindName(r.kind)}</strong><span>{r.work_date} · {r.reason}</span><small className={"time-state "+r.status}>{r.status}</small></div>):<p>No requests submitted.</p>}</div>
-    {requests.filter(r=>r.kind==="shift_swap"&&r.target_employee_id===user.id&&r.status==="pending_colleague").map(r=><div className="time-swap-consent" key={r.id}><strong>Shift swap invitation</strong><p>Employee #{r.employee_id} requests a shift swap on {r.work_date}.</p><div className="time-row-actions"><button className="employee-primary" onClick={()=>void execute(()=>call("/requests/"+r.id+"/colleague-response?accept=true","POST"),"Colleague swap accepted; sent to manager.")}>Accept swap</button><button className="employee-cancel" onClick={()=>void execute(()=>call("/requests/"+r.id+"/colleague-response?accept=false","POST"),"Shift swap declined.")}>Decline</button></div></div>)}
-    {isApprover&&<><h3>Awaiting my review</h3><div className="time-list">{approvals.length?approvals.filter(r=>r.employee_id!==user.id).map(r=><div key={r.id}><strong>{kindName(r.kind)} · Employee #{r.employee_id}</strong><span>{r.work_date} · {r.reason}</span><div className="time-row-actions"><button className="employee-primary" disabled={busy} onClick={()=>void execute(()=>call("/requests/"+r.id+"/review?approve=true","POST"),"Request approved.")}>Approve</button><button className="employee-cancel" disabled={busy} onClick={()=>void execute(()=>call("/requests/"+r.id+"/review?approve=false","POST"),"Request rejected.")}>Reject</button></div></div>):<p>No approvals pending.</p>}</div></>}
+    {requests.filter(r=>r.kind==="shift_swap"&&r.target_employee_id===user.id&&r.status==="pending_colleague").map(r=><div className="time-swap-consent" key={r.id}><strong>Shift swap invitation</strong><p>{employeeName(r)} requests a shift swap on {r.work_date}.</p><div className="time-row-actions"><button className="employee-primary" onClick={()=>void execute(()=>call("/requests/"+r.id+"/colleague-response?accept=true","POST"),"Colleague swap accepted; sent to manager.")}>Accept swap</button><button className="employee-cancel" onClick={()=>void execute(()=>call("/requests/"+r.id+"/colleague-response?accept=false","POST"),"Shift swap declined.")}>Decline</button></div></div>)}
+    {isApprover&&<><h3>Awaiting my review</h3><div className="time-list">{approvals.length?approvals.filter(r=>r.employee_id!==user.id).map(r=><div key={r.id}><strong>{kindName(r.kind)} · {employeeName(r)}</strong><span>{r.work_date} · {r.reason}</span><div className="time-row-actions"><button className="employee-primary" disabled={busy} onClick={()=>void execute(()=>call("/requests/"+r.id+"/review?approve=true","POST"),"Request approved.")}>Approve</button><button className="employee-cancel" disabled={busy} onClick={()=>void execute(()=>call("/requests/"+r.id+"/review?approve=false","POST"),"Request rejected.")}>Reject</button></div></div>):<p>No approvals pending.</p>}</div></>}
    </section>
   </div>}
 
@@ -213,7 +215,7 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
    {isApprover&&<section className="employee-surface timesheet-review-card"><h3>Timesheets awaiting review</h3>
     <p className="field-help">Only approved hours can be included in verified project billing. Approval requires a specific reason.</p>
     <div className="time-list">{timesheetApprovals.map(t=><div key={t.id}>
-     <strong>{t.task} · {t.hours}h · Employee #{t.employee_id}</strong>
+     <strong>{t.task} · {t.hours}h · {employeeName(t)}</strong>
      <span>{t.work_date} · Project #{t.project_id||"Internal"}</span>
      <button disabled={busy} className="employee-primary" onClick={()=>{
       const reason=window.prompt("Reason for approving these hours (at least 10 characters)");

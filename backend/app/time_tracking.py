@@ -195,9 +195,16 @@ def manager_for(db:Session,employee_id:int)->int|None:
 def permitted(db:Session,user:Employee,owner:int)->bool:
     return user.role in HR or user.id==manager_for(db,owner)
 
-def request_dict(row:TimeRequest):
-    return {k:getattr(row,k) for k in ("id","employee_id","kind","work_date","end_date","reason","hours",
+def request_dict(row:TimeRequest, db:Session|None=None):
+    result={k:getattr(row,k) for k in ("id","employee_id","kind","work_date","end_date","reason","hours",
             "proposed_in","proposed_out","target_employee_id","status","reviewed_by","reviewed_at","created_at")}
+    if db is not None:
+        employee=db.get(Employee,row.employee_id)
+        result["employee_name"]=employee.name if employee else "Former employee"
+        if row.target_employee_id is not None:
+            target=db.get(Employee,row.target_employee_id)
+            result["target_employee_name"]=target.name if target else "Former employee"
+    return result
 
 def effective_policy(db:Session)->TimePolicy|None:
     return db.scalar(select(TimePolicy).where(TimePolicy.location=="all"))
@@ -357,8 +364,15 @@ def create_request(body:TimeRequestIn,user:Employee=Depends(current_user),db:Ses
     if body.kind=="shift_swap":row.status="pending_colleague"
     db.add(row);db.flush()
     db.add(TimeAudit(request_id=row.id,employee_id=user.id,actor_id=user.id,event="submitted"))
+    from .notification_center import add_inbox
+    if row.status=="pending":
+        add_inbox(db,manager,"approval",f"{user.name}: {row.kind.replace('_',' ').title()} request",
+                  f"{user.name} requested {row.kind.replace('_',' ')} for {row.work_date}. Review it under Time & shifts → Requests.","time")
+    elif row.status=="pending_colleague" and row.target_employee_id:
+        add_inbox(db,row.target_employee_id,"approval",f"Shift swap request from {user.name}",
+                  f"{user.name} requests a shift swap for {row.work_date}. Respond under Time & shifts → Requests.","time")
     db.commit();db.refresh(row)
-    return request_dict(row)
+    return request_dict(row,db)
 
 @router.get("/requests")
 def list_requests(scope:Literal["mine","approvals","all"]="mine",
@@ -373,7 +387,7 @@ def list_requests(scope:Literal["mine","approvals","all"]="mine",
             team=db.scalars(select(EmployeeCore.employee_id).where(EmployeeCore.manager_id==user.id)).all()
             query=query.where(TimeRequest.employee_id.in_(team))
         query=query.where(TimeRequest.status=="pending")
-    return [request_dict(r) for r in db.scalars(query).all()]
+    return [request_dict(r,db) for r in db.scalars(query).all()]
 
 @router.post("/requests/{request_id}/review")
 def review_request(request_id:int,approve:bool,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
@@ -406,7 +420,11 @@ def review_request(request_id:int,approve:bool,user:Employee=Depends(current_use
     row.reviewed_by=user.id;row.reviewed_at=NOW()
     db.add(TimeAudit(request_id=row.id,employee_id=row.employee_id,actor_id=user.id,event=row.status))
     # Approved regularizations are recorded as corrections, not silently inserted into existing punches.
-    db.commit();return request_dict(row)
+    from .notification_center import add_inbox
+    add_inbox(db,row.employee_id,"approval",
+              f"Your {row.kind.replace('_',' ')} request was {row.status}",
+              f"{user.name} {row.status} your request for {row.work_date}. See Time & shifts → Requests.","time")
+    db.commit();return request_dict(row,db)
 
 @router.post("/requests/{request_id}/colleague-response")
 def respond_to_swap(request_id:int,accept:bool,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
@@ -418,7 +436,17 @@ def respond_to_swap(request_id:int,accept:bool,user:Employee=Depends(current_use
     row.status="pending" if accept else "rejected"
     db.add(TimeAudit(request_id=row.id,employee_id=row.employee_id,actor_id=user.id,
                      event="colleague_accepted" if accept else "colleague_declined"))
-    db.commit();return request_dict(row)
+    from .notification_center import add_inbox
+    if accept:
+        manager_id=manager_for(db,row.employee_id)
+        if manager_id:
+            employee=db.get(Employee,row.employee_id)
+            add_inbox(db,manager_id,"approval",f"Shift swap awaiting approval: {employee.name}",
+                      f"Both colleagues agreed to the swap on {row.work_date}. Review in Time & shifts → Requests.","time")
+    else:
+        add_inbox(db,row.employee_id,"approval","Shift swap declined",
+                  f"Your shift-swap invitation for {row.work_date} was declined.","time")
+    db.commit();return request_dict(row,db)
 
 
 @router.get("/audits/{request_id}")
@@ -468,7 +496,15 @@ def submit_timesheet(timesheet_id:int,user:Employee=Depends(current_user),db:Ses
     if not row:raise HTTPException(404)
     if row.employee_id!=user.id:raise HTTPException(403)
     if row.status!="draft":raise HTTPException(409,"Already submitted")
-    row.status="submitted";db.commit();return {"status":row.status}
+    row.status="submitted"
+    from .notification_center import add_inbox
+    manager_id=manager_for(db,user.id)
+    approvers=[manager_id] if manager_id else list(db.scalars(
+        select(Employee.id).where(Employee.role.in_(HR),Employee.status=="active",Employee.id!=user.id)).all())
+    for approver_id in approvers:
+        add_inbox(db,approver_id,"approval",f"Timesheet awaiting review: {user.name}",
+                  f"{user.name} submitted {row.hours} hours for {row.work_date}. Review under Time & shifts → Timesheets.","time")
+    db.commit();return {"status":row.status}
 
 @router.put("/timesheets/{timesheet_id}")
 def update_timesheet(timesheet_id:int,body:TimesheetIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
@@ -511,6 +547,9 @@ def review_timesheet(timesheet_id:int,body:TimesheetReviewIn,
     row.reviewed_by=user.id;row.reviewed_at=NOW()
     db.add(TimeAudit(employee_id=row.employee_id,actor_id=user.id,
         event="timesheet_"+row.status,note=body.reason.strip()))
+    from .notification_center import add_inbox
+    add_inbox(db,row.employee_id,"approval",f"Your timesheet was {row.status}",
+              f"{user.name} {row.status} the timesheet for {row.work_date}. See Time & shifts → Timesheets.","time")
     db.commit()
     return {"id":row.id,"status":row.status,"reviewed_by":user.id}
 

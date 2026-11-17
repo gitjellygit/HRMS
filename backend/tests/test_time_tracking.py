@@ -43,6 +43,7 @@ def test_time_requests_and_manager_authorization():
             "work_date":str(work_date),"hours":2,"reason":"Performed extended project work"})
         assert request.status_code==201,request.text
         req_id=request.json()["id"]
+        assert request.json()["employee_name"]=="Time Worker"
         assert c.get("/time/requests").json()[0]["id"]==req_id
         assert c.get("/time/requests?scope=all").status_code==403
         assert c.post(f"/time/requests/{req_id}/review?approve=true",headers=ORIGIN).status_code==403
@@ -51,10 +52,17 @@ def test_time_requests_and_manager_authorization():
         assert c.post(f"/time/requests/{req_id}/review?approve=true",headers=ORIGIN).status_code==403
         c.post("/auth/logout",headers=ORIGIN)
         sign(c,"time.manager.qa@example.org")
-        assert any(r["id"]==req_id for r in c.get("/time/requests?scope=approvals").json())
+        assert any(r["id"]==req_id and r["employee_name"]=="Time Worker" for r in c.get("/time/requests?scope=approvals").json())
+        inbox=c.get("/notification-center").json()
+        assert any(n["destination"]=="time" and "Time Worker" in n["title"] and not n["read"] for n in inbox["items"])
         approved=c.post(f"/time/requests/{req_id}/review?approve=true",headers=ORIGIN)
         assert approved.status_code==200,approved.text
         assert approved.json()["status"]=="approved"
+        c.post("/auth/logout",headers=ORIGIN)
+        sign(c,"time.worker.qa@example.org")
+        assert any(n["destination"]=="time" and "approved" in n["title"] for n in c.get("/notification-center").json()["items"])
+        c.post("/auth/logout",headers=ORIGIN)
+        sign(c,"time.manager.qa@example.org")
         assert c.post(f"/time/requests/{req_id}/review?approve=false",headers=ORIGIN).status_code==409
         assert c.get(f"/time/audits/{req_id}").status_code==200
 
@@ -95,6 +103,15 @@ def test_shifts_rosters_swap_colleague_consent_and_timesheets():
         assert c.post("/time/timesheets",headers=ORIGIN,json={
             "work_date":str(date.today()),"task":"Impossible hours","hours":22}).status_code==422
         assert c.post(f"/time/timesheets/{work.json()['id']}/submit",headers=ORIGIN).json()["status"]=="submitted"
+        c.post("/auth/logout",headers=ORIGIN)
+        sign(c,"time.manager.qa@example.org")
+        assert any(n["destination"]=="time" and "Timesheet awaiting review: Time Worker" in n["title"] for n in c.get("/notification-center").json()["items"])
+        reviewed=c.post(f"/time/timesheets/{work.json()['id']}/review",headers=ORIGIN,json={
+            "approve":True,"reason":"Verified submitted hours for assigned work"})
+        assert reviewed.status_code==200,reviewed.text
+        c.post("/auth/logout",headers=ORIGIN)
+        sign(c,"time.worker.qa@example.org")
+        assert any(n["destination"]=="time" and n["title"]=="Your timesheet was approved" for n in c.get("/notification-center").json()["items"])
 
 def test_geofence_cannot_be_bypassed_and_biometric_needs_device_secret():
     with TestClient(app) as c:

@@ -39,7 +39,6 @@ const sections = [
   { id:"leaves",label:"Leave requests",Icon:CalendarDays },
   { id:"projects",label:"Projects",Icon:BriefcaseBusiness },
   { id:"bonuses",label:"Bonuses",Icon:Wallet },
-  { id:"appraisals",label:"Appraisals",Icon:Award },
   { id:"performance",label:"Performance & growth",Icon:Award },
   { id:"hrdesk",label:"HR overview",Icon:ClipboardList },
   { id:"policies",label:"Policies",Icon:Settings2 },

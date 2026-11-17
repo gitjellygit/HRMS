@@ -33,7 +33,7 @@ export default function GrowthExtensions({api,user}:{api:string;user:{id:number;
   setItems(a);setCareers(b);setAssignments(c);setCycles(d);
  }
  useEffect(()=>{void refresh().catch(e=>setError((e as Error).message));
-  if(manage)void fetch(api+"/employees",{credentials:"include"}).then(r=>r.ok?r.json():[]).then(setPeople).catch(()=>{});
+  if(manage)void fetch(api+"/core/employees",{credentials:"include"}).then(r=>r.ok?r.json():[]).then(setPeople).catch(()=>{});
  },[api,user.id]);
  async function save(fn:()=>Promise<unknown>,messageText:string){
   setError("");setMessage("");
@@ -41,12 +41,13 @@ export default function GrowthExtensions({api,user}:{api:string;user:{id:number;
   catch(e){setError((e as Error).message)}
  }
  const selected=manage?Number(employee):user.id;
- return <section className="panel">
+ const employeeName=(id:number)=>people.find(p=>p.id===id)?.name||(id===user.id?user.name:"Employee #"+id);
+ return <section className="panel growth-workspace growth-extensions">
   <h2>Learning, career & 360 feedback</h2>
-  <div className="time-tabs" role="tablist">{([["learning","Learning & training"],["career","Career progression"],["feedback","Peer feedback"]] as const).map(([id,label])=>
-    <button key={id} role="tab" aria-selected={tab===id} onClick={()=>setTab(id)}>{label}</button>)}</div>
+  <div className="time-tabs growth-tabs" role="tablist" aria-label="Learning and career sections">{([["learning","Learning & training"],["career","Career progression"],["feedback","Peer feedback"]] as const).map(([id,label])=>
+    <button key={id} role="tab" aria-selected={tab===id} className={tab===id?"active":""} onClick={()=>{setTab(id);setTitle("");setDescription("");setError("");setMessage("")}}>{label}</button>)}</div>
   {error&&<p role="alert" className="error">{error}</p>}{message&&<p role="status">{message}</p>}
-  {manage&&<label>Employee <select value={employee} onChange={e=>setEmployee(e.target.value)}>
+  {manage&&<label className="growth-target-label">Employee <select value={employee} onChange={e=>setEmployee(e.target.value)}>
    <option value={user.id}>Myself</option>{people.filter(p=>p.id!==user.id).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
    </select></label>}
   {tab==="learning"&&<>
@@ -57,7 +58,7 @@ export default function GrowthExtensions({api,user}:{api:string;user:{id:number;
     <label>Target completion<input type="date" required value={date} onChange={e=>setDate(e.target.value)}/></label>
     <button className="primary">Assign training</button>
    </form>
-   {items.map(p=><div key={p.id} className="card"><strong>{p.title} — employee #{p.employee_id}</strong>
+   {items.map(p=><div key={p.id} className="card"><strong>{p.title} — {employeeName(p.employee_id)}</strong>
      <p>{p.provider||"Internal"} · by {p.target_date}</p>
      <label>Status <select value={p.status} onChange={e=>void save(
       ()=>call("/growth/learning/"+p.id,"PATCH",{status:e.target.value}),"Training updated.")}>
@@ -73,7 +74,7 @@ export default function GrowthExtensions({api,user}:{api:string;user:{id:number;
      <label className="wide">Readiness requirements<textarea minLength={10} required value={description} onChange={e=>setDescription(e.target.value)}/></label>
      <button className="primary">Add career milestone</button>
    </form>}
-   {careers.map(c=><div key={c.id} className="card"><strong>{c.target_role} — employee #{c.employee_id}</strong>
+   {careers.map(c=><div key={c.id} className="card"><strong>{c.target_role} — {employeeName(c.employee_id)}</strong>
     <p>{c.requirements}</p><p>Target: {c.target_date}</p>
     <p>Status: {c.status}</p>
     {manage&&<label>Update status <select value={c.status} onChange={e=>void save(
@@ -94,7 +95,7 @@ export default function GrowthExtensions({api,user}:{api:string;user:{id:number;
       </select></label><button className="primary">Request confidential feedback</button>
      </form>}
    {assignments.map(a=><div className="card" key={a.id}>
-    <strong>Feedback for employee #{a.employee_id} — cycle #{a.cycle_id}</strong>
+    <strong>Feedback for {employeeName(a.employee_id)} — cycle #{a.cycle_id}</strong>
     {a.status==="submitted"?<p>Submitted confidentially</p>:
       <form className="form" onSubmit={e=>{e.preventDefault();void save(
         ()=>call("/growth/feedback-assignments/"+a.id+"/submit","POST",{score,feedback:description}),"Peer feedback submitted.")}}>
