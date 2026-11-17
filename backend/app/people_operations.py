@@ -463,7 +463,8 @@ def add_task(body:TaskIn,user:Employee=Depends(current_user),db:Session=Depends(
     ensure_onboarding_defaults(db)
     if not db.scalar(select(OnboardingCategory.id).where(OnboardingCategory.slug==body.category,OnboardingCategory.active.is_(True))):
         raise HTTPException(422,"Choose an active onboarding category.")
-    if body.assigned_to and not db.get(Employee,body.assigned_to):raise HTTPException(422,"Assignee not found.")
+    if body.assigned_to is None:raise HTTPException(422,"Select a responsible employee for this onboarding task.")
+    if not db.get(Employee,body.assigned_to):raise HTTPException(422,"Assignee not found.")
     row=OnboardingTask(**body.model_dump());db.add(row);db.flush()
     audit(db,user,"onboarding",row.id,"created")
     if row.assigned_to is not None:
