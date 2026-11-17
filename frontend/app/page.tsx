@@ -86,8 +86,11 @@ export default function Home() {
   }
   useEffect(()=>{const stored=localStorage.getItem("jellygit-theme");const selected=stored==="dark"?"dark":"light";setTheme(selected);document.documentElement.dataset.theme=selected},[]);
   function changeTheme(next:"light"|"dark"){
-    document.documentElement.dataset.theme=next;
-    document.documentElement.classList.add("hrms-theme-changing");
+    const root=document.documentElement;
+    root.classList.add("hrms-theme-changing");
+    // Capture the previous paint before applying the new palette.
+    void root.offsetHeight;
+    root.dataset.theme=next;
     setTheme(next);
     localStorage.setItem("jellygit-theme",next);
     setProfileMenu(false);
