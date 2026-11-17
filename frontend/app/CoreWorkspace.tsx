@@ -217,7 +217,7 @@ export default function CoreWorkspace({api,mode,user,employeeId,onBack,onPasswor
     <div><span>90-day probation ends</span><strong>{person.probation_end_date||"—"}</strong></div>
     <div><span>Probation remaining</span><strong>{person.effective_lifecycle==="probation"?(person.probation_days_remaining??0)+" days":"Completed"}</strong></div>
    </div>
-   {isHR&&<form className="employee-account-edit" onSubmit={saveAccount}>
+   {isHR&&(person.role!=="super_admin"||user.role==="super_admin")&&(!["admin","super_admin"].includes(person.role)||["admin","super_admin"].includes(user.role))&&<form className="employee-account-edit" onSubmit={saveAccount}>
      <div className="employee-account-edit-heading"><h3>Edit employee details</h3><p>HR and administrators can update account details. A reason is mandatory and recorded.</p></div>
      <div className="employee-form-grid">
       {([["name","Full name","text"],["email","Work email","email"],["designation","Designation","text"],["phone","Phone number","tel"],["joining_date","Date of joining","date"]] as const).map(([field,label,type])=><label className="core-label" key={field}>{label}<input type={type} value={accountDraft[field]} required={field!=="phone"} onChange={e=>setAccountDraft(d=>({...d,[field]:e.target.value}))}/></label>)}
