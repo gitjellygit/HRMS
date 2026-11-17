@@ -1,0 +1,88 @@
+name: Hostinger HRMS manual release
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type DEPLOY to authorize production release of the selected main commit"
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: hrms-hostinger-production
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main' && inputs.confirmation == 'DEPLOY'
+    environment: production
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify exact main SHA passed CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # A manual production release must deploy an exact main commit with passing main CI.
+          for attempt in {1..25}; do
+            runs="$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/checks.yml/runs" -f head_sha="$DEPLOY_SHA" -f per_page=50)"
+            result="$(jq -r --arg sha "$DEPLOY_SHA" '[.workflow_runs[] | select(.head_sha == $sha and .event == "push")]|sort_by(.created_at)|last|.conclusion // empty' <<< "$runs")"
+            if [[ "$result" == success ]]; then
+              echo "Verified passing main HRMS checks for $DEPLOY_SHA"
+              exit 0
+            fi
+            if [[ "$result" == failure || "$result" == cancelled || "$result" == timed_out ]]; then
+              echo "Main CI was not successful: $result"; exit 1
+            fi
+            sleep 12
+          done
+          echo "No successful main HRMS checks available for $DEPLOY_SHA"
+          exit 1
+      - name: Checkout verified release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Configure pinned SSH identity
+        env:
+          VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          VPS_SSH_KNOWN_HOSTS: ${{ secrets.VPS_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_SSH_PRIVATE_KEY"
+          test -n "$VPS_SSH_KNOWN_HOSTS"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_PRIVATE_KEY" > ~/.ssh/hrms_deploy
+          printf '%s\n' "$VPS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/hrms_deploy ~/.ssh/known_hosts
+      - name: Pre-release database backup on VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          ssh -i ~/.ssh/hrms_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            "$VPS_USER@$VPS_HOST" 'bash -se' <<'REMOTE'
+          set -Eeuo pipefail
+          cd /opt/jellygit/hrms
+          mkdir -p "$HOME/hrms-backups"
+          umask 077
+          file="$HOME/hrms-backups/hrms-pre-release-$(date -u +%Y%m%dT%H%M%SZ).dump"
+          docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$file"
+          test -s "$file"
+          docker compose exec -T db pg_restore -l < "$file" >/dev/null
+          echo "Pre-release PostgreSQL backup validated"
+          REMOTE
+      - name: Deploy release on Hostinger
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/hrms_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            "$VPS_USER@$VPS_HOST" "bash -se -- $DEPLOY_SHA" < .github/scripts/deploy-hrms.sh
