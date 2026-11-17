@@ -950,3 +950,6 @@ app.include_router(notification_center_router)
 
 from .exit_workflow import router as exit_workflow_router  # noqa: E402
 app.include_router(exit_workflow_router)
+
+from .activity_agent import router as activity_agent_router  # noqa: E402
+app.include_router(activity_agent_router)
