@@ -193,6 +193,23 @@ class MasterIn(BaseModel):
         return value
 
 
+class EmployeeAccountUpdate(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    email: EmailStr
+    designation: str = Field(min_length=2, max_length=100)
+    phone: str = Field(default="", max_length=30)
+    joining_date: date
+    reason: str = Field(min_length=10, max_length=300)
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, value: str) -> str:
+        value = value.strip()
+        if value and not re.fullmatch(r"\\+?[0-9]{7,15}", re.sub(r"[\\s()-]", "", value)):
+            raise ValueError("Phone must contain 7-15 digits.")
+        return value
+
+
 class EmployeeCreateIn(BaseModel):
     account: EmployeeIn
     master: MasterIn = Field(default_factory=MasterIn)
@@ -491,6 +508,37 @@ def create_full_employee(body: EmployeeCreateIn, user: Employee = Depends(requir
     return employee_view(db, employee, user)
 
 
+@router.patch("/employees/{employee_id}/account")
+def update_employee_account(employee_id: int, body: EmployeeAccountUpdate, user: Employee = Depends(require_hr), db: Session = Depends(db_session)):
+    employee = employee_or_404(db, employee_id)
+    if employee.role in ("admin", "super_admin") and user.role not in ("admin", "super_admin"):
+        raise HTTPException(403, "Only an administrator may edit administrator accounts.")
+    if employee.role == "super_admin" and user.role != "super_admin":
+        raise HTTPException(403, "Only Super Admin may edit this account.")
+    name, designation = body.name.strip(), body.designation.strip()
+    if len(name) < 2 or len(designation) < 2 or len(body.reason.strip()) < 10:
+        raise HTTPException(422, "Name, designation, and change reason must be meaningful.")
+    email = str(body.email).strip().lower()
+    if db.scalar(select(Employee.id).where(func.lower(Employee.email) == email, Employee.id != employee_id)):
+        raise HTTPException(409, detail={"field": "email", "message": "This work email is already assigned to another employee."})
+    original = {k: str(getattr(employee, k)) for k in ("name","email","designation","phone","joining_date")}
+    employee.name, employee.email, employee.designation = name, email, designation
+    employee.phone, employee.joining_date = body.phone, body.joining_date
+    changed = [k for k in original if original[k] != str(getattr(employee, k))]
+    if not changed:
+        return employee_view(db, employee, user)
+    db.add(LifecycleEvent(employee_id=employee_id, event="account_updated",
+                          note=f"{body.reason.strip()} (fields: {', '.join(changed)})",
+                          effective_date=date.today(), performed_by=user.id))
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, detail={"field":"email","message":"This work email is already in use."}) from exc
+    db.refresh(employee)
+    return employee_view(db, employee, user)
+
+
 @router.put("/employees/{employee_id}")
 def update_master(employee_id: int, body: MasterIn, user: Employee = Depends(require_hr), db: Session = Depends(db_session)):
     employee = employee_or_404(db, employee_id)
@@ -499,6 +547,11 @@ def update_master(employee_id: int, body: MasterIn, user: Employee = Depends(req
     if employee.role not in ("admin", "super_admin") and not manager_id:
         raise HTTPException(422,detail={"field":"manager_id","message":"A reporting manager is required for this employee."})
     apply_master(db, employee_id, body, partial=True)
+    submitted = body.model_dump(exclude_unset=True)
+    if submitted.get("department_id") is not None:
+        employee.department = db.get(OrgUnit, submitted["department_id"]).name
+    if submitted.get("designation_id") is not None:
+        employee.designation = db.get(OrgUnit, submitted["designation_id"]).name
     db.commit()
     return employee_view(db, employee_or_404(db, employee_id), user)
 
