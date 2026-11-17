@@ -18,6 +18,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
  const [templates,setTemplates]=useState<Row[]>([]);
  const [offers,setOffers]=useState<Row[]>([]);
  const [tasks,setTasks]=useState<Row[]>([]);
+ const [onboardingEmployee,setOnboardingEmployee]=useState("");
  const [notices,setNotices]=useState<Row[]>([]);
  const [tickets,setTickets]=useState<Row[]>([]);
  const [allTickets,setAllTickets]=useState<Row[]>([]);
@@ -157,22 +158,23 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
       title:draft.title,due_date:draft.due_date||null,assigned_to:draft.assigned_to?Number(draft.assigned_to):null,
       asset_code:draft.asset_code||""},"Onboarding task created.")}}>
      {emp()}<label>Category<select value={draft.category||"document"} onChange={e=>setDraft(v=>({...v,category:e.target.value}))}>
-      {["document","asset","induction","hr","it"].map(c=><option key={c}>{c}</option>)}</select></label>
+      {["document","asset","induction","hr","it"].map(c=><option key={c} value={c}>{c==="hr"?"HR":c==="it"?"IT":c[0].toUpperCase()+c.slice(1)}</option>)}</select></label>
      {input("title","Task title",true)}{input("asset_code","Asset code (optional)")}
      {input("due_date","Due date",false,"date")}
      <label>Responsible person<select value={draft.assigned_to||""} onChange={e=>setDraft(v=>({...v,assigned_to:e.target.value}))}>
-      <option value="">HR team</option>{staff.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></label>
+      <option value="">Choose a responsible employee</option>{staff.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></label>
      <button className="employee-primary">Assign task</button>
      <button type="button" className="employee-cancel" disabled={!draft.employee_id} onClick={()=>void save(()=>call("/onboarding/orientation/"+draft.employee_id,"POST"),"Seven-step welcome orientation initialized.")}>Start welcome orientation (7 steps)</button></form>}
    </section>
-   <section className="employee-surface"><h3>Open and completed tasks</h3>
-    <p className="muted">Welcome journey: {tasks.filter(t=>t.status==="completed").length} of {tasks.length} tasks completed</p>
-    <progress max={Math.max(1,tasks.length)} value={tasks.filter(t=>t.status==="completed").length} style={{width:"100%"}} aria-label="Onboarding progress"/>
-    <div className="ops-table">{tasks.map(t=><div className="ops-row" key={t.id}>
-    <strong>{t.title}</strong><span>{t.category} · {t.status} · #{t.employee_id}</span>
+   <section className="employee-surface"><h3>Employee onboarding progress</h3>
+    {hr&&<label>Employee<select value={onboardingEmployee} onChange={e=>setOnboardingEmployee(e.target.value)}><option value="">Select employee to review</option>{staff.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+    <p className="muted">Welcome journey: {tasks.filter(t=>(!hr||t.employee_id===Number(onboardingEmployee))&&t.status==="completed").length} of {tasks.filter(t=>!hr||t.employee_id===Number(onboardingEmployee)).length} tasks completed</p>
+    <progress max={Math.max(1,tasks.filter(t=>!hr||t.employee_id===Number(onboardingEmployee)).length)} value={tasks.filter(t=>(!hr||t.employee_id===Number(onboardingEmployee))&&t.status==="completed").length} style={{width:"100%"}} aria-label="Onboarding progress"/>
+    <div className="ops-table">{tasks.filter(t=>!hr||t.employee_id===Number(onboardingEmployee)).map(t=><div className="ops-row" key={t.id}>
+    <strong>{t.title}</strong><span>{t.category==="hr"?"HR":t.category==="it"?"IT":String(t.category).replace(/^./,(x:string)=>x.toUpperCase())} · {t.status} · {staff.find(p=>p.id===t.employee_id)?.name||("Employee #"+t.employee_id)}</span><small>Responsible: {staff.find(p=>p.id===t.assigned_to)?.name||"Not assigned"}</small>
     {t.asset_code&&<small>Asset: {t.asset_code}</small>}
     {t.status==="pending"&&(hr||t.assigned_to===user.id)&&<button className="employee-primary" onClick={()=>void save(()=>call("/onboarding/"+t.id+"/complete","POST"),"Task completed.")}>Complete</button>}
-   </div>)}{!tasks.length&&<div className="jellygit-empty-state"><BrandIllustration asset="empty-folder-state" alt="" className="jellygit-empty-art"/><p>No onboarding tasks yet.</p></div>}</div></section>
+   </div>)}{(!tasks.length||(hr&&!onboardingEmployee))&&<div className="jellygit-empty-state"><BrandIllustration asset="empty-folder-state" alt="" className="jellygit-empty-art"/><p>{hr&&!onboardingEmployee?"Select an employee to view their onboarding tasks.":"No onboarding tasks yet."}</p></div>}</div></section>
   </div>}
   {tab==="announcements"&&<div className="ops-columns">
    <section className="employee-surface"><h3><Send size={17}/> Announcements and policies</h3>
