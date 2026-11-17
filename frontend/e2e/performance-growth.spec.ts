@@ -45,3 +45,26 @@ test("HR creates a cycle and employee completes a self-review",async({page})=>{
  expect(reviews.status()).toBe(200);
  expect((await reviews.json()).some((r:{cycle_id:number;status:string})=>r.cycle_id===cycle.id&&r.status==="self_submitted")).toBeTruthy();
 });
+
+test("performance tabs visibly switch and employee selector has its own spacing",async({page})=>{
+ await login(page,person("hr"));
+ await navigate(page,"Performance & growth");
+ const workspace=page.locator(".growth-workspace").first();
+ const tabs=workspace.locator(".growth-tabs");
+ const selector=workspace.locator(".growth-target-label");
+ await expect(tabs).toBeVisible();
+ await expect(selector).toBeVisible();
+ const tabBox=await tabs.boundingBox(),selectorBox=await selector.boundingBox();
+ expect(tabBox).not.toBeNull();expect(selectorBox).not.toBeNull();
+ expect(selectorBox!.y-(tabBox!.y+tabBox!.height)).toBeGreaterThan(6);
+ const reviewTab=workspace.getByRole("tab",{name:"Appraisal cycles"});
+ await reviewTab.click();
+ await expect(reviewTab).toHaveClass(/active/);
+ await expect(reviewTab).toHaveAttribute("aria-selected","true");
+ await expect(workspace.getByRole("heading",{name:"Create appraisal cycle"})).toBeVisible();
+ await expect(workspace.getByRole("heading",{name:"Submit self-assessment"})).toBeVisible();
+ const learning=page.locator(".growth-extensions");
+ const career=learning.getByRole("tab",{name:"Career progression"});
+ await career.click();
+ await expect(career).toHaveClass(/active/);
+});
