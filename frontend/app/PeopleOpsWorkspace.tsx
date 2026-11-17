@@ -75,6 +75,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
   setOnboardingCategories(await get("/onboarding/categories"));
   if(hr){setRules(await get("/notification-rules"));fetch(api+"/activity-agent/devices",{credentials:"include"}).then(v=>v.ok?v.json():[]).then(setActivityDevices).catch(()=>{});}
  }
+ useEffect(()=>{if(!hr||tab!=="analytics")return;const refreshDevices=()=>{void fetch(api+"/activity-agent/devices",{credentials:"include"}).then(r=>r.ok?r.json():[]).then(setActivityDevices).catch(()=>{})};refreshDevices();const timer=window.setInterval(refreshDevices,30000);return()=>window.clearInterval(timer)},[api,hr,tab]);
  useEffect(()=>{void refresh();if(hr)void fetch(api+"/exit-workflow/templates",{credentials:"include"})
   .then(r=>r.ok?r.json():[]).then(setExitTemplates).catch(()=>{})},[api,user.id]);
  async function save(fn:()=>Promise<unknown>,msg:string){
