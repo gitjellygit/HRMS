@@ -16,6 +16,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
  const [tab,setTab]=useState<Area>("announcements");
  const [staff,setStaff]=useState<Row[]>([]);
  const [templates,setTemplates]=useState<Row[]>([]);
+ const [editingOfferTemplate,setEditingOfferTemplate]=useState<number|null>(null);
  const [offers,setOffers]=useState<Row[]>([]);
  const [tasks,setTasks]=useState<Row[]>([]);
  const [onboardingEmployee,setOnboardingEmployee]=useState("");
@@ -124,20 +125,19 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
   {busy&&<FeedbackMotion type="loading" compact message="Updating HRMS…"/>}
   {tab==="offers"&&<div className="ops-columns">
     <section className="employee-surface"><h3><FileSignature size={17}/> Offer letters</h3>
-     {hr&&<><form className="ops-form" onSubmit={e=>{e.preventDefault();void submit("/offer-templates",
-      {name:draft.template_name,content:draft.template_content},"Template created.")}}>
-      <h4>Create offer template</h4>{input("template_name","Template name",true)}
+     {hr&&<><form className="ops-form" onSubmit={e=>{e.preventDefault();void save(async()=>{await call(editingOfferTemplate?"/offer-templates/"+editingOfferTemplate:"/offer-templates",editingOfferTemplate?"PUT":"POST",{name:draft.template_name,content:draft.template_content});setEditingOfferTemplate(null)},editingOfferTemplate?"Template updated.":"Template created.")}}>
+      <h4>{editingOfferTemplate?"Edit offer template":"Create offer template"}</h4>{input("template_name","Template name",true)}
       <label className="wide">Offer text with placeholders<textarea rows={5} minLength={30} required
        placeholder="Dear {{employee_name}}, we offer {{job_title}}…" value={draft.template_content||""}
        onChange={e=>setDraft(v=>({...v,template_content:e.target.value}))}/></label>
-      <button className="employee-primary" disabled={busy}>Save template</button>
-     </form><hr/><form className="ops-form" onSubmit={e=>{e.preventDefault();void submit("/offers",{
+      <button className="employee-primary" disabled={busy}>Save template</button>{editingOfferTemplate&&<button type="button" className="employee-cancel" onClick={()=>{setEditingOfferTemplate(null);setDraft({})}}>Cancel editing</button>}
+     </form><div className="ops-table"><h4>Existing offer templates</h4>{templates.map(t=><div className="ops-row" key={t.id}><strong>{t.name}</strong><span>{t.active?"Active":"Archived"}</span>{t.active&&<div className="actions"><button type="button" className="employee-cancel" onClick={()=>{setEditingOfferTemplate(t.id);setDraft({template_name:t.name,template_content:t.content})}}>Edit</button><button type="button" className="employee-cancel" onClick={()=>{if(window.confirm("Archive this template? Existing offers remain unchanged."))void save(()=>call("/offer-templates/"+t.id,"DELETE"),"Template archived.")}}>Archive</button></div>}</div>)}</div><hr/><form className="ops-form" onSubmit={e=>{e.preventDefault();void submit("/offers",{
        employee_id:Number(draft.employee_id),template_id:Number(draft.template_id),title:draft.title,
        annual_ctc:Number(draft.annual_ctc),joining_date:draft.joining_date||today()
       },"Offer generated.")}}>
       <h4>Generate offer</h4>{emp()}
       <label>Template<select required value={draft.template_id||""} onChange={e=>setDraft(v=>({...v,template_id:e.target.value}))}>
-       <option value="">Choose template</option>{templates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+       <option value="">Choose template</option>{templates.filter(t=>t.active).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
       {input("title","Job title",true)}{input("annual_ctc","Annual CTC (INR)",true,"number")}
       <label>Joining date<input type="date" required value={draft.joining_date||today()} onChange={e=>setDraft(v=>({...v,joining_date:e.target.value}))}/></label>
       <button className="employee-primary" disabled={busy}>Generate offer</button></form></>}
