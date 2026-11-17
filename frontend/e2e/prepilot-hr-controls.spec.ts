@@ -23,7 +23,7 @@ test('HR can configure separate April-Nov and December-March accrual rates',asyn
  await navigate(page,'Leave requests');
  await page.getByRole('button',{name:'Policies & balances'}).click();
  await expect(page.getByText('Monthly accrual Dec–Mar (days)')).toBeVisible();
- await page.getByLabel('Monthly accrual (days)').fill('1.5');
+ await page.getByLabel('Monthly accrual (days)',{exact:true}).fill('1.5');
  await page.getByLabel('Monthly accrual Dec–Mar (days)').fill('2.5');
  await expect(page.getByText(/22-day example/)).toBeVisible();
 });
