@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Login from "./Login";
 import {explainError} from "./formErrors";
 import EmployeeManagement from "./EmployeeManagement";
@@ -63,6 +63,7 @@ export default function Home() {
   const [passwordNotice,setPasswordNotice]=useState("");
   const [theme,setTheme]=useState<"light"|"dark">("light");
   const [profileMenu,setProfileMenu]=useState(false);
+  const profileMenuRef=useRef<HTMLDivElement|null>(null);
   const [success,setSuccess]=useState("");
   const [hasPhoto,setHasPhoto]=useState(false);
   const [avatarVersion,setAvatarVersion]=useState(0);
@@ -84,7 +85,31 @@ export default function Home() {
     return response.json();
   }
   useEffect(()=>{const stored=localStorage.getItem("jellygit-theme");const selected=stored==="dark"?"dark":"light";setTheme(selected);document.documentElement.dataset.theme=selected},[]);
-  function changeTheme(next:"light"|"dark"){setTheme(next);document.documentElement.dataset.theme=next;localStorage.setItem("jellygit-theme",next);setProfileMenu(false)}
+  function changeTheme(next:"light"|"dark"){
+    document.documentElement.dataset.theme=next;
+    document.documentElement.classList.add("hrms-theme-changing");
+    setTheme(next);
+    localStorage.setItem("jellygit-theme",next);
+    setProfileMenu(false);
+  }
+  useEffect(()=>{
+    const root=document.documentElement;
+    if(!root.classList.contains("hrms-theme-changing"))return;
+    const id=window.setTimeout(()=>root.classList.remove("hrms-theme-changing"),240);
+    return ()=>window.clearTimeout(id);
+  },[theme]);
+  useEffect(()=>{
+    if(!profileMenu)return;
+    const outside=(event:PointerEvent)=>{
+      if(profileMenuRef.current&&!profileMenuRef.current.contains(event.target as Node))setProfileMenu(false);
+    };
+    const escape=(event:KeyboardEvent)=>{if(event.key==="Escape")setProfileMenu(false)};
+    document.addEventListener("pointerdown",outside);
+    document.addEventListener("keydown",escape);
+    return ()=>{document.removeEventListener("pointerdown",outside);document.removeEventListener("keydown",escape)};
+  },[profileMenu]);
+  useEffect(()=>{if(success){const id=window.setTimeout(()=>setSuccess(""),4500);return ()=>window.clearTimeout(id)}},[success]);
+  useEffect(()=>{setSuccess("");setError("");setProfileMenu(false)},[section]);
   async function refresh(id=section) {
     try {
       setError("");
@@ -204,8 +229,8 @@ export default function Home() {
   if(!ready)return <div className="login-wrap">Loading workspace…</div>;
   if(!user)return <Login api={API} onLogin={u=>{setPasswordNotice("");setUser(u)}} initialNotice={passwordNotice}/>;
   if(user.must_change_password)return <ChangePassword api={API} required onComplete={completePasswordChange}/>;
-  return <div className="shell"><aside className="sidebar"><div className="brand">Jelly<span>Git</span> HRMS</div><nav className="menu">{visible.map(({id,label,Icon})=><button key={id} onClick={()=>{setSection(id);setForm(false);setError("")}} className={section===id?"active":""}><Icon size={18}/>{label}</button>)}<button onClick={logout}><LogOut size={18}/>Sign out</button></nav></aside><main className="content"><div className="top"><div><h1 className="title">{section==="employee-record"?"Employee master record":sections.find(s=>s.id===section)?.label}</h1><div className="muted">Your team, in one place</div></div><div className="hrms-header-actions"><NotificationCenter api={API} onNavigate={setSection}/><div className="hrms-user-widget">
-    <button type="button" className="hrms-profile-trigger" aria-label="Profile and appearance" aria-expanded={profileMenu} onClick={()=>setProfileMenu(v=>!v)}>
+  return <div className="shell"><aside className="sidebar"><div className="brand">Jelly<span>Git</span> HRMS</div><nav className="menu">{visible.map(({id,label,Icon})=><button key={id} onClick={()=>{setSection(id);setForm(false);setError("")}} className={section===id?"active":""}><Icon size={18}/>{label}</button>)}</nav></aside><main className="content"><div className="top"><div><h1 className="title">{section==="employee-record"?"Employee master record":sections.find(s=>s.id===section)?.label}</h1><div className="muted">Your team, in one place</div></div><div className="hrms-header-actions"><NotificationCenter api={API} onNavigate={setSection}/><div className="hrms-user-widget" ref={profileMenuRef}>
+    <button type="button" className="hrms-profile-trigger" aria-label="Profile and appearance" aria-haspopup="menu" aria-expanded={profileMenu} onClick={()=>setProfileMenu(v=>!v)}>
       {hasPhoto?<img src={API+"/me/photo?v="+avatarVersion} alt="Profile"/>:<span>{user.name.trim().split(/\\s+/).map(x=>x[0]).slice(0,2).join("").toUpperCase()}</span>}
     </button>
     {profileMenu&&<div className="hrms-profile-menu" role="menu" aria-label="Profile settings">
@@ -213,6 +238,7 @@ export default function Home() {
       <button type="button" onClick={()=>{setSection("profile");setProfileMenu(false)}}>My profile</button>
       <button type="button" onClick={()=>changeTheme(theme==="light"?"dark":"light")}>{theme==="light"?"Switch to dark mode":"Switch to light mode"}</button>
       <label className="hrms-photo-change">Change profile photo<input type="file" accept="image/png,image/jpeg" onChange={e=>{void uploadAvatar(e.target.files?.[0]);setProfileMenu(false)}}/></label>
+      <button type="button" className="hrms-profile-logout" onClick={()=>{setProfileMenu(false);void logout()}}><LogOut size={16}/> Sign out</button>
     </div>}
     <div className="hrms-user-meta"><strong>{user.name}</strong><small>{user.role}</small></div>
   </div></div></div>{error&&<div className="error" role="alert">{error}</div>}{success&&<div className="app-global-success" role="status">{success}<button type="button" onClick={()=>setSuccess("")} aria-label="Dismiss">×</button></div>}
