@@ -1133,3 +1133,43 @@ button.employee-cancel:disabled,button.auth-submit:disabled{cursor:not-allowed!i
 [data-theme="dark"] .time-audit-filters input,[data-theme="dark"] .time-audit-filters select,[data-theme="dark"] .payroll-manual-upload :is(input,select,textarea){background:#1c263b;color:#e5edfa;border-color:#526079}
 @media(max-width:950px){.time-audit-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.time-audit-filters{grid-template-columns:1fr}.payroll-manual-upload{padding:14px}}
+
+
+/* Accessible profile menu contrast, polished theme transition and common select spacing. */
+:root{--hrms-menu-hover:#eef0fa;--hrms-menu-hover-text:#34285e}
+[data-theme="dark"]{--hrms-menu-hover:#34476c;--hrms-menu-hover-text:#fff}
+.hrms-profile-menu{color:#253454;isolation:isolate}
+.hrms-profile-menu :is(button,.hrms-photo-change){display:flex;align-items:center;gap:9px;min-height:39px;line-height:1.35;transition:background-color .15s ease,color .15s ease}
+.hrms-profile-menu :is(button,.hrms-photo-change):is(:hover,:focus-visible){
+ background:var(--hrms-menu-hover)!important;color:var(--hrms-menu-hover-text)!important;outline-offset:1px;
+}
+.hrms-profile-logout{border-top:1px solid #e1e5f0!important;border-radius:0 0 7px 7px!important;margin-top:5px;padding-top:12px!important}
+[data-theme="dark"] .hrms-profile-menu{background:#1c263a!important;color:#e9f0fc!important;border:1px solid #46536d!important}
+[data-theme="dark"] .hrms-profile-menu :is(button,.hrms-photo-change){color:#e9f0fc!important;background:transparent!important}
+[data-theme="dark"] .hrms-profile-menu :is(button,.hrms-photo-change):is(:hover,:focus-visible){
+ background:#34476c!important;color:#fff!important;
+}
+[data-theme="dark"] .hrms-profile-menu .hrms-profile-logout{border-color:#46536d!important}
+/* Animate actual surfaces only; never globally transition everything (which flickers on theme switches). */
+.hrms-theme-changing :is(body,.content,.sidebar,.panel,.card,.employee-surface,.notification-popover,.hrms-profile-menu,
+ .employee-modal,.ops-row,.employee-filters,.time-tabs,.finance-preview,.finance-expanded-row>td,
+ input:not([type=checkbox]):not([type=radio]),textarea,select){
+ transition:background-color .22s ease,border-color .22s ease,color .22s ease!important;
+}
+@media(prefers-reduced-motion:reduce){
+ .hrms-theme-changing :is(body,.content,.sidebar,.panel,.card,.employee-surface,.notification-popover,.hrms-profile-menu,
+ .employee-modal,.ops-row,input,select,textarea){transition:none!important}
+}
+/* Shared dropdown form control dimensions. Labels must not collide with adjacent inputs. */
+:where(.form,.time-form,.ops-form,.leave-form,.employee-form-grid,.employee-editor,.payroll-config,.growth-workspace,
+ .growth-extensions,.policy-page,.project-page,.finance-premium,.people-workspace,.payroll-manual-upload)
+ label:has(>select){display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:7px;min-width:0;line-height:1.4}
+:where(.form,.time-form,.ops-form,.leave-form,.employee-form-grid,.employee-editor,.payroll-config,.growth-workspace,
+ .growth-extensions,.policy-page,.project-page,.finance-premium,.people-workspace,.payroll-manual-upload)
+ label>select{display:block;width:100%;max-width:100%;min-width:0;min-height:42px;margin:0;line-height:1.3;padding:9px 38px 9px 12px;vertical-align:middle}
+:where(.form,.time-form,.ops-form,.leave-form,.employee-form-grid,.employee-editor,.payroll-config,.growth-workspace,
+ .growth-extensions,.policy-page,.project-page,.finance-premium,.people-workspace,.payroll-manual-upload)
+ :is(label,fieldset){min-width:0}
+select{background-clip:padding-box}
+[data-theme="dark"] select option{background:#202d43!important;color:#f1f4ff!important}
+[data-theme="dark"] select:disabled{background-color:#253047!important;color:#b3bfd3!important}
