@@ -5,7 +5,7 @@ from datetime import date,datetime,timedelta,timezone
 from decimal import Decimal
 from fastapi.testclient import TestClient
 from sqlalchemy import select
-from app.main import app,Attendance,SessionLocal
+from app.main import app,Attendance,SessionLocal,EmployeeProfile
 from app.leave_management import tiered_monthly_entitlement
 from test_time_tracking import seed,sign,ORIGIN,PASS
 
@@ -92,6 +92,16 @@ def test_hr_manual_payslip_single_and_bulk_owner_only():
           headers=ORIGIN,files={"document":("payslip.pdf",content,"application/pdf")})
         assert single.status_code==201,single.text
         docid=single.json()["uploaded"][0]["id"]
+        with SessionLocal() as db:
+            from sqlalchemy import select
+            code=db.scalar(select(EmployeeProfile.employee_code).where(EmployeeProfile.employee_id==colleague))
+        archive=io.BytesIO()
+        with zipfile.ZipFile(archive,"w",compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(f"{code}.pdf",content)
+        bulk=c.post("/payroll/manual-payslips/bulk?period=2026-12&reason=Verified+bulk+import+for+pilot",
+          headers=ORIGIN,files={"archive":("monthly.zip",archive.getvalue(),"application/zip")})
+        assert bulk.status_code==201,bulk.text
+        assert len(bulk.json()["uploaded"])==1
         _switch(c,"time.worker.qa@example.org")
         my=c.get("/payroll/my-payslips")
         assert my.status_code==200,my.text
