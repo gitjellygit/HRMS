@@ -53,6 +53,8 @@ test('profile menu actions retain readable contrast in both themes',async({page}
   const menu=page.getByRole('menu',{name:'Profile settings'});
   const action=menu.getByRole('button',{name:/Switch to dark mode|Switch to light mode/});
   await action.hover();
+  // Wait for the 150ms hover-color transition to finish before measuring final contrast.
+  await page.waitForTimeout(250);
   const contrast=await action.evaluate(el=>{
    const parse=(value:string)=>{const match=value.match(/rgba?\\(([^)]+)\\)/);return match?match[1].split(',').slice(0,3).map(Number):[0,0,0]};
    const lum=(rgb:number[])=>rgb.map(v=>{v/=255;return v<=0.04045?v/12.92:Math.pow((v+0.055)/1.055,2.4)}).reduce((sum,v,i)=>sum+v*[0.2126,0.7152,0.0722][i],0);
