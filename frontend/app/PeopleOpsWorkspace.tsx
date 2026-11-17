@@ -26,6 +26,9 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
  const [exits,setExits]=useState<Row[]>([]);
  const [allExits,setAllExits]=useState<Row[]>([]);
  const [metrics,setMetrics]=useState<Row|null>(null);
+ const [activityDevices,setActivityDevices]=useState<Row[]>([]);
+ const [activityEmployee,setActivityEmployee]=useState("");
+ const [enrollment,setEnrollment]=useState<Row|null>(null);
  const [rules,setRules]=useState<Row[]>([]);
  const [notifications,setNotifications]=useState<Row[]>([]);
  const [audits,setAudits]=useState<Row[]>([]);
@@ -63,7 +66,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
    get("/notifications"),hr?get("/audit"):Promise.resolve([])]);
   setStaff(a);setTemplates(b);setOffers(c);setTasks(d);setNotices(e);setTickets(f);setAllTickets(g);setExits(h);
   setAllExits(i);setMetrics(j);setNotifications(k);setAudits(l);
-  if(hr)setRules(await get("/notification-rules"));
+  if(hr){setRules(await get("/notification-rules"));fetch(api+"/activity-agent/devices",{credentials:"include"}).then(v=>v.ok?v.json():[]).then(setActivityDevices).catch(()=>{});}
  }
  useEffect(()=>{void refresh();if(hr)void fetch(api+"/exit-workflow/templates",{credentials:"include"})
   .then(r=>r.ok?r.json():[]).then(setExitTemplates).catch(()=>{})},[api,user.id]);
@@ -296,6 +299,10 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
     <p className="field-help">{metrics.note}</p>
     <div className="ops-columns"><div><h4>Department distribution</h4>{metrics.departments?.map((d:Row)=><div className="ops-row" key={d.department}>{d.department}: {d.employees} {Number(d.employees)===1?"employee":"employees"}</div>)}</div>
     <div><h4>Published payroll cost</h4>{metrics.published_monthly_net?.map((p:Row)=><div className="ops-row" key={p.period}>{p.period} · ₹{Number(p.net).toLocaleString("en-IN")}</div>)}</div></div></>}
+    <hr/><h3>Employee device monitoring</h3><p className="field-help">Visible employee-initiated Windows tray agent. Status becomes Offline when heartbeats stop. Active time is not proof of productivity.</p>
+    <div className="ops-form"><label>Enroll employee device<select value={activityEmployee} onChange={e=>setActivityEmployee(e.target.value)}><option value="">Select active employee</option>{staff.filter(p=>p.status==="active").map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><button type="button" className="employee-primary" disabled={!activityEmployee||busy} onClick={()=>void save(async()=>{const response=await fetch(api+"/activity-agent/devices",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({employee_id:Number(activityEmployee),device_label:"Windows workstation"})});if(!response.ok)throw Error("Unable to enroll employee device.");setEnrollment(await response.json())},"Device enrolled. Copy the one-time token securely.")}>Enroll device</button></div>
+    {enrollment&&<div className="ops-row"><strong>Enrollment token — shown once</strong><small>Employee #{enrollment.employee_id} · Device #{enrollment.device_id}. Install only on the assigned workstation.</small><code>{enrollment.token}</code><button type="button" className="employee-cancel" onClick={()=>{void navigator.clipboard.writeText(String(enrollment.token))}}>Copy token</button><button type="button" className="employee-cancel" onClick={()=>setEnrollment(null)}>Dismiss</button></div>}
+    <div className="ops-table">{activityDevices.map(d=><div className="ops-row" key={d.id}><strong>{d.employee_name} — {d.device_label}</strong><span>{d.status==="monitoring"?"Monitoring":d.status==="stopped"?"Stopped":"Offline"} · Last heartbeat: {d.last_seen?new Date(d.last_seen).toLocaleString():"Never"}</span><small>Active {Math.round(d.active_seconds/60)}m · Idle {Math.round(d.idle_seconds/60)}m</small>{d.exit_reason&&<small>Exit reason: {d.exit_reason}</small>}{!d.revoked&&<button type="button" className="employee-cancel" onClick={()=>void save(async()=>{const response=await fetch(api+"/activity-agent/devices/"+d.id+"/revoke",{method:"POST",credentials:"include"});if(!response.ok)throw Error("Unable to revoke device.")},"Device access revoked.")}>Revoke device</button>}</div>)}{!activityDevices.length&&<p className="muted">No employee devices enrolled.</p>}</div>
    </section>}
   {tab==="notifications"&&hr&&<section className="employee-surface"><h3><Bell size={17}/> Notification channel rules</h3>
    <p className="field-help">Rules control notification queues. Email/SMS/push/WhatsApp are not marked as delivered without provider connections.</p>
