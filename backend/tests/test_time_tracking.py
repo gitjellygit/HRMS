@@ -43,6 +43,7 @@ def test_time_requests_and_manager_authorization():
             "work_date":str(work_date),"hours":2,"reason":"Performed extended project work"})
         assert request.status_code==201,request.text
         req_id=request.json()["id"]
+        assert request.json()["employee_name"]=="Time Worker"
         assert c.get("/time/requests").json()[0]["id"]==req_id
         assert c.get("/time/requests?scope=all").status_code==403
         assert c.post(f"/time/requests/{req_id}/review?approve=true",headers=ORIGIN).status_code==403
@@ -51,10 +52,17 @@ def test_time_requests_and_manager_authorization():
         assert c.post(f"/time/requests/{req_id}/review?approve=true",headers=ORIGIN).status_code==403
         c.post("/auth/logout",headers=ORIGIN)
         sign(c,"time.manager.qa@example.org")
-        assert any(r["id"]==req_id for r in c.get("/time/requests?scope=approvals").json())
+        assert any(r["id"]==req_id and r["employee_name"]=="Time Worker" for r in c.get("/time/requests?scope=approvals").json())
+        inbox=c.get("/notification-center").json()
+        assert any(n["destination"]=="time" and "Time Worker" in n["title"] and not n["read"] for n in inbox["items"])
         approved=c.post(f"/time/requests/{req_id}/review?approve=true",headers=ORIGIN)
         assert approved.status_code==200,approved.text
         assert approved.json()["status"]=="approved"
+        c.post("/auth/logout",headers=ORIGIN)
+        sign(c,"time.worker.qa@example.org")
+        assert any(n["destination"]=="time" and "approved" in n["title"] for n in c.get("/notification-center").json()["items"])
+        c.post("/auth/logout",headers=ORIGIN)
+        sign(c,"time.manager.qa@example.org")
         assert c.post(f"/time/requests/{req_id}/review?approve=false",headers=ORIGIN).status_code==409
         assert c.get(f"/time/audits/{req_id}").status_code==200
 
