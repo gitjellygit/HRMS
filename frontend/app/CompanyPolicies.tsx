@@ -117,7 +117,8 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
       <label className="employee-field">Effective date<input type="date" required value={effectiveDate} onChange={e=>setEffectiveDate(e.target.value)}/></label>
      </div>
      <label className="employee-field">Policy details<textarea rows={5} minLength={20} maxLength={10000} value={policyDescription} required placeholder="Write the policy and its conditions…" onChange={e=>setPolicyDescription(e.target.value)}/></label>
-     <label className="employee-field policy-new-file">Policy document (optional PDF, max 5 MB)<input type="file" accept=".pdf,application/pdf" onChange={e=>setNewDocument(e.target.files?.[0]||null)}/><small className="field-help">{isHR?"HR submits the policy for approval first; upload the PDF once an admin publishes it.":"When you publish the policy, its PDF will be attached automatically."}</small></label>
+     {!isHR&&<label className="employee-field policy-new-file">Policy document (optional PDF, max 5 MB)<input type="file" accept=".pdf,application/pdf" onChange={e=>setNewDocument(e.target.files?.[0]||null)}/><small className="field-help">{isHR?"HR submits the policy for approval first; upload the PDF once an admin publishes it.":"When you publish the policy, its PDF will be attached automatically."}</small></label>}
+     {isHR&&<p className="policy-hub-note">After an administrator approves and publishes this policy, open it below to upload the PDF. Employees are notified once it is published.</p>}
      <fieldset className="policy-audience"><legend>Who can view this policy?</legend>
       <label><input type="checkbox" checked={audience.length===0} onChange={()=>setAudience([])}/> All employees</label>
       <div className="policy-audience-list">{staff.filter(p=>p.status!=="inactive").map(p=><label key={p.id}>
