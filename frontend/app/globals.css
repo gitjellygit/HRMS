@@ -1212,3 +1212,8 @@ select{background-clip:padding-box}
 ::view-transition-old(root){z-index:1}
 ::view-transition-new(root){z-index:2}
 @media(prefers-reduced-motion:reduce){::view-transition-old(root),::view-transition-new(root){animation-duration:0.01ms!important}}
+
+/* Explicit stable hover/focus palette: WCAG AA readable in both themes. */
+:root .hrms-profile-menu :is(button,.hrms-photo-change):is(:hover,:focus-visible){background-color:#eef0fa!important;color:#241e49!important}
+[data-theme="dark"] .hrms-profile-menu :is(button,.hrms-photo-change):is(:hover,:focus-visible){background-color:#34476c!important;color:#ffffff!important}
+@media(prefers-reduced-motion:reduce){.hrms-profile-menu :is(button,.hrms-photo-change){transition:none!important}}
