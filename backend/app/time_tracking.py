@@ -496,7 +496,15 @@ def submit_timesheet(timesheet_id:int,user:Employee=Depends(current_user),db:Ses
     if not row:raise HTTPException(404)
     if row.employee_id!=user.id:raise HTTPException(403)
     if row.status!="draft":raise HTTPException(409,"Already submitted")
-    row.status="submitted";db.commit();return {"status":row.status}
+    row.status="submitted"
+    from .notification_center import add_inbox
+    manager_id=manager_for(db,user.id)
+    approvers=[manager_id] if manager_id else list(db.scalars(
+        select(Employee.id).where(Employee.role.in_(HR),Employee.status=="active",Employee.id!=user.id)).all())
+    for approver_id in approvers:
+        add_inbox(db,approver_id,"approval",f"Timesheet awaiting review: {user.name}",
+                  f"{user.name} submitted {row.hours} hours for {row.work_date}. Review under Time & shifts → Timesheets.","time")
+    db.commit();return {"status":row.status}
 
 @router.put("/timesheets/{timesheet_id}")
 def update_timesheet(timesheet_id:int,body:TimesheetIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
@@ -539,6 +547,9 @@ def review_timesheet(timesheet_id:int,body:TimesheetReviewIn,
     row.reviewed_by=user.id;row.reviewed_at=NOW()
     db.add(TimeAudit(employee_id=row.employee_id,actor_id=user.id,
         event="timesheet_"+row.status,note=body.reason.strip()))
+    from .notification_center import add_inbox
+    add_inbox(db,row.employee_id,"approval",f"Your timesheet was {row.status}",
+              f"{user.name} {row.status} the timesheet for {row.work_date}. See Time & shifts → Timesheets.","time")
     db.commit()
     return {"id":row.id,"status":row.status,"reviewed_by":user.id}
 
