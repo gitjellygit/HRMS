@@ -1,3 +1,4 @@
+import {useTransientMessage} from "./useTransientMessage";
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import FeedbackMotion from "./FeedbackMotion";
@@ -53,7 +54,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
  const [open,setOpen]=useState(false);
  const [draft,setDraft]=useState<EmployeeDraft>(blank);
  const [errors,setErrors]=useState<Errors>({});
- const [message,setMessage]=useState("");
+ const [message,setMessage]=useTransientMessage();
  const [failure,setFailure]=useState("");
  const [search,setSearch]=useState("");
  const [department,setDepartment]=useState("all");
