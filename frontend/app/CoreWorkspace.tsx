@@ -33,6 +33,7 @@ export default function CoreWorkspace({api,mode,user,employeeId,onBack,onPasswor
  const [success,setSuccess]=useState("");
  const [person,setPerson]=useState<RecordType|null>(null);
  const [draft,setDraft]=useState<Core>({});
+ const [accountDraft,setAccountDraft]=useState({name:"",email:"",designation:"",phone:"",joining_date:"",reason:""});
  const [people,setPeople]=useState<Person[]>([]);
  const [units,setUnits]=useState<Unit[]>([]);
  const [documents,setDocuments]=useState<Doc[]>([]);
@@ -66,6 +67,7 @@ export default function CoreWorkspace({api,mode,user,employeeId,onBack,onPasswor
    if(mode==="profile"){
     const record=await apiCall("/core/employees/"+target);
     setPerson(record);setDraft(record.master||{});
+    setAccountDraft({name:record.name||"",email:record.email||"",designation:record.designation||"",phone:record.phone||"",joining_date:record.joining_date||"",reason:""});
     const [docs,events]=await Promise.all([apiCall("/core/employees/"+target+"/documents"),apiCall("/core/employees/"+target+"/lifecycle")]);
     setDocuments(docs);setHistory(events);
    }
@@ -89,6 +91,15 @@ export default function CoreWorkspace({api,mode,user,employeeId,onBack,onPasswor
   await run(async()=>{
    await apiCall("/core/units",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:unitKind,name:unitName.trim(),code:unitCode.trim()})});
    setUnitName("");setUnitCode("");setSuccess("Organization unit created.");await reload();
+  });
+ }
+ async function saveAccount(event:React.FormEvent){
+  event.preventDefault();
+  if(accountDraft.reason.trim().length<10){setError("Enter a reason of at least 10 characters before saving.");return;}
+  await run(async()=>{
+   await apiCall("/core/employees/"+target+"/account",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({...accountDraft,name:accountDraft.name.trim(),designation:accountDraft.designation.trim(),email:accountDraft.email.trim().toLowerCase(),phone:accountDraft.phone.trim(),reason:accountDraft.reason.trim()})});
+   await reload();
+   setSuccess("Employee details saved successfully. Changes recorded in employee history.");
   });
  }
  async function saveMaster(event:React.FormEvent){
@@ -206,7 +217,15 @@ export default function CoreWorkspace({api,mode,user,employeeId,onBack,onPasswor
     <div><span>90-day probation ends</span><strong>{person.probation_end_date||"—"}</strong></div>
     <div><span>Probation remaining</span><strong>{person.effective_lifecycle==="probation"?(person.probation_days_remaining??0)+" days":"Completed"}</strong></div>
    </div>
-   <h3 className="core-subhead">Reporting & organization</h3>
+   {isHR&&(person.role!=="super_admin"||user.role==="super_admin")&&(!["admin","super_admin"].includes(person.role)||["admin","super_admin"].includes(user.role))&&<form className="employee-account-edit" onSubmit={saveAccount}>
+     <div className="employee-account-edit-heading"><h3>Edit employee details</h3><p>HR and administrators can update account details. A reason is mandatory and recorded.</p></div>
+     <div className="employee-form-grid">
+      {([["name","Full name","text"],["email","Work email","email"],["designation","Designation","text"],["phone","Phone number","tel"],["joining_date","Date of joining","date"]] as const).map(([field,label,type])=><label className="core-label" key={field}>{label}<input type={type} value={accountDraft[field]} required={field!=="phone"} onChange={e=>setAccountDraft(d=>({...d,[field]:e.target.value}))}/></label>)}
+     </div>
+     <label className="core-label">Reason for changes (minimum 10 characters)<textarea value={accountDraft.reason} minLength={10} maxLength={300} required rows={2} onChange={e=>setAccountDraft(d=>({...d,reason:e.target.value}))} placeholder="Why are the employee details changing?"/></label>
+     <div className="core-form-actions"><button className="employee-primary" disabled={busy}>{busy?"Saving…":"Save employee details"}</button></div>
+    </form>}
+    <h3 className="core-subhead">Reporting & organization</h3>
    {!isHR&&<p className="field-help">HR manages these records. To update your own personal details, submit a profile change request below for approval.</p>}
    <form onSubmit={saveMaster} className="core-form"><fieldset disabled={!isHR} className="core-readonly-fieldset">
     <div className="employee-form-grid">
