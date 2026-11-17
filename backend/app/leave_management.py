@@ -366,28 +366,85 @@ def leave_days(db: Session, row: LeaveRequest)->Decimal:
 
 
 def fy_start_year(value: date) -> int:
-    """Indian financial year April 1 to March 31, named by starting year."""
-    return value.year if value.month >= 4 else value.year-1
+    return value.year if value.month>=4 else value.year-1
 
 
-def fy_bounds(fy: int) -> tuple[date, date]:
-    return date(fy,4,1),date(fy+1,3,31)
+def fy_bounds(year: int) -> tuple[date,date]:
+    return date(year,4,1),date(year+1,3,31)
 
 
-def prorated_entitlement(annual: Decimal, joined: date, fy: int) -> Decimal:
-    """Calendar-day service proration, rounded to nearest half-day."""
-    start,end=fy_bounds(fy)
+def policy_start_year(value:date,year_type:str="financial")->int:
+    return value.year if year_type=="calendar" else fy_start_year(value)
+
+
+def policy_bounds(year:int,year_type:str="financial")->tuple[date,date]:
+    return (date(year,1,1),date(year,12,31)) if year_type=="calendar" else fy_bounds(year)
+
+
+def policy_snapshot(row:LeavePolicy)->dict:
+    return {"annual_days":str(row.annual_days or 0),"monthly_accrual":str(row.monthly_accrual or 0),
+            "late_year_monthly_accrual":str(row.late_year_monthly_accrual or 0),
+            "monthly_schedule":json.loads(row.monthly_schedule) if row.monthly_schedule else None,
+            "carry_forward_limit":str(row.carry_forward_limit or 0),"year_type":row.year_type or "financial",
+            "active":bool(row.active),"approval_chain":row.approval_chain or "manager,hr",
+            "probation_allowed":bool(row.probation_allowed),"encashment_allowed":bool(row.encashment_allowed)}
+
+
+def policy_versions(db:Session,row:LeavePolicy)->list[tuple[date,dict]]:
+    versions=db.scalars(select(LeavePolicyVersion).where(
+        LeavePolicyVersion.leave_type==row.leave_type).order_by(LeavePolicyVersion.effective_from)).all()
+    if not versions:
+        # Legacy policies existed before versioning; their terms were effective for older years.
+        return [(date(2000,1,1),policy_snapshot(row))]
+    return [(version.effective_from,json.loads(version.snapshot_json)) for version in versions]
+
+
+def terms_at(versions:list[tuple[date,dict]],on:date)->dict|None:
+    result=None
+    for effective,terms in versions:
+        if effective>on:break
+        result=terms
+    return result
+
+
+def apply_leave_policy(db:Session,body:PolicyIn,actor_id:int|None=None,reason:str="")->LeavePolicy:
+    row=db.scalar(select(LeavePolicy).where(LeavePolicy.leave_type==body.leave_type).with_for_update())
+    is_new=row is None
+    if is_new:
+        row=LeavePolicy(leave_type=body.leave_type)
+        db.add(row)
+        db.flush()
+    existing=db.scalars(select(LeavePolicyVersion).where(
+        LeavePolicyVersion.leave_type==body.leave_type).order_by(LeavePolicyVersion.effective_from.desc())).all()
+    if not is_new and (row.year_type or "financial")!=body.year_type:
+        raise HTTPException(422,"The leave year type cannot change after policy creation. Create a separate leave type and migrate balances through an audited allocation.")
+    if existing and body.effective_from<=existing[0].effective_from:
+        raise HTTPException(422,"Policy effective date must be later than the most recent published version.")
+    if not is_new and not existing:
+        # Preserve legacy entitlements and prior-year carry forwards unchanged.
+        db.add(LeavePolicyVersion(leave_type=body.leave_type,effective_from=date(2000,1,1),
+            snapshot_json=json.dumps(policy_snapshot(row)),actor_id=actor_id,reason="Legacy policy baseline"))
+    values=body.model_dump(exclude={"leave_type","approval_chain","monthly_schedule","effective_from","change_reason"})
+    row.monthly_schedule=json.dumps([float(v) for v in body.monthly_schedule]) if body.monthly_schedule is not None else None
+    for key,value in values.items():setattr(row,key,value)
+    row.approval_chain=",".join(body.approval_chain)
+    db.add(LeavePolicyVersion(leave_type=body.leave_type,effective_from=body.effective_from,
+        snapshot_json=json.dumps(policy_snapshot(row)),actor_id=actor_id,
+        reason=(reason or body.change_reason or "Approved policy configuration").strip()))
+    db.flush()
+    return row
+
+
+def prorated_entitlement(annual:Decimal,joined:date,year:int,year_type:str="financial")->Decimal:
+    start,end=policy_bounds(year,year_type)
     eligible_from=max(start,joined)
-    if eligible_from>end:
-        return Decimal("0")
-    days=(end-eligible_from).days+1
-    total=(end-start).days+1
-    prorated=annual*Decimal(days)/Decimal(total)
-    return ((prorated*2).quantize(Decimal("1"),rounding=ROUND_HALF_UP))/2
+    if eligible_from>end:return Decimal("0")
+    return ((annual*Decimal((end-eligible_from).days+1)/Decimal((end-start).days+1)*2)
+            .quantize(Decimal("1"),rounding=ROUND_HALF_UP))/2
 
 
-def used_days(db: Session, employee_id: int, year: int, kind: str) -> Decimal:
-    start,end=fy_bounds(year)
+def used_days(db:Session,employee_id:int,year:int,kind:str,year_type:str="financial")->Decimal:
+    start,end=policy_bounds(year,year_type)
     value=db.scalar(select(func.coalesce(func.sum(LeaveRequest.days),0)).where(
         LeaveRequest.employee_id==employee_id,LeaveRequest.leave_type==kind,
         LeaveRequest.start_date.between(start,end),
@@ -395,47 +452,83 @@ def used_days(db: Session, employee_id: int, year: int, kind: str) -> Decimal:
     return Decimal(value or 0)
 
 
-def tiered_monthly_entitlement(joined:date,fy:int,through:date,first_rate:Decimal,late_rate:Decimal, schedule:list[Decimal]|None=None)->Decimal:
-    """April-Nov accrual and December-March accrual; joining month prorated."""
-    start,end=fy_bounds(fy)
+def tiered_monthly_entitlement(joined:date,fy:int,through:date,first_rate:Decimal,late_rate:Decimal,
+                               schedule:list[Decimal]|None=None,year_type:str="financial")->Decimal:
+    start,end=policy_bounds(fy,year_type)
     through=min(through,end)
     if through<max(start,joined):return Decimal("0")
-    start_month=max(start,joined)
     credited=Decimal("0")
-    cursor=date(start_month.year,start_month.month,1)
+    cursor=date(max(start,joined).year,max(start,joined).month,1)
     until=date(through.year,through.month,1)
+    first_month=4 if year_type=="financial" else 1
     while cursor<=until:
-        fy_month=((cursor.month-4)%12)+1
-        monthly=Decimal(schedule[fy_month-1]) if schedule is not None else (Decimal(late_rate) if fy_month>=9 and late_rate>0 else Decimal(first_rate))
+        period_month=((cursor.month-first_month)%12)+1
+        monthly=Decimal(str(schedule[period_month-1])) if schedule is not None else (
+            Decimal(late_rate) if period_month>=9 and late_rate>0 else Decimal(first_rate))
         month_after=date(cursor.year+1,1,1) if cursor.month==12 else date(cursor.year,cursor.month+1,1)
         month_end=month_after-timedelta(days=1)
-        if cursor.year==joined.year and cursor.month==joined.month:
-            eligible=(month_end-max(cursor,joined)).days+1
-            monthly=monthly*Decimal(eligible)/Decimal((month_end-cursor).days+1)
+        eligible=(month_end-max(cursor,joined,start)).days+1
+        monthly*=Decimal(eligible)/Decimal((month_end-cursor).days+1)
         credited+=monthly
         cursor=month_after
     return (credited*2).quantize(Decimal("1"),rounding=ROUND_HALF_UP)/Decimal(2)
 
 
-def base_entitlement(db: Session,employee_id: int,year: int,kind: str, config: LeavePolicy)->Decimal:
+def base_entitlement(db:Session,employee_id:int,year:int,kind:str,config:LeavePolicy)->Decimal:
     staff=employee(db,employee_id)
-    start,end=fy_bounds(year)
+    basis=config.year_type or "financial"
+    start,end=policy_bounds(year,basis)
     ent=db.scalar(select(LeaveEntitlement).where(LeaveEntitlement.employee_id==employee_id,
-                  LeaveEntitlement.year==year,LeaveEntitlement.leave_type==kind))
-    if ent is not None:
-        return Decimal(ent.allocated_days)
-    schedule=[Decimal(v) for v in json.loads(config.monthly_schedule)] if config.monthly_schedule else None
-    if schedule is not None or config.monthly_accrual:
-        # Monthly credits accrue through the current month; the joining month is prorated.
-        today=date.today()
-        through=min(end,today)
-        if through<max(start,staff.joining_date):
-            return Decimal("0")
-        start_month=max(start,staff.joining_date)
-        return tiered_monthly_entitlement(staff.joining_date,year,through,
-                                            Decimal(config.monthly_accrual),
-                                            Decimal(config.late_year_monthly_accrual),schedule)
-    return prorated_entitlement(Decimal(config.annual_days),staff.joining_date,year)
+                LeaveEntitlement.year==year,LeaveEntitlement.leave_type==kind))
+    if ent is not None:return Decimal(ent.allocated_days)
+    versions=policy_versions(db,config)
+    today=date.today()
+    through=min(end,today)
+    if through<max(start,staff.joining_date):return Decimal("0")
+    cursor=max(start,staff.joining_date)
+    credited=Decimal("0")
+    period_days=Decimal((end-start).days+1)
+    # Each past date is evaluated using its own policy version, not today's terms.
+    # Monthly credits use a full month once that month starts, with prorating
+    # for joining dates and within-month policy changes.
+    months_seen=set()
+    while cursor<=through:
+        terms=terms_at(versions,cursor)
+        if terms and terms.get("active",True):
+            schedule=terms.get("monthly_schedule")
+            first=Decimal(str(terms.get("monthly_accrual",0)))
+            late=Decimal(str(terms.get("late_year_monthly_accrual",0)))
+            if schedule is not None or first:
+                period_month=((cursor.month-(4 if basis=="financial" else 1))%12)
+                rate=Decimal(str(schedule[period_month])) if schedule is not None else (
+                    late if period_month>=8 and late>0 else first)
+                month_after=(date(cursor.year+1,1,1) if cursor.month==12
+                             else date(cursor.year,cursor.month+1,1))
+                month_days=Decimal((month_after-date(cursor.year,cursor.month,1)).days)
+                credited+=rate/month_days
+                months_seen.add((cursor.year,cursor.month))
+            else:
+                credited+=Decimal(str(terms.get("annual_days",0)))/period_days
+        cursor+=timedelta(days=1)
+    # The present month is credited in full up front, matching legacy behavior.
+    if through==today and through<end and (through.year,through.month) in months_seen:
+        month_after=(date(through.year+1,1,1) if through.month==12
+                     else date(through.year,through.month+1,1))
+        extra_until=min(month_after-timedelta(days=1),end)
+        cursor=today+timedelta(days=1)
+        while cursor<=extra_until:
+            terms=terms_at(versions,cursor)
+            if terms and terms.get("active",True):
+                schedule=terms.get("monthly_schedule")
+                first=Decimal(str(terms.get("monthly_accrual",0)))
+                late=Decimal(str(terms.get("late_year_monthly_accrual",0)))
+                if schedule is not None or first:
+                    period_month=((cursor.month-(4 if basis=="financial" else 1))%12)
+                    rate=Decimal(str(schedule[period_month])) if schedule is not None else (
+                        late if period_month>=8 and late>0 else first)
+                    credited+=rate/Decimal((month_after-date(cursor.year,cursor.month,1)).days)
+            cursor+=timedelta(days=1)
+    return (credited*2).quantize(Decimal("1"),rounding=ROUND_HALF_UP)/Decimal(2)
 
 
 def balance(db: Session, employee_id: int, year: int,kind: str) -> dict:
