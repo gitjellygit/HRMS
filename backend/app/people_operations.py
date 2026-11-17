@@ -230,7 +230,7 @@ async def upload_letterhead_logo(file:UploadFile=File(...),user:Employee=Depends
     content=await file.read(2*1024*1024+1)
     if len(content)>2*1024*1024:
         raise HTTPException(413,"Company logo must be smaller than 2 MB.")
-    if not (content.startswith(b"\\x89PNG\\r\\n\\x1a\\n") or content.startswith(b"\\xff\\xd8\\xff")):
+    if not (content.startswith(bytes([137,80,78,71,13,10,26,10])) or content.startswith(bytes([255,216,255]))):
         raise HTTPException(422,"Invalid PNG/JPEG file.")
     from reportlab.lib.utils import ImageReader
     try:
