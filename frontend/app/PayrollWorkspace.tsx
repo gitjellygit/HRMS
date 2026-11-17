@@ -32,6 +32,7 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
  const [payslipPeriod,setPayslipPeriod]=useState(period());
  const [payslipReason,setPayslipReason]=useState("");
  const [payslipFile,setPayslipFile]=useState<File|null>(null);
+ const payslipInputRef=useRef<HTMLInputElement>(null);
  const [payslipMode,setPayslipMode]=useState<"single"|"bulk">("single");
  const [message,setMessage]=useState("");
  const [error,setError]=useState("");const [fieldError,setFieldError]=useState("");
@@ -96,6 +97,7 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
    if(!response.ok)throw Error(explainError(result,response.status));
    setMessage("Imported "+result.uploaded.length+" payslip(s). Employees can download their private PDFs.");
    setPayslipFile(null);setPayslipReason("");
+   if(payslipInputRef.current)payslipInputRef.current.value="";
    await refresh();
   }catch(e){setError((e as Error).message)}finally{setBusy(false)}
  }
@@ -302,7 +304,7 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
     <div className="employee-form-grid">
      {payslipMode==="single"&&<label>Employee<select value={payslipEmployee} onChange={e=>setPayslipEmployee(e.target.value)} required><option value="">Select employee</option>{employees.map(e=><option value={e.id} key={e.id}>{e.name}{e.employee_code?" ("+e.employee_code+")":""}</option>)}</select></label>}
      <label>Pay period<input type="month" required value={payslipPeriod} onChange={e=>setPayslipPeriod(e.target.value)}/></label>
-     <label>{payslipMode==="single"?"Payslip PDF (max 5 MB)":"ZIP archive (max 16 MB, 50 PDFs)"}<input type="file" required accept={payslipMode==="single"?".pdf,application/pdf":".zip,application/zip"} onChange={e=>setPayslipFile(e.target.files?.[0]||null)}/></label>
+     <label>{payslipMode==="single"?"Payslip PDF (max 5 MB)":"ZIP archive (max 16 MB, 50 PDFs)"}<input ref={payslipInputRef} type="file" required accept={payslipMode==="single"?".pdf,application/pdf":".zip,application/zip"} onChange={e=>setPayslipFile(e.target.files?.[0]||null)}/></label>
     </div>
     {payslipMode==="bulk"&&<p className="field-help">Place PDFs at the ZIP root and name each one by employee code (e.g. JG-001.pdf). The chosen period applies to all files.</p>}
     <label>Mandatory reason<textarea required minLength={10} maxLength={500} rows={2} value={payslipReason} onChange={e=>setPayslipReason(e.target.value)} placeholder="Explain the manual payslip import or correction"/></label>
