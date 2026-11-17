@@ -42,7 +42,8 @@ test('employee directory explains why inactive employees have no deactivate acti
 test('HR employee directory exposes edit details and prefilled employee form',async({page})=>{
  await login(page,hr());
  await navigate(page,'Employees');
- const edit=page.getByRole('button',{name:/Edit details for /}).first();
+ const row=page.locator('.employee-table tbody tr').filter({has:page.locator('.employee-role',{hasText:'employee'})}).first();
+ const edit=row.getByRole('button',{name:/Edit details for /});
  await expect(edit).toBeVisible();
  await edit.click();
  await expect(page.getByRole('heading',{name:'Edit employee details'})).toBeVisible();
