@@ -432,7 +432,14 @@ def apply_leave_policy(db:Session,body:PolicyIn,actor_id:int|None=None,reason:st
     row.monthly_schedule=json.dumps([float(v) for v in body.monthly_schedule]) if body.monthly_schedule is not None else None
     for key,value in values.items():setattr(row,key,value)
     row.approval_chain=",".join(body.approval_chain)
-    db.add(LeavePolicyVersion(leave_type=body.leave_type,effective_from=body.effective_from,
+    # New annual policies follow legacy annual-grant semantics: the entitlement
+    # covers the current leave year and is prorated from the joining date.
+    # A future-dated initial policy remains future-dated; monthly credits are
+    # never silently backfilled.
+    effective=body.effective_from
+    if is_new and body.annual_days and body.effective_from==date.today() and not body.monthly_accrual and body.monthly_schedule is None:
+        effective=policy_bounds(policy_start_year(body.effective_from,body.year_type),body.year_type)[0]
+    db.add(LeavePolicyVersion(leave_type=body.leave_type,effective_from=effective,
         snapshot_json=json.dumps(policy_snapshot(row)),actor_id=actor_id,
         reason=(reason or body.change_reason or "Approved policy configuration").strip()))
     db.flush()
