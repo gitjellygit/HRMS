@@ -1,4 +1,5 @@
 "use client";
+import {useTransientMessage} from "./useTransientMessage";
 import BrandIllustration from "./BrandIllustration";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, BriefcaseBusiness, BadgeCheck, CircleDollarSign, FileText, Plus, RefreshCw, Search, Users, X } from "lucide-react";
@@ -44,7 +45,7 @@ export default function ProjectsManagement({api,canCreate}:{api:string;canCreate
  const [search,setSearch]=useState("");
  const [filter,setFilter]=useState("all");
  const [error,setError]=useState("");
- const [notice,setNotice]=useState("");
+ const [notice,setNotice]=useTransientMessage();
  const [bonusPreview,setBonusPreview]=useState<{bonus_amount_inr:number;source:string}|null>(null);
  const [overrideBonus,setOverrideBonus]=useState(false);
  const [employees,setEmployees]=useState<{id:number;name:string;employee_code:string;status:string}[]>([]);
