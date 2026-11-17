@@ -43,7 +43,7 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
  }
  useEffect(()=>{
   void refresh().catch(e=>setError((e as Error).message));
-  if(canAssign)void fetch(api+"/employees",{credentials:"include"}).then(r=>r.ok?r.json():[])
+  if(canAssign)void fetch(api+"/core/employees",{credentials:"include"}).then(r=>r.ok?r.json():[])
    .then(setTeam).catch(()=>setTeam([]));
  },[api,user.id]);
  async function save(action:()=>Promise<unknown>,success:string){
@@ -72,7 +72,7 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
    </form>
    <div className="table-wrap"><table><thead><tr><th>Goal</th><th>Employee</th><th>Target</th><th>Progress</th></tr></thead><tbody>
     {goals.map(g=><tr key={g.id}><td><strong>{g.title}</strong><div className="muted">{g.description}</div></td>
-    <td>#{g.employee_id}</td><td>{g.target_date}</td><td>
+    <td>{employeeName(g.employee_id)}</td><td>{g.target_date}</td><td>
     <label>Completion % <input aria-label={"Completion percentage for "+g.title} type="number" min={0} max={100} defaultValue={g.progress}
       key={g.id+":"+g.progress} onBlur={e=>{const value=Number(e.target.value);if(value!==g.progress&&value>=0&&value<=100)
       void save(()=>call("/goals/"+g.id+"/progress","PATCH",{progress:value}),"Progress updated.")}}/></label>
@@ -94,7 +94,7 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
    </form></div>
    <div className="growth-action-card"><h3>Review history</h3><p className="muted">New manager reviews are listed below. Historical standalone appraisals are preserved separately.</p></div>
    {reviews.map(r=><article key={r.id} className="card">
-    <strong>Cycle #{r.cycle_id} · Employee #{r.employee_id}</strong>
+    <strong>Cycle #{r.cycle_id} · {employeeName(r.employee_id)}</strong>
     <p>{r.self_notes}</p><p>Manager rating: {r.manager_rating??"Pending"} · {r.status}</p>
     {r.manager_notes&&<p>{r.manager_notes}</p>}
     {canAssign&&r.employee_id!==user.id&&r.status==="self_submitted"&&
@@ -117,7 +117,7 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
     <label className="wide">Development action<textarea required minLength={5} value={detail} onChange={e=>setDetail(e.target.value)}/></label>
     <button disabled={busy} className="primary">Add development plan</button>
    </form>
-   {plans.map(p=><div className="card" key={p.id}><strong>{p.skill} · Employee #{p.employee_id}</strong>
+   {plans.map(p=><div className="card" key={p.id}><strong>{p.skill} · {employeeName(p.employee_id)}</strong>
     <p>{p.action}</p><p className="muted">Target: {p.target_date}</p>
     <label>Status <select value={p.status} onChange={e=>void save(
      ()=>call("/plans/"+p.id,"PATCH",{status:e.target.value}),"Development status updated.")}>
