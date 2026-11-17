@@ -195,12 +195,19 @@ def test_policy_requires_independent_admin_and_reason_for_leave_override():
         switch(c,"payroll.person.qa@example.org")
         assert c.get("/governance/requests").status_code==403
         switch(c)
+        admin_inbox=c.get("/notification-center").json()
+        assert any(n["destination"]=="governance" and "Approval needed: company policy"==n["title"] for n in admin_inbox["items"])
         review=c.post(f"/governance/requests/{req}/review",headers=ORIGIN,json={
           "approve":True,"reason":"Reviewed and approved as company policy"})
         assert review.status_code==200,review.text
         assert c.post(f"/governance/requests/{req}/review",headers=ORIGIN,json={
           "approve":True,"reason":"Duplicate admin approval request"}).status_code==409
         assert any(x["title"].startswith("QA Orientation") for x in c.get("/policies/records").json())
+        switch(c,"payroll.person.qa@example.org")
+        employee_inbox=c.get("/notification-center").json()
+        assert any(n["destination"]=="policies" and n["title"].startswith("New company policy: QA Orientation") for n in employee_inbox["items"])
+        switch(c,"payroll.hr.qa@example.org")
+        assert any(n["destination"]=="governance" and "approved" in n["title"] for n in c.get("/notification-center").json()["items"])
 
 def test_leave_manual_allocation_requires_approval_and_updates_balance():
     with TestClient(app) as c:
