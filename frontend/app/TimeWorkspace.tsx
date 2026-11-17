@@ -70,14 +70,14 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
    isApprover?fetch(api+"/core/employees",{credentials:"include"}).then(r=>r.ok?r.json():[]):Promise.resolve([]),
    fetch(api+"/project-management/projects",{credentials:"include"}).then(r=>r.ok?r.json():[]),
    isApprover?call("/timesheets?scope=approvals"):Promise.resolve([]),
-   call("/project-assignments"),call("/wfh-balance")
+   call("/project-assignments"),call("/wfh-balance?year="+requestForm.work_date.slice(0,4)+"&month="+Number(requestForm.work_date.slice(5,7)))
   ]);
   const value=(n:number)=>fetches[n].status==="fulfilled"?(fetches[n] as PromiseFulfilledResult<any>).value:undefined;
   setDaily(value(0)||[]);setPolicy(value(1)||initialPolicy);setShifts(value(2)||[]);
   setRosters(value(3)||[]);setRequests(value(4)||[]);setApprovals(value(5)||[]);
   setTimesheets(value(6)||[]);setStaff(value(7)||[]);setProjectOptions(value(8)||[]);
   setTimesheetApprovals(value(9)||[]);setProjectAssignments(value(10)||[]);setWfhBalance(value(11)||null);
- },[call,api,isHR,isApprover]);
+ },[call,api,isHR,isApprover,requestForm.work_date]);
  useEffect(()=>{void load()},[load]);
  async function loadAudit(){
   setAuditError("");setAuditDetails(null);
