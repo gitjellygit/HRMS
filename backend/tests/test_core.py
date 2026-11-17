@@ -54,6 +54,19 @@ def test_employee_core_end_to_end():
             "master":{"department_id":new_dept.json()["id"],"manager_id":manager_id}})
         assert hr_employee.status_code==201,hr_employee.text
         assert hr_employee.json()["department"]=="Talent Acquisition"
+        updated=client.patch("/core/employees/"+str(hr_employee.json()["id"])+"/account",headers=ORIGIN,json={
+            "name":"Tara Kapoor Updated","email":"tara.updated@example.org",
+            "designation":"Senior QA Engineer","phone":"+919876543210",
+            "joining_date":"2026-11-04","reason":"HR correction after onboarding verification"})
+        assert updated.status_code==200,updated.text
+        assert updated.json()["name"]=="Tara Kapoor Updated"
+        assert updated.json()["email"]=="tara.updated@example.org"
+        assert updated.json()["phone"]=="+919876543210"
+        assert client.patch("/core/employees/"+str(hr_employee.json()["id"])+"/account",headers=ORIGIN,json={
+            "name":"Tara Kapoor Updated","email":"aarav.sharma@example.org",
+            "designation":"Senior QA Engineer","phone":"+919876543210",
+            "joining_date":"2026-11-04","reason":"Attempt duplicate email in UAT"}).status_code==409
+
 
         with SessionLocal() as session:
             core=session.get(EmployeeCore,employee_id)
