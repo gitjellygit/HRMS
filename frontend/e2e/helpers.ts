@@ -17,11 +17,11 @@ export async function login(page: Page, user: Persona) {
   // Wait for the asynchronous /me session check before deciding whether to sign out.
   // Without this guard, a slow Next.js dev hydration can look like neither login
   // nor an authenticated workspace and produce intermittent matrix failures.
-  const signOut=page.locator('.sidebar nav').getByRole('button',{name:'Sign out'});
-  await expect.poll(async()=>await email.isVisible()||await signOut.isVisible(),
-    {timeout:12000,message:'Expected either login form or authenticated sidebar'}).toBe(true);
+  const profile=page.getByRole('button',{name:'Profile and appearance'});
+  await expect.poll(async()=>await email.isVisible()||await profile.isVisible(),
+    {timeout:12000,message:'Expected either login form or authenticated profile menu'}).toBe(true);
   if(!(await email.isVisible())){
-    await signOut.click();
+    await signOut(page);
   }
   await expect(email).toBeVisible();
   await page.locator('input[name="email"]').fill(user.email);
@@ -29,6 +29,11 @@ export async function login(page: Page, user: Persona) {
   await page.getByRole('button', { name: /sign in/i }).click();
   await expect(page.locator('.sidebar .brand')).toBeVisible();
   await expect(page.locator('.hrms-user-meta')).toContainText(user.name);
+}
+export async function signOut(page: Page) {
+  await page.getByRole('button',{name:'Profile and appearance'}).click();
+  await page.getByRole('menu',{name:'Profile settings'}).getByRole('button',{name:'Sign out'}).click();
+  await expect(page.locator('input[name="email"]')).toBeVisible();
 }
 export async function navigate(page: Page, label: string) {
   await page.locator('.sidebar nav').getByRole('button', { name: label, exact: true }).click();
