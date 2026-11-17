@@ -23,6 +23,9 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
  const [offers,setOffers]=useState<Row[]>([]);
  const [tasks,setTasks]=useState<Row[]>([]);
  const [onboardingEmployee,setOnboardingEmployee]=useState("");
+ const [onboardingCategories,setOnboardingCategories]=useState<Row[]>([]);
+ const [categoryName,setCategoryName]=useState("");
+ const [categorySlug,setCategorySlug]=useState("");
  const [notices,setNotices]=useState<Row[]>([]);
  const [tickets,setTickets]=useState<Row[]>([]);
  const [allTickets,setAllTickets]=useState<Row[]>([]);
@@ -69,6 +72,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
    get("/notifications"),hr?get("/audit"):Promise.resolve([])]);
   setStaff(a);setTemplates(b);setOffers(c);setTasks(d);setNotices(e);setTickets(f);setAllTickets(g);setExits(h);
   setAllExits(i);setMetrics(j);setNotifications(k);setAudits(l);
+  setOnboardingCategories(await get("/onboarding/categories"));
   if(hr){setRules(await get("/notification-rules"));fetch(api+"/activity-agent/devices",{credentials:"include"}).then(v=>v.ok?v.json():[]).then(setActivityDevices).catch(()=>{});}
  }
  useEffect(()=>{void refresh();if(hr)void fetch(api+"/exit-workflow/templates",{credentials:"include"})
@@ -167,20 +171,21 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
       title:draft.title,due_date:draft.due_date||null,assigned_to:draft.assigned_to?Number(draft.assigned_to):null,
       asset_code:draft.asset_code||""},"Onboarding task created.")}}>
      {emp()}<label>Category<select value={draft.category||"document"} onChange={e=>setDraft(v=>({...v,category:e.target.value}))}>
-      {["document","asset","induction","hr","it"].map(c=><option key={c} value={c}>{c==="hr"?"HR":c==="it"?"IT":c[0].toUpperCase()+c.slice(1)}</option>)}</select></label>
+      {onboardingCategories.filter(c=>c.active).map(c=><option key={c.id} value={c.slug}>{c.display_name}</option>)}</select></label>
      {input("title","Task title",true)}{input("asset_code","Asset code (optional)")}
      {input("due_date","Due date",false,"date")}
      <label>Responsible person<select value={draft.assigned_to||""} onChange={e=>setDraft(v=>({...v,assigned_to:e.target.value}))}>
       <option value="">Choose a responsible employee</option>{staff.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></label>
      <button className="employee-primary">Assign task</button>
      <button type="button" className="employee-cancel" disabled={!draft.employee_id} onClick={()=>void save(()=>call("/onboarding/orientation/"+draft.employee_id,"POST"),"Seven-step welcome orientation initialized.")}>Start welcome orientation (7 steps)</button></form>}
+   {hr&&<details className="ops-category-manager"><summary>Manage onboarding categories</summary><div className="ops-form"><label>New category name<input minLength={2} maxLength={80} value={categoryName} onChange={e=>{setCategoryName(e.target.value);setCategorySlug(e.target.value.trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,""))}}/></label><label>Category code<input pattern="[a-z][a-z0-9_]*" minLength={2} maxLength={30} value={categorySlug} onChange={e=>setCategorySlug(e.target.value)}/></label><button type="button" className="employee-primary" disabled={busy||categoryName.trim().length<2||categorySlug.length<2} onClick={()=>void save(async()=>{await call("/onboarding/categories","POST",{display_name:categoryName.trim(),slug:categorySlug});setCategoryName("");setCategorySlug("")},"Onboarding category created.")}>Add category</button></div><div className="ops-table">{onboardingCategories.map(category=><div className="ops-row" key={category.id}><strong>{category.display_name}</strong><small>{category.slug} · {category.active?"Active":"Archived"}</small><div className="actions"><button type="button" className="employee-cancel" onClick={()=>{const name=window.prompt("Category display name",category.display_name);if(name&&name.trim().length>=2)void save(()=>call("/onboarding/categories/"+category.id,"PUT",{display_name:name.trim(),active:category.active}),"Category updated.")}}>Rename</button>{category.active&&<button type="button" className="employee-cancel" onClick={()=>{if(window.confirm("Archive this category? Existing task history will remain."))void save(()=>call("/onboarding/categories/"+category.id,"DELETE"),"Category archived.")}}>Archive</button>}</div></div>)}</div></details>}
    </section>
    <section className="employee-surface"><h3>Employee onboarding progress</h3>
     {hr&&<label>Employee<select value={onboardingEmployee} onChange={e=>setOnboardingEmployee(e.target.value)}><option value="">Select employee to review</option>{staff.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
     <p className="muted">Welcome journey: {tasks.filter(t=>(!hr||t.employee_id===Number(onboardingEmployee))&&t.status==="completed").length} of {tasks.filter(t=>!hr||t.employee_id===Number(onboardingEmployee)).length} tasks completed</p>
     <progress max={Math.max(1,tasks.filter(t=>!hr||t.employee_id===Number(onboardingEmployee)).length)} value={tasks.filter(t=>(!hr||t.employee_id===Number(onboardingEmployee))&&t.status==="completed").length} style={{width:"100%"}} aria-label="Onboarding progress"/>
     <div className="ops-table">{tasks.filter(t=>!hr||t.employee_id===Number(onboardingEmployee)).map(t=><div className="ops-row" key={t.id}>
-    <strong>{t.title}</strong><span>{t.category==="hr"?"HR":t.category==="it"?"IT":String(t.category).replace(/^./,(x:string)=>x.toUpperCase())} · {t.status} · {staff.find(p=>p.id===t.employee_id)?.name||("Employee #"+t.employee_id)}</span><small>Responsible: {staff.find(p=>p.id===t.assigned_to)?.name||"Not assigned"}</small>
+    <strong>{t.title}</strong><span>{onboardingCategories.find(c=>c.slug===t.category)?.display_name||String(t.category).replace(/^./,(x:string)=>x.toUpperCase())} · {t.status} · {staff.find(p=>p.id===t.employee_id)?.name||("Employee #"+t.employee_id)}</span><small>Responsible: {staff.find(p=>p.id===t.assigned_to)?.name||"Not assigned"}</small>
     {t.asset_code&&<small>Asset: {t.asset_code}</small>}
     {t.status==="pending"&&(hr||t.assigned_to===user.id)&&<button className="employee-primary" onClick={()=>void save(()=>call("/onboarding/"+t.id+"/complete","POST"),"Task completed.")}>Complete</button>}
    </div>)}{(!tasks.length||(hr&&!onboardingEmployee))&&<div className="jellygit-empty-state"><BrandIllustration asset="empty-folder-state" alt="" className="jellygit-empty-art"/><p>{hr&&!onboardingEmployee?"Select an employee to view their onboarding tasks.":"No onboarding tasks yet."}</p></div>}</div></section>
