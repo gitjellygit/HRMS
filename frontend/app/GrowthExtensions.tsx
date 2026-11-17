@@ -33,7 +33,7 @@ export default function GrowthExtensions({api,user}:{api:string;user:{id:number;
   setItems(a);setCareers(b);setAssignments(c);setCycles(d);
  }
  useEffect(()=>{void refresh().catch(e=>setError((e as Error).message));
-  if(manage)void fetch(api+"/employees",{credentials:"include"}).then(r=>r.ok?r.json():[]).then(setPeople).catch(()=>{});
+  if(manage)void fetch(api+"/core/employees",{credentials:"include"}).then(r=>r.ok?r.json():[]).then(setPeople).catch(()=>{});
  },[api,user.id]);
  async function save(fn:()=>Promise<unknown>,messageText:string){
   setError("");setMessage("");
@@ -57,7 +57,7 @@ export default function GrowthExtensions({api,user}:{api:string;user:{id:number;
     <label>Target completion<input type="date" required value={date} onChange={e=>setDate(e.target.value)}/></label>
     <button className="primary">Assign training</button>
    </form>
-   {items.map(p=><div key={p.id} className="card"><strong>{p.title} — employee #{p.employee_id}</strong>
+   {items.map(p=><div key={p.id} className="card"><strong>{p.title} — {employeeName(p.employee_id)}</strong>
      <p>{p.provider||"Internal"} · by {p.target_date}</p>
      <label>Status <select value={p.status} onChange={e=>void save(
       ()=>call("/growth/learning/"+p.id,"PATCH",{status:e.target.value}),"Training updated.")}>
@@ -73,7 +73,7 @@ export default function GrowthExtensions({api,user}:{api:string;user:{id:number;
      <label className="wide">Readiness requirements<textarea minLength={10} required value={description} onChange={e=>setDescription(e.target.value)}/></label>
      <button className="primary">Add career milestone</button>
    </form>}
-   {careers.map(c=><div key={c.id} className="card"><strong>{c.target_role} — employee #{c.employee_id}</strong>
+   {careers.map(c=><div key={c.id} className="card"><strong>{c.target_role} — {employeeName(c.employee_id)}</strong>
     <p>{c.requirements}</p><p>Target: {c.target_date}</p>
     <p>Status: {c.status}</p>
     {manage&&<label>Update status <select value={c.status} onChange={e=>void save(
@@ -94,7 +94,7 @@ export default function GrowthExtensions({api,user}:{api:string;user:{id:number;
       </select></label><button className="primary">Request confidential feedback</button>
      </form>}
    {assignments.map(a=><div className="card" key={a.id}>
-    <strong>Feedback for employee #{a.employee_id} — cycle #{a.cycle_id}</strong>
+    <strong>Feedback for {employeeName(a.employee_id)} — cycle #{a.cycle_id}</strong>
     {a.status==="submitted"?<p>Submitted confidentially</p>:
       <form className="form" onSubmit={e=>{e.preventDefault();void save(
         ()=>call("/growth/feedback-assignments/"+a.id+"/submit","POST",{score,feedback:description}),"Peer feedback submitted.")}}>
