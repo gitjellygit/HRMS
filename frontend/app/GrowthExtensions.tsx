@@ -41,12 +41,12 @@ export default function GrowthExtensions({api,user}:{api:string;user:{id:number;
   catch(e){setError((e as Error).message)}
  }
  const selected=manage?Number(employee):user.id;
- return <section className="panel">
+ return <section className="panel growth-workspace growth-extensions">
   <h2>Learning, career & 360 feedback</h2>
-  <div className="time-tabs" role="tablist">{([["learning","Learning & training"],["career","Career progression"],["feedback","Peer feedback"]] as const).map(([id,label])=>
-    <button key={id} role="tab" aria-selected={tab===id} onClick={()=>setTab(id)}>{label}</button>)}</div>
+  <div className="time-tabs growth-tabs" role="tablist" aria-label="Learning and career sections">{([["learning","Learning & training"],["career","Career progression"],["feedback","Peer feedback"]] as const).map(([id,label])=>
+    <button key={id} role="tab" aria-selected={tab===id} className={tab===id?"active":""} onClick={()=>{setTab(id);setTitle("");setDescription("");setError("");setMessage("")}}>{label}</button>)}</div>
   {error&&<p role="alert" className="error">{error}</p>}{message&&<p role="status">{message}</p>}
-  {manage&&<label>Employee <select value={employee} onChange={e=>setEmployee(e.target.value)}>
+  {manage&&<label className="growth-target-label">Employee <select value={employee} onChange={e=>setEmployee(e.target.value)}>
    <option value={user.id}>Myself</option>{people.filter(p=>p.id!==user.id).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
    </select></label>}
   {tab==="learning"&&<>
