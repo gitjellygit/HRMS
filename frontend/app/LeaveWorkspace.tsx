@@ -1,3 +1,4 @@
+import {useTransientMessage} from "./useTransientMessage";
 "use client";
 import {explainError} from "./formErrors";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -62,7 +63,7 @@ export default function LeaveWorkspace({api,user}:{api:string;user:User}){
  const [approvalReason,setApprovalReason]=useState("");
  const [encashDays,setEncashDays]=useState("");
  const [error,setError]=useState("");
- const [success,setSuccess]=useState("");
+ const [success,setSuccess]=useTransientMessage();
  const [busy,setBusy]=useState(false);
  const [loading,setLoading]=useState(true);
  const call=useCallback(async(path:string,method="GET",body?:unknown)=>{
