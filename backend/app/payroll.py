@@ -8,6 +8,8 @@ import os
 import json
 from types import SimpleNamespace
 import calendar
+import zipfile
+import re
 from datetime import date, datetime, timezone, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
@@ -33,6 +35,19 @@ def role(user,allow=FIN):
     return user
 def own_or_fin(user,owner):
     if user.id!=owner and user.role not in FIN:raise HTTPException(403,"Not authorized to view this payroll record.")
+
+class ManualPayslip(Base):
+    """Append-only manual PDF imports; newest one overrides generated PDF in employee view."""
+    __tablename__="pay_manual_payslips"
+    id:Mapped[int]=mapped_column(primary_key=True)
+    employee_id:Mapped[int]=mapped_column(ForeignKey("employees.id"),index=True)
+    period:Mapped[str]=mapped_column(String(7),index=True)
+    original_name:Mapped[str]=mapped_column(String(180))
+    storage_key:Mapped[str]=mapped_column(String(80),unique=True)
+    uploaded_by:Mapped[int]=mapped_column(ForeignKey("employees.id"))
+    reason:Mapped[str]=mapped_column(String(500))
+    created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
+
 
 class SalaryStructure(Base):
     __tablename__="pay_salary_structures"
@@ -464,11 +479,136 @@ def publish_run(run_id:int,user:Employee=Depends(current_user),db:Session=Depend
     run.status="published";db.commit()
     return {"id":run.id,"status":"published","money_transferred":False}
 
+def _payslip_period(value:str)->str:
+    if not re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])",value):
+        raise HTTPException(422,detail={"field":"period","message":"Payroll period must be YYYY-MM."})
+    return value
+
+
+def _validate_manual_pdf(payload:bytes,name:str)->None:
+    if not name.lower().endswith(".pdf") or not payload.startswith(b"%PDF-"):
+        raise HTTPException(422,"Upload a genuine PDF payslip.")
+    if not payload or len(payload)>5*1024*1024:
+        raise HTTPException(413,"Each payslip must be 5 MB or smaller.")
+
+
+def _save_manual_payslips(db:Session,docs:list[tuple[int,str,bytes]],period:str,reason:str,uploader:int)->list[dict]:
+    """Validate before writing. Retain old revisions for auditable replacement history."""
+    if len(reason.strip())<10:
+        raise HTTPException(422,detail={"field":"reason","message":"Explain the payslip import or override (minimum 10 characters)."})
+    _payslip_period(period)
+    ids=[employee_id for employee_id,_,_ in docs]
+    if not docs or len(ids)!=len(set(ids)):
+        raise HTTPException(422,"Import at least one PDF with no repeated employee.")
+    for employee_id,name,payload in docs:
+        staff=db.get(Employee,employee_id)
+        if not staff or staff.status=="inactive":
+            raise HTTPException(422,f"Employee {employee_id} is not active or does not exist.")
+        _validate_manual_pdf(payload,name)
+    folder=Path(UPLOAD_DIR)/"manual-payslips"
+    folder.mkdir(parents=True,exist_ok=True,mode=0o700)
+    written=[]
+    results=[]
+    try:
+        for employee_id,name,payload in docs:
+            key=uuid4().hex+".pdf"
+            path=folder/key
+            with path.open("xb") as f:f.write(payload)
+            path.chmod(0o600)
+            written.append(path)
+            row=ManualPayslip(employee_id=employee_id,period=period,original_name=name[:180],
+                               storage_key=key,uploaded_by=uploader,reason=reason.strip())
+            db.add(row);db.flush()
+            results.append({"id":row.id,"employee_id":employee_id,"period":period})
+        from .notification_center import add_inbox
+        for employee_id,_,_ in docs:
+            add_inbox(db,employee_id,"payroll","Payslip available",
+                      f"Your payslip for {period} has been published. Find it under Payroll & expenses → My payslips.","payroll")
+        db.commit()
+    except Exception:
+        db.rollback()
+        for path in written:path.unlink(missing_ok=True)
+        raise
+    return results
+
+
+@router.post("/manual-payslips",status_code=201)
+async def upload_manual_payslip(employee_id:int,period:str,reason:str,
+                                document:UploadFile=File(...),
+                                user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    role(user,HR)
+    data=await document.read(5*1024*1024+1)
+    return {"uploaded":_save_manual_payslips(db,[(employee_id,document.filename or "payslip.pdf",data)],
+                                              period,reason,user.id)}
+
+
+@router.post("/manual-payslips/bulk",status_code=201)
+async def bulk_manual_payslips(period:str,reason:str,archive:UploadFile=File(...),
+                               user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    role(user,HR)
+    payload=await archive.read(16*1024*1024+1)
+    if len(payload)>16*1024*1024 or not zipfile.is_zipfile(io.BytesIO(payload)):
+        raise HTTPException(422,"Upload a valid ZIP archive of 16 MB or smaller.")
+    from .employee_core import EmployeeProfile
+    known={str(p.employee_code).upper():p.employee_id for p in db.scalars(
+        select(EmployeeProfile).where(EmployeeProfile.employee_code.is_not(None))).all() if p.employee_code}
+    docs=[]
+    with zipfile.ZipFile(io.BytesIO(payload)) as zipped:
+        files=[info for info in zipped.infolist() if not info.is_dir()]
+        if not 1<=len(files)<=50:
+            raise HTTPException(422,"Bulk upload supports 1–50 employee PDFs per ZIP.")
+        if sum(info.file_size for info in files)>50*1024*1024:
+            raise HTTPException(413,"Total uncompressed payslip size must be 50 MB or smaller.")
+        for info in files:
+            if "/" in info.filename or "\\" in info.filename or ".." in info.filename:
+                raise HTTPException(422,"ZIP must contain PDFs at its top level only.")
+            name=info.filename
+            code=name[:-4].upper() if name.lower().endswith(".pdf") else ""
+            if code not in known:
+                raise HTTPException(422,f"Unknown employee code in {name}. Name each PDF as JG-001.pdf using the actual employee ID code.")
+            if info.file_size>5*1024*1024:
+                raise HTTPException(413,f"Payslip {name} exceeds 5 MB.")
+            data=zipped.read(info)
+            _validate_manual_pdf(data,name)
+            docs.append((known[code],name,data))
+    return {"uploaded":_save_manual_payslips(db,docs,period,reason,user.id)}
+
+
+@router.get("/manual-payslips")
+def list_manual_payslips(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    role(user)
+    rows=db.scalars(select(ManualPayslip).order_by(ManualPayslip.id.desc()).limit(300)).all()
+    return [{"id":r.id,"employee_id":r.employee_id,"period":r.period,"original_name":r.original_name,
+             "reason":r.reason,"uploaded_by":r.uploaded_by,"created_at":r.created_at} for r in rows]
+
+
+@router.get("/manual-payslips/{payslip_id}.pdf")
+def view_manual_payslip(payslip_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    row=db.get(ManualPayslip,payslip_id)
+    if row is None:raise HTTPException(404,"Payslip not found.")
+    own_or_fin(user,row.employee_id)
+    path=Path(UPLOAD_DIR)/"manual-payslips"/Path(row.storage_key).name
+    if not path.is_file():raise HTTPException(404,"Payslip file missing from storage.")
+    return FileResponse(path,media_type="application/pdf",
+                        filename=f"payslip-{row.period}.pdf",
+                        headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"})
+
+
 @router.get("/my-payslips")
 def my_payslips(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     q=select(PayrollLine,PayrollRun).join(PayrollRun,PayrollRun.id==PayrollLine.run_id).where(
         PayrollLine.employee_id==user.id,PayrollRun.status=="published").order_by(PayrollRun.period.desc())
-    return [{"run_id":run.id,"line_id":line.id,"period":run.period,"net":line.net,"gross":line.gross} for line,run in db.execute(q).all()]
+    generated=[{"run_id":run.id,"line_id":line.id,"period":run.period,"net":line.net,
+                "gross":line.gross,"source":"generated"} for line,run in db.execute(q).all()]
+    manual=db.scalars(select(ManualPayslip).where(ManualPayslip.employee_id==user.id)
+        .order_by(ManualPayslip.id.desc())).all()
+    latest={}
+    for slip in manual:
+        latest.setdefault(slip.period,slip)
+    generated=[slip for slip in generated if slip["period"] not in latest]
+    uploaded=[{"id":slip.id,"period":slip.period,"source":"manual","original_name":slip.original_name}
+              for slip in latest.values()]
+    return sorted(generated+uploaded,key=lambda item:item["period"],reverse=True)
 
 @router.get("/payslips/{line_id}.pdf")
 def pdf_payslip(line_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
