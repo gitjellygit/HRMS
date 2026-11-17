@@ -13,6 +13,7 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
  const [team,setTeam]=useState<RecordRow[]>([]);
  const [goals,setGoals]=useState<RecordRow[]>([]);
  const [reviews,setReviews]=useState<RecordRow[]>([]);
+ const [legacyReviews,setLegacyReviews]=useState<RecordRow[]>([]);
  const [cycles,setCycles]=useState<RecordRow[]>([]);
  const [plans,setPlans]=useState<RecordRow[]>([]);
  const [employee,setEmployee]=useState(String(user.id));
@@ -37,6 +38,8 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
  async function refresh(){
   const [g,r,c,p]=await Promise.all([call("/goals"),call("/reviews"),call("/cycles"),call("/plans")]);
   setGoals(g);setReviews(r);setCycles(c);setPlans(p);
+  const old=await fetch(api+"/appraisals",{credentials:"include"});
+  if(old.ok)setLegacyReviews(await old.json());
  }
  useEffect(()=>{
   void refresh().catch(e=>setError((e as Error).message));
@@ -89,6 +92,7 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
     <label className="wide">Self assessment<textarea minLength={10} required value={detail} onChange={e=>setDetail(e.target.value)}/></label>
     <button className="primary" disabled={busy}>Submit self-review</button>
    </form></div>
+   <div className="growth-action-card"><h3>Review history</h3><p className="muted">New manager reviews are listed below. Historical standalone appraisals are preserved separately.</p></div>
    {reviews.map(r=><article key={r.id} className="card">
     <strong>Cycle #{r.cycle_id} · Employee #{r.employee_id}</strong>
     <p>{r.self_notes}</p><p>Manager rating: {r.manager_rating??"Pending"} · {r.status}</p>
@@ -101,6 +105,9 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
       <button disabled={busy} className="primary">Complete review</button>
      </form>}
    </article>)}
+   {legacyReviews.length>0&&<div className="growth-action-card"><h3>Previous appraisal ratings</h3><p className="muted">Historic ratings from the former Appraisals screen are retained. New reviews use the cycles above.</p>
+    <div className="table-wrap"><table><thead><tr><th>Employee</th><th>Period</th><th>Rating</th><th>Feedback</th></tr></thead><tbody>{legacyReviews.map(r=><tr key={r.id}><td>{team.find(p=>p.id===r.employee_id)?.name||(r.employee_id===user.id?user.name:"Employee #"+r.employee_id)}</td><td>{r.period}</td><td>{r.rating}/5</td><td>{r.feedback}</td></tr>)}</tbody></table></div>
+   </div>}
   </div>}
   {area==="development"&&<div className="growth-area-content">
    <form className="form" onSubmit={e=>{e.preventDefault();void save(
