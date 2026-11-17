@@ -53,6 +53,7 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
  }
  async function createRecord(e:React.FormEvent){
   e.preventDefault();setError("");setSaved("");
+  if(newDocument&&!isHR&&(!newDocument.name.toLowerCase().endsWith(".pdf")||newDocument.size>5*1024*1024||newDocument.size===0)){setError("Policy document: choose a nonempty PDF file of 5 MB or smaller.");return}
   if(isHR&&approvalReason.trim().length<10){setError("Business reason: explain why this policy is needed (at least 10 characters).");return}
   if(policyTitle.trim().length<3||policyDescription.trim().length<20){setError("Add a title and description of at least 20 characters.");return}
   setPolicyBusy(true);
@@ -117,7 +118,7 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
       <label className="employee-field">Effective date<input type="date" required value={effectiveDate} onChange={e=>setEffectiveDate(e.target.value)}/></label>
      </div>
      <label className="employee-field">Policy details<textarea rows={5} minLength={20} maxLength={10000} value={policyDescription} required placeholder="Write the policy and its conditions…" onChange={e=>setPolicyDescription(e.target.value)}/></label>
-     {!isHR&&<label className="employee-field policy-new-file">Policy document (optional PDF, max 5 MB)<input type="file" accept=".pdf,application/pdf" onChange={e=>setNewDocument(e.target.files?.[0]||null)}/><small className="field-help">{isHR?"HR submits the policy for approval first; upload the PDF once an admin publishes it.":"When you publish the policy, its PDF will be attached automatically."}</small></label>}
+     {!isHR&&<label className="employee-field policy-new-file">Policy document (optional PDF, max 5 MB)<input type="file" accept=".pdf,application/pdf" onChange={e=>setNewDocument(e.target.files?.[0]||null)}/><small className="field-help">When you publish the policy, its PDF will be attached automatically.</small></label>}
      {isHR&&<p className="policy-hub-note">After an administrator approves and publishes this policy, open it below to upload the PDF. Employees are notified once it is published.</p>}
      <fieldset className="policy-audience"><legend>Who can view this policy?</legend>
       <label><input type="checkbox" checked={audience.length===0} onChange={()=>setAudience([])}/> All employees</label>
@@ -127,6 +128,7 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
      </fieldset>
      <div className="employee-form-footer"><button type="button" className="employee-cancel" onClick={()=>setAdding(false)}>Cancel</button><button className="employee-primary" disabled={policyBusy}>{policyBusy?"Creating…":"Create policy"}</button></div>
     </form>}
+    <p className="policy-hub-note">Employees see policies selected for them. Publishing a policy adds a notification in their bell so they know something new needs to be read.</p>
     <div className="policy-record-list">{records.length?records.map(r=><details key={r.id} className="policy-record"><summary><strong>{r.title}</strong><span>{r.category} · Effective {r.effective_date}</span></summary><p>{r.description}</p>
       {(r.attachments||[]).map(a=><p key={a.id}><a href={api+"/policies/records/"+r.id+"/attachments/"+a.id} target="_blank" rel="noreferrer">{a.name} · View PDF</a></p>)}
       {["super_admin","admin","hr"].includes(user.role)&&<div className="policy-attachment-form">
