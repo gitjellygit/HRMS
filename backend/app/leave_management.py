@@ -528,6 +528,16 @@ def base_entitlement(db:Session,employee_id:int,year:int,kind:str,config:LeavePo
                         late if period_month>=8 and late>0 else first)
                     credited+=rate/Decimal((month_after-date(cursor.year,cursor.month,1)).days)
             cursor+=timedelta(days=1)
+    # Annual policies grant the prorated entitlement for the whole policy year.
+    # Only monthly accrual is restricted to months reached by today's date.
+    cursor=through+timedelta(days=1)
+    while cursor<=end:
+        terms=terms_at(versions,cursor)
+        if terms and terms.get("active",True):
+            schedule=terms.get("monthly_schedule")
+            if schedule is None and Decimal(str(terms.get("monthly_accrual",0)))==0 and cursor>=staff.joining_date:
+                credited+=Decimal(str(terms.get("annual_days",0)))/period_days
+        cursor+=timedelta(days=1)
     return (credited*2).quantize(Decimal("1"),rounding=ROUND_HALF_UP)/Decimal(2)
 
 
