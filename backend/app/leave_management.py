@@ -537,19 +537,19 @@ def balance(db: Session, employee_id: int, year: int,kind: str) -> dict:
     carry=Decimal("0")
     if config.carry_forward_limit:
         prior=base_entitlement(db,employee_id,year-1,kind,config)
-        prior_used=used_days(db,employee_id,year-1,kind)
+        prior_used=used_days(db,employee_id,year-1,kind,config.year_type)
         prior_encashed=Decimal(db.scalar(select(func.coalesce(func.sum(Encashment.days),0)).where(
             Encashment.employee_id==employee_id,Encashment.year==year-1,
             Encashment.leave_type==kind,Encashment.status=="approved")) or 0)
         carry=min(max(prior-prior_used-prior_encashed,Decimal("0")),Decimal(config.carry_forward_limit))
-    used=used_days(db,employee_id,year,kind)
+    used=used_days(db,employee_id,year,kind,config.year_type)
     encashed=Decimal(db.scalar(select(func.coalesce(func.sum(Encashment.days),0)).where(
         Encashment.employee_id==employee_id,Encashment.year==year,
         Encashment.leave_type==kind,Encashment.status=="approved")) or 0)
     reserved=Decimal(db.scalar(select(func.coalesce(func.sum(Encashment.days),0)).where(
         Encashment.employee_id==employee_id,Encashment.year==year,
         Encashment.leave_type==kind,Encashment.status=="pending")) or 0)
-    return {"leave_type":kind,"year":year,"fy_label":f"FY {year}-{str(year+1)[-2:]}",
+    return {"leave_type":kind,"year":year,"year_type":config.year_type,"fy_label":(f"CY {year}" if config.year_type=="calendar" else f"FY {year}-{str(year+1)[-2:]}"),
             "allocated":float(allocated),"carried":float(carry),
             "used":float(used),"encashed":float(encashed),"reserved_encashment":float(reserved),
             "remaining":float(allocated+carry-used-encashed-reserved)}
@@ -636,7 +636,7 @@ def financial_year_hr_overview(fy: int | None=Query(default=None,ge=2020,le=2100
 @router.get("/policies")
 def policies(user: Employee = Depends(current_user),db: Session = Depends(db_session)):
     rows=db.scalars(select(LeavePolicy).order_by(LeavePolicy.leave_type)).all()
-    return [{"leave_type":p.leave_type,"annual_days":float(p.annual_days),"monthly_accrual":float(p.monthly_accrual),"late_year_monthly_accrual":float(p.late_year_monthly_accrual),"monthly_schedule":json.loads(p.monthly_schedule) if p.monthly_schedule else None,
+    return [{"leave_type":p.leave_type,"annual_days":float(p.annual_days),"monthly_accrual":float(p.monthly_accrual),"late_year_monthly_accrual":float(p.late_year_monthly_accrual),"monthly_schedule":json.loads(p.monthly_schedule) if p.monthly_schedule else None,"year_type":p.year_type,"effective_from":(db.scalar(select(func.max(LeavePolicyVersion.effective_from)).where(LeavePolicyVersion.leave_type==p.leave_type)) or date.today()),
              "carry_forward_limit":float(p.carry_forward_limit),"encashment_allowed":p.encashment_allowed,
              "probation_allowed":p.probation_allowed,"approval_chain":p.approval_chain.split(",") if p.approval_chain else [],
              "active":p.active} for p in rows]
@@ -644,15 +644,7 @@ def policies(user: Employee = Depends(current_user),db: Session = Depends(db_ses
 
 @router.put("/policies")
 def save_policy(body: PolicyIn,user: Employee = Depends(policy_admin),db: Session = Depends(db_session)):
-    row=db.scalar(select(LeavePolicy).where(LeavePolicy.leave_type==body.leave_type))
-    if row is None:
-        row=LeavePolicy(leave_type=body.leave_type)
-        db.add(row)
-    values=body.model_dump(exclude={"leave_type","approval_chain","monthly_schedule"})
-    row.monthly_schedule=json.dumps([float(v) for v in body.monthly_schedule]) if body.monthly_schedule is not None else None
-    for key,value in values.items():
-        setattr(row,key,value)
-    row.approval_chain=",".join(body.approval_chain)
+    apply_leave_policy(db,body,user.id)
     db.commit()
     return {"ok":True,"leave_type":body.leave_type}
 
@@ -675,17 +667,19 @@ def allocate(body: EntitlementIn,user: Employee = Depends(policy_admin),db: Sess
 @router.get("/balances")
 def balances(employee_id: int | None = None,year: int | None=Query(default=None,ge=2020,le=2100),
              user: Employee = Depends(current_user),db: Session = Depends(db_session)):
-    year=year if year is not None else fy_start_year(date.today())
     target=employee_id or user.id
     if target!=user.id and user.role not in ADMIN:
         raise HTTPException(403,"Only HR can view another employee's balances")
-    kinds=db.scalars(select(LeavePolicy.leave_type).where(LeavePolicy.active.is_(True)).order_by(LeavePolicy.leave_type)).all()
-    return [balance(db,target,year,kind) for kind in kinds]
+    configs=db.scalars(select(LeavePolicy).where(LeavePolicy.active.is_(True)).order_by(LeavePolicy.leave_type)).all()
+    return [balance(db,target,year if year is not None else policy_start_year(date.today(),p.year_type),p.leave_type) for p in configs]
 
 
 @router.post("/requests",status_code=201)
 def request_leave(body: LeaveIn,user: Employee = Depends(current_user),db: Session = Depends(db_session)):
     config=policy(db,body.leave_type)
+    basis=config.year_type or "financial"
+    if policy_start_year(body.start_date,basis)!=policy_start_year(body.end_date,basis):
+        raise HTTPException(422,"Split leave requests crossing the configured leave-year boundary.")
     core=db.get(EmployeeCore,user.id)
     if core and core.lifecycle=="probation" and not config.probation_allowed:
         raise HTTPException(422,"Leave type is restricted during probation")
@@ -696,14 +690,14 @@ def request_leave(body: LeaveIn,user: Employee = Depends(current_user),db: Sessi
     if days<=0:
         raise HTTPException(422,"Selected dates contain no working leave days")
     # Serialize submission for each employee/year before both overlap and balance checks.
-    db.execute(select(func.pg_advisory_xact_lock(user.id,fy_start_year(body.start_date))))
+    db.execute(select(func.pg_advisory_xact_lock(user.id,policy_start_year(body.start_date,basis))))
     overlap=db.scalar(select(LeaveRequest.id).where(
         LeaveRequest.employee_id==user.id,LeaveRequest.status.in_(["pending","approved"]),
         LeaveRequest.start_date<=body.end_date,LeaveRequest.end_date>=body.start_date))
     if overlap:
         raise HTTPException(409,"An existing leave request overlaps these dates")
     if body.leave_type!="loss_of_pay":
-        available=balance(db,user.id,fy_start_year(body.start_date),body.leave_type)
+        available=balance(db,user.id,policy_start_year(body.start_date,basis),body.leave_type)
         if available["remaining"]<float(days):
             raise HTTPException(422,"Insufficient leave balance for this request")
     row=LeaveRequest(employee_id=user.id,leave_type=body.leave_type,start_date=body.start_date,
@@ -998,14 +992,16 @@ def reports(year: int | None=Query(default=None,ge=2020,le=2100),
             format: Literal["json","csv"]="json",
             user: Employee = Depends(hr_only),db: Session = Depends(db_session)):
     year=year if year is not None else fy_start_year(date.today())
-    fy_first,fy_last=fy_bounds(year)
-    stmt=select(LeaveRequest,Employee).join(Employee,LeaveRequest.employee_id==Employee.id).where(
-        LeaveRequest.start_date.between(fy_first,fy_last))
+    # Mixed CY/FY policies are filtered using each leave type's actual period.
+    configured=db.scalars(select(LeavePolicy)).all()
+    ranges={p.leave_type:policy_bounds(year,p.year_type or "financial") for p in configured}
+    stmt=select(LeaveRequest,Employee).join(Employee,LeaveRequest.employee_id==Employee.id)
     if department:
         stmt=stmt.where(Employee.department==department)
     if month:
         stmt=stmt.where(func.extract("month",LeaveRequest.start_date)==month)
-    items=db.execute(stmt.order_by(LeaveRequest.start_date.desc())).all()
+    items=[(r,e) for r,e in db.execute(stmt.order_by(LeaveRequest.start_date.desc())).all()
+           if r.leave_type in ranges and ranges[r.leave_type][0]<=r.start_date<=ranges[r.leave_type][1]]
     rows=[{"employee_id":e.id,"employee":e.name,"department":e.department,
            "type":r.leave_type,"start":str(r.start_date),"end":str(r.end_date),
            "days":float(r.days),"status":r.status} for r,e in items]
