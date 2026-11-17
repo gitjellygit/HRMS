@@ -55,3 +55,15 @@ test('payroll runs show an actionable empty state and aligned draft controls',as
  expect(m).not.toBeNull();expect(b).not.toBeNull();
  if(page.viewportSize()!.width>620)expect(Math.abs((m!.y+m!.height)-(b!.y+b!.height))).toBeLessThan(10);
 });
+
+test('HR employee directory exposes edit details and prefilled employee form',async({page})=>{
+ await login(page,hr());
+ await navigate(page,'Employees');
+ const row=page.locator('.employee-table tbody tr').filter({has:page.locator('.employee-role',{hasText:'employee'})}).first();
+ const edit=row.getByRole('button',{name:/Edit details for /});
+ await expect(edit).toBeVisible();
+ await edit.click();
+ await expect(page.getByRole('heading',{name:'Edit employee details'})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Save employee details'})).toBeVisible();
+ await expect(page.getByText('Reason for changes (minimum 10 characters)')).toBeVisible();
+});
