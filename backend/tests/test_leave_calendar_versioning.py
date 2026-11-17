@@ -58,18 +58,19 @@ def test_calendar_policy_versions_and_current_terms_are_immutable():
     with TestClient(app) as client:
         admin,hr,worker,other=seed(client)
         today=date.today()
-        first={"leave_type":"paternity","year_type":"calendar","annual_days":20,
+        with SessionLocal() as db:
+            configured={row.leave_type for row in db.query(LeavePolicy).all()}
+        kind=next((name for name in ("paternity","maternity","comp_off","sick","earned")
+                   if name not in configured),None)
+        if kind is None:
+            pytest.skip("All fixed leave types are already configured in the shared fixture")
+        first={"leave_type":kind,"year_type":"calendar","annual_days":20,
                "effective_from":today.isoformat(),"approval_chain":["hr"],
                "change_reason":"QA: create calendar leave policy"}
-        with SessionLocal() as db:
-            initial=db.query(LeavePolicy).filter_by(leave_type="paternity").first()
-        if initial:
-            # Repeated local runs might already have another test's policy.
-            pytest.skip("Calendar policy type already initialized in this test database")
         created=client.put("/leave/policies",headers=ORIGIN,json=first)
         assert created.status_code==200,created.text
         before=client.get(f"/leave/balances?employee_id={worker}").json()
-        prior=next(b for b in before if b["leave_type"]=="paternity")
+        prior=next(b for b in before if b["leave_type"]==kind)
         assert prior["year_type"]=="calendar"
         next_day=today+timedelta(days=1)
         revised={**first,"annual_days":24,"effective_from":next_day.isoformat(),
@@ -79,7 +80,7 @@ def test_calendar_policy_versions_and_current_terms_are_immutable():
         after=client.get(f"/leave/balances?employee_id={worker}").json()
         current=next(b for b in after if b["leave_type"]=="paternity")
         assert current["allocated"]==prior["allocated"],"Future policy must not revise already granted entitlement"
-        history=client.get("/leave/policies/paternity/history")
+        history=client.get(f"/leave/policies/{kind}/history")
         assert history.status_code==200,history.text
         entries=history.json()
         assert len(entries)==2
