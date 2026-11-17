@@ -943,3 +943,57 @@ button.employee-cancel:disabled,button.auth-submit:disabled{cursor:not-allowed!i
 .time-workspace .time-columns>.employee-surface,
 .ops-area .ops-columns>.employee-surface{min-width:0;height:100%;border-radius:var(--hrms-card-radius)}
 :where(.panel,.card,.employee-surface,.overview-feature-card){border-radius:var(--hrms-card-radius)}
+
+/* Payroll runs: explicit empty state and balanced action controls on desktop and mobile. */
+.payroll-runs-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:20px}
+.payroll-runs-header .payroll-runs-heading{margin:0 0 10px}
+.payroll-run-count{font-size:12px;color:#64718b;font-weight:650;white-space:nowrap}
+.payroll-runs-empty{border:1px dashed #cfd7e6;border-radius:10px;padding:18px 20px;background:#fafbfe;display:grid;gap:6px;margin-bottom:2px}
+.payroll-runs-empty strong{font-size:13px;color:#36425f}
+.payroll-runs-empty p{margin:0;font-size:12px;color:#64718b;line-height:1.5;max-width:650px}
+.payroll-create-draft{grid-template-columns:minmax(0,1fr);align-items:stretch;gap:14px;margin-top:18px}
+.payroll-create-copy{min-width:0}
+.payroll-create-actions{display:grid;grid-template-columns:minmax(190px,240px) max-content;align-items:end;justify-content:start;gap:12px}
+.payroll-create-actions>label{min-width:0;display:grid;gap:6px}
+.payroll-create-actions>label input{width:100%;height:var(--hrms-control-height)}
+.payroll-create-actions>button{height:var(--hrms-control-height);align-self:end;white-space:nowrap}
+[data-theme="dark"] .payroll-runs-empty{background:#212b40;border-color:#4b5570}
+[data-theme="dark"] .payroll-runs-empty strong{color:#e4e8f5}
+[data-theme="dark"] .payroll-runs-empty p,[data-theme="dark"] .payroll-run-count{color:#b6c3d7}
+@media(max-width:620px){
+ .payroll-create-draft{padding:16px}
+ .payroll-create-actions{grid-template-columns:minmax(0,1fr)}
+ .payroll-create-actions>button{width:100%;white-space:normal}
+}
+
+/* Align the month input and draft button on the exact same grid row. */
+.payroll-create-actions{
+ grid-template-rows:auto var(--hrms-control-height);
+ align-items:stretch;
+}
+.payroll-create-actions>label{
+ grid-column:1;
+ grid-row:1 / 3;
+ grid-template-rows:auto var(--hrms-control-height);
+ align-self:stretch;
+ margin:0;
+}
+.payroll-create-actions>label input{
+ grid-row:2;
+ margin:0;
+ min-height:0;
+ height:100%;
+}
+.payroll-create-actions>button{
+ grid-column:2;
+ grid-row:2;
+ align-self:stretch;
+ margin:0;
+ min-height:0;
+ height:100%;
+}
+@media(max-width:620px){
+ .payroll-create-actions{grid-template-rows:auto var(--hrms-control-height) auto}
+ .payroll-create-actions>label{grid-row:1 / 3}
+ .payroll-create-actions>button{grid-column:1;grid-row:3;min-height:var(--hrms-control-height)}
+}
