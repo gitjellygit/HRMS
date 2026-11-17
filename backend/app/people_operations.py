@@ -401,6 +401,14 @@ def offer_pdf(offer_id:int,user:Employee=Depends(current_user),db:Session=Depend
     return StreamingResponse(b,media_type="application/pdf",headers={
        "Content-Disposition":f'attachment; filename="offer-{offer_id}.pdf"',"Cache-Control":"private, no-store"})
 
+def ensure_onboarding_defaults(db:Session):
+    defaults={"document":"Document","asset":"Asset","induction":"Induction","hr":"HR","it":"IT"}
+    existing=set(db.scalars(select(OnboardingCategory.slug).where(OnboardingCategory.slug.in_(defaults))).all())
+    missing=[OnboardingCategory(slug=slug,display_name=label) for slug,label in defaults.items() if slug not in existing]
+    if missing:
+        db.add_all(missing)
+        db.flush()
+
 class CategoryIn(BaseModel):
     slug:str=Field(min_length=2,max_length=30,pattern=r"^[a-z][a-z0-9_]*$")
     display_name:str=Field(min_length=2,max_length=80)
@@ -411,6 +419,8 @@ class CategoryEdit(BaseModel):
 
 @router.get("/onboarding/categories")
 def onboarding_categories(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    ensure_onboarding_defaults(db)
+    db.commit()
     rows=db.scalars(select(OnboardingCategory).order_by(OnboardingCategory.display_name)).all()
     return [{"id":r.id,"slug":r.slug,"display_name":r.display_name,"active":r.active} for r in rows]
 
@@ -450,6 +460,7 @@ def archive_onboarding_category(category_id:int,user:Employee=Depends(current_us
 def add_task(body:TaskIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     require_hr(user)
     if not db.get(Employee,body.employee_id):raise HTTPException(422,"Employee not found.")
+    ensure_onboarding_defaults(db)
     if not db.scalar(select(OnboardingCategory.id).where(OnboardingCategory.slug==body.category,OnboardingCategory.active.is_(True))):
         raise HTTPException(422,"Choose an active onboarding category.")
     if body.assigned_to and not db.get(Employee,body.assigned_to):raise HTTPException(422,"Assignee not found.")
