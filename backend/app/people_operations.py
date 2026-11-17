@@ -5,16 +5,18 @@ These are internal workflows, not a certified e-signature or messaging provider.
 import io
 import os
 import hashlib
+import uuid
+from pathlib import Path
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Literal
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, select, func
 from sqlalchemy.orm import Mapped, Session, mapped_column
-from .main import Base, Employee, Attendance, current_user, db_session
+from .main import Base, Employee, Attendance, current_user, db_session, UPLOAD_DIR
 from .employee_core import EmployeeCore
 from .leave_management import LeaveRequest
 from .payroll import PayrollLine, PayrollRun
@@ -40,6 +42,12 @@ class HRAudit(Base):
     action:Mapped[str]=mapped_column(String(50))
     note:Mapped[str]=mapped_column(String(500),default="")
     created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
+
+class CompanyLetterhead(Base):
+    __tablename__="people_company_letterhead"
+    id:Mapped[int]=mapped_column(primary_key=True)
+    logo_key:Mapped[str]=mapped_column(String(100),default="")
+    updated_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
 
 class OfferTemplate(Base):
     __tablename__="people_offer_templates"
@@ -214,6 +222,41 @@ def notify(db,employee_id,event,subject,body):
         db.add(NotifyOutbox(employee_id=employee_id,event=event,subject=subject,body=body,
                             channel=channel,status="queued"))
 
+@router.post("/letterhead/logo")
+async def upload_letterhead_logo(file:UploadFile=File(...),user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    if file.content_type not in ("image/png","image/jpeg"):
+        raise HTTPException(422,"Upload a PNG or JPEG company logo.")
+    content=await file.read(2*1024*1024+1)
+    if len(content)>2*1024*1024:
+        raise HTTPException(413,"Company logo must be smaller than 2 MB.")
+    if not (content.startswith(b"\\x89PNG\\r\\n\\x1a\\n") or content.startswith(b"\\xff\\xd8\\xff")):
+        raise HTTPException(422,"Invalid PNG/JPEG file.")
+    from reportlab.lib.utils import ImageReader
+    try:
+        ImageReader(io.BytesIO(content)).getSize()
+    except Exception:
+        raise HTTPException(422,"Cannot read the company logo image.")
+    key=f"{uuid.uuid4().hex}.{'png' if file.content_type=='image/png' else 'jpg'}"
+    destination=UPLOAD_DIR/"company_letterhead"
+    destination.mkdir(parents=True,exist_ok=True)
+    (destination/key).write_bytes(content)
+    row=db.get(CompanyLetterhead,1)
+    if not row:
+        row=CompanyLetterhead(id=1)
+        db.add(row)
+    row.logo_key=key
+    row.updated_at=now()
+    audit(db,user,"letterhead",1,"logo_updated")
+    db.commit()
+    return {"ok":True,"has_logo":True}
+
+@router.get("/letterhead")
+def get_letterhead(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    row=db.get(CompanyLetterhead,1)
+    return {"has_logo":bool(row and row.logo_key)}
+
 @router.post("/offer-templates",status_code=201)
 def create_template(body:TemplateIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     require_hr(user)
@@ -320,7 +363,16 @@ def offer_pdf(offer_id:int,user:Employee=Depends(current_user),db:Session=Depend
     if row.status=="draft" and not is_hr(user):raise HTTPException(404)
     b=io.BytesIO();pdf=canvas.Canvas(b,pagesize=(595,842))
     pdf.setTitle("Employment Offer")
-    pdf.setFont("Helvetica-Bold",18);pdf.drawString(45,784,"JellyGit | Employment Offer")
+    letterhead=db.get(CompanyLetterhead,1)
+    if letterhead and letterhead.logo_key:
+        from reportlab.lib.utils import ImageReader
+        logo=UPLOAD_DIR/"company_letterhead"/Path(letterhead.logo_key).name
+        if logo.is_file():
+            try:
+                pdf.drawImage(ImageReader(str(logo)),45,770,width=105,height=47,preserveAspectRatio=True,anchor="sw",mask="auto")
+            except Exception:
+                pass
+    pdf.setFont("Helvetica-Bold",18);pdf.drawString(170,784,"Employment Offer")
     pdf.setFont("Helvetica",10)
     from reportlab.lib.utils import simpleSplit
     y=740
