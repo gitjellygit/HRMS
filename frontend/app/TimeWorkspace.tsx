@@ -1,3 +1,4 @@
+import {useTransientMessage} from "./useTransientMessage";
 "use client";
 import {explainError} from "./formErrors";
 import {useCallback,useEffect,useRef,useState} from "react";
@@ -19,7 +20,7 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
  const [errorField,setErrorField]=useState("");
- const [notice,setNotice]=useState("");
+ const [notice,setNotice]=useTransientMessage();
  const [daily,setDaily]=useState<Row[]>([]);
  const [auditEmployee,setAuditEmployee]=useState("");
  const [auditDate,setAuditDate]=useState(today());
