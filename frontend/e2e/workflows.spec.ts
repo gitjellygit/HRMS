@@ -1,3 +1,4 @@
+import {signOut} from "./helpers";
 import { test, expect, request } from '@playwright/test';
 import { login, navigate, users } from './helpers';
 import {TEST_PASSWORD} from './global-setup';
@@ -199,7 +200,7 @@ test.describe('business-critical cross-role workflows',()=>{
               approval_chain:['manager','hr'],probation_allowed:true,active:true}});
       expect(policy.status()).toBe(200);
     }finally{await admin.dispose()}
-    await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
+    await signOut(page);
     await login(page,persona('sales_a'));
     await navigate(page,'Leave requests');
     await page.locator('.leave-form select').first().selectOption('casual');
@@ -208,7 +209,7 @@ test.describe('business-critical cross-role workflows',()=>{
     await page.locator('.leave-form textarea').fill(reason);
     await page.getByRole('button',{name:'Submit request'}).click();
     await expect(page.getByRole('status')).toContainText('submitted for approval');
-    await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
+    await signOut(page);
 
     // Verify the manager review with an isolated authenticated API session.
     // The submission stage above remains a full UI test; the manager and HR
