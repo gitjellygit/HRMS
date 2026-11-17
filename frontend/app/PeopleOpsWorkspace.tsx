@@ -175,7 +175,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
       {onboardingCategories.filter(c=>c.active).map(c=><option key={c.id} value={c.slug}>{c.display_name}</option>)}</select></label>
      {input("title","Task title",true)}{input("asset_code","Asset code (optional)")}
      {input("due_date","Due date",false,"date")}
-     <label>Responsible person<select value={draft.assigned_to||""} onChange={e=>setDraft(v=>({...v,assigned_to:e.target.value}))}>
+     <label>Responsible person<select required value={draft.assigned_to||""} onChange={e=>setDraft(v=>({...v,assigned_to:e.target.value}))}>
       <option value="">Choose a responsible employee</option>{staff.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></label>
      <button className="employee-primary">Assign task</button>
      <button type="button" className="employee-cancel" disabled={!draft.employee_id} onClick={()=>void save(()=>call("/onboarding/orientation/"+draft.employee_id,"POST"),"Seven-step welcome orientation initialized.")}>Start welcome orientation (7 steps)</button></form>}
