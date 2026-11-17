@@ -1,5 +1,6 @@
 """Transparent employee activity-agent enrollment and heartbeat status (pilot)."""
 import hashlib
+import json
 import secrets
 from datetime import datetime, timezone, timedelta
 from typing import Literal
@@ -28,6 +29,7 @@ class ActivityDevice(Base):
     exit_reason:Mapped[str]=mapped_column(Text,default="")
     active_seconds:Mapped[int]=mapped_column(Integer,default=0)
     idle_seconds:Mapped[int]=mapped_column(Integer,default=0)
+    app_usage_json:Mapped[str]=mapped_column(Text,default="{}")
     revoked:Mapped[bool]=mapped_column(default=False)
 
 class EnrollIn(BaseModel):
@@ -39,6 +41,7 @@ class BeatIn(BaseModel):
     active_seconds:int=Field(ge=0,le=86400)
     idle_seconds:int=Field(ge=0,le=86400)
     exit_reason:str|None=Field(default=None,max_length=1000)
+    apps:dict[str,int]=Field(default_factory=dict,max_length=30)
 
 def require_hr(user):
     if user.role not in HR:raise HTTPException(403,"HR access required.")
@@ -64,6 +67,9 @@ def heartbeat(data:BeatIn,authorization:str|None=Header(default=None),db:Session
     device.state=data.state
     device.active_seconds=data.active_seconds
     device.idle_seconds=data.idle_seconds
+    if any(not name or len(name)>60 or seconds<0 or seconds>86400 for name,seconds in data.apps.items()):
+        raise HTTPException(422,"Invalid application usage summary.")
+    device.app_usage_json=json.dumps(data.apps)
     device.last_seen=utcnow()
     if data.state=="stopped":
         device.stopped_at=utcnow()
@@ -87,7 +93,7 @@ def list_devices(user:Employee=Depends(current_user),db:Session=Depends(db_sessi
         online=bool(d.state=="monitoring" and seen and now-seen<timedelta(seconds=100) and not d.revoked)
         result.append({"id":d.id,"employee_id":d.employee_id,"employee_name":employees.get(d.employee_id,f"Employee #{d.employee_id}"),"device_label":d.device_label,
                        "status":"monitoring" if online else ("stopped" if d.state=="stopped" else "offline"),"last_seen":seen,
-                       "active_seconds":d.active_seconds,"idle_seconds":d.idle_seconds,"exit_reason":d.exit_reason if d.state=="stopped" else "","revoked":d.revoked})
+                       "active_seconds":d.active_seconds,"idle_seconds":d.idle_seconds,"apps":json.loads(d.app_usage_json or "{}"),"exit_reason":d.exit_reason if d.state=="stopped" else "","revoked":d.revoked})
     return result
 
 @router.post("/devices/{device_id}/revoke")
