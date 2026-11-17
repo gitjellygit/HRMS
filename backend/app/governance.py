@@ -7,7 +7,7 @@ from sqlalchemy import DateTime, ForeignKey, String, Text, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 from .main import Base, Employee, current_user, db_session
 from .bonus_policy import CompanyPolicy, CompanyPolicyRecord, BonusPolicyIn, PolicyRecordIn
-from .leave_management import LeavePolicy, PolicyIn, EntitlementIn, apply_leave_policy
+from .leave_management import LeavePolicy, PolicyIn, EntitlementIn, apply_leave_policy, policy as active_leave_policy
 from .employee_core import LeaveEntitlement
 from .payroll import SalaryIn, StatutoryIn, apply_salary_structure, apply_statutory_settings
 from .payroll_components import ComponentIn, apply_component
@@ -138,9 +138,7 @@ def apply(db,row):
         p=EntitlementIn.model_validate(data)
         user=db.get(Employee,p.employee_id)
         if not user or user.status!="active":raise HTTPException(422,"Employee is not active")
-        kind=db.scalar(select(LeavePolicy.id).where(LeavePolicy.leave_type==p.leave_type,
-                                                    LeavePolicy.active.is_(True)))
-        if not kind:raise HTTPException(422,"Active leave type required")
+        active_leave_policy(db,p.leave_type)
         x=db.scalar(select(LeaveEntitlement).where(
             LeaveEntitlement.employee_id==p.employee_id,
             LeaveEntitlement.year==p.year,LeaveEntitlement.leave_type==p.leave_type).with_for_update())
