@@ -38,3 +38,14 @@ test('employee directory explains why inactive employees have no deactivate acti
  await expect(directory).toBeVisible();
  await expect(directory.getByRole('columnheader',{name:'HR actions'})).toBeVisible();
 });
+
+test('HR employee directory exposes edit details and prefilled employee form',async({page})=>{
+ await login(page,hr());
+ await navigate(page,'Employees');
+ const edit=page.getByRole('button',{name:/Edit details for /}).first();
+ await expect(edit).toBeVisible();
+ await edit.click();
+ await expect(page.getByRole('heading',{name:'Edit employee details'})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Save employee details'})).toBeVisible();
+ await expect(page.getByText('Reason for changes (minimum 10 characters)')).toBeVisible();
+});
