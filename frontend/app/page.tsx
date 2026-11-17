@@ -87,18 +87,35 @@ export default function Home() {
   useEffect(()=>{const stored=localStorage.getItem("jellygit-theme");const selected=stored==="dark"?"dark":"light";setTheme(selected);document.documentElement.dataset.theme=selected},[]);
   function changeTheme(next:"light"|"dark"){
     const root=document.documentElement;
+    const apply=()=>{
+      root.dataset.theme=next;
+      setTheme(next);
+      localStorage.setItem("jellygit-theme",next);
+      setProfileMenu(false);
+    };
+    const reduce=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const doc=document as Document & {startViewTransition?: (cb:()=>void)=>{ready:Promise<void>}};
+    if(!reduce&&doc.startViewTransition){
+      const trigger=profileMenuRef.current?.querySelector(".hrms-profile-trigger");
+      const rect=trigger?.getBoundingClientRect();
+      const x=rect?rect.left+rect.width/2:window.innerWidth-50;
+      const y=rect?rect.top+rect.height/2:55;
+      const radius=Math.hypot(Math.max(x,window.innerWidth-x),Math.max(y,window.innerHeight-y));
+      const transition=doc.startViewTransition(()=>apply());
+      void transition.ready.then(()=>{
+        root.animate({clipPath:[`circle(0px at ${x}px ${y}px)`,`circle(${radius}px at ${x}px ${y}px)`]},
+          {duration:480,easing:"ease-out",fill:"both",pseudoElement:"::view-transition-new(root)"} as KeyframeAnimationOptions);
+      }).catch(()=>{});
+      return;
+    }
     root.classList.add("hrms-theme-changing");
-    // Capture the previous paint before applying the new palette.
     void root.offsetHeight;
-    root.dataset.theme=next;
-    setTheme(next);
-    localStorage.setItem("jellygit-theme",next);
-    setProfileMenu(false);
+    apply();
   }
   useEffect(()=>{
     const root=document.documentElement;
     if(!root.classList.contains("hrms-theme-changing"))return;
-    const id=window.setTimeout(()=>root.classList.remove("hrms-theme-changing"),240);
+    const id=window.setTimeout(()=>root.classList.remove("hrms-theme-changing"),480);
     return ()=>window.clearTimeout(id);
   },[theme]);
   useEffect(()=>{
