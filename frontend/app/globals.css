@@ -1108,3 +1108,28 @@ button.employee-cancel:disabled,button.auth-submit:disabled{cursor:not-allowed!i
 [data-theme="dark"] .governance-item-title h3,[data-theme="dark"] .governance-heading h2,[data-theme="dark"] .governance-overview strong{color:#e6eafa}
 [data-theme="dark"] .governance-fields dd,[data-theme="dark"] .governance-reason p,[data-theme="dark"] .governance-decision p{color:#dce4f5}
 @media(max-width:650px){.governance-heading{flex-direction:column}.governance-overview>div{padding:12px}.governance-overview strong{font-size:22px}.governance-item-head{flex-direction:column}.governance-meta,.governance-fields{grid-template-columns:1fr}.governance-fields .governance-wide{grid-column:auto}}
+
+
+/* Pre-pilot attendance audit and hybrid payslip controls */
+.time-attendance-audit{display:grid;gap:15px}
+.time-audit-filters{display:grid;grid-template-columns:minmax(190px,2fr) minmax(150px,1fr) minmax(185px,1.4fr) auto;gap:12px;align-items:end}
+.time-audit-filters label{display:grid;gap:7px;min-width:0;font-size:12px;font-weight:700;color:#5e6b83}
+.time-audit-filters input,.time-audit-filters select{width:100%;box-sizing:border-box;border:1px solid #d7dfeb;border-radius:9px;min-height:41px;background:#fff;padding:8px 12px;color:#293b57}
+.time-audit-filters button{min-height:41px}
+.time-audit-results{display:grid;gap:14px}
+.time-audit-summary{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:12px 15px;border:1px solid #e1e8f1;background:#f8fafd;border-radius:10px;font-size:12px;color:#455874}
+.time-audit-summary strong{color:#2b3853}
+.payroll-hybrid-payslips{display:grid;gap:15px}
+.payroll-manual-upload{display:grid;gap:14px;border:1px solid #e0e5ef;background:#f9fafd;border-radius:12px;padding:18px;margin-top:16px}
+.payroll-manual-upload h3{margin:0;font-size:16px}
+.payroll-manual-upload>label{display:grid;gap:7px;font-size:12px;font-weight:700;color:#52607a}
+.payroll-manual-upload textarea{box-sizing:border-box;width:100%;min-height:74px;border-radius:9px;border:1px solid #d7dfeb;background:#fff;color:#24344f;padding:10px}
+.payroll-manual-upload .employee-form-grid label{display:grid;gap:7px;font-size:12px;color:#53627a;font-weight:700;min-width:0}
+.payroll-manual-upload .employee-form-grid input,.payroll-manual-upload .employee-form-grid select{box-sizing:border-box;width:100%;max-width:100%;min-height:41px;border:1px solid #d7dfeb;border-radius:9px;background:#fff;color:#253550;padding:8px}
+.payroll-manual-upload .employee-primary{width:fit-content}
+.payroll-manual-modes{display:flex;flex-wrap:wrap;gap:16px;font-size:13px;font-weight:650;color:#485b7b}
+.payroll-manual-modes label{display:inline-flex;align-items:center;gap:7px;cursor:pointer}
+[data-theme="dark"] .time-audit-summary,[data-theme="dark"] .payroll-manual-upload{background:#202a40;border-color:#46516a}
+[data-theme="dark"] .time-audit-filters input,[data-theme="dark"] .time-audit-filters select,[data-theme="dark"] .payroll-manual-upload :is(input,select,textarea){background:#1c263b;color:#e5edfa;border-color:#526079}
+@media(max-width:950px){.time-audit-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.time-audit-filters{grid-template-columns:1fr}.payroll-manual-upload{padding:14px}}
