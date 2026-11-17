@@ -1,4 +1,5 @@
 "use client";
+import {useTransientMessage} from "./useTransientMessage";
 import {useEffect,useState} from "react";
 import {ClipboardCheck,Send,LifeBuoy,UserRoundX,BarChart3,Bell,ShieldCheck,FileSignature} from "lucide-react";
 import FeedbackMotion from "./FeedbackMotion";
@@ -26,7 +27,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
  const [rules,setRules]=useState<Row[]>([]);
  const [notifications,setNotifications]=useState<Row[]>([]);
  const [audits,setAudits]=useState<Row[]>([]);
- const [info,setInfo]=useState("");const [error,setError]=useState("");const [busy,setBusy]=useState(false);
+ const [info,setInfo]=useTransientMessage();const [error,setError]=useState("");const [busy,setBusy]=useState(false);
  const [draft,setDraft]=useState<Row>({});
  const [selected,setSelected]=useState("");
  const [reply,setReply]=useState("");
