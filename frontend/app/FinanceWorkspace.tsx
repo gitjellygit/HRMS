@@ -29,6 +29,7 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
  const [tax,setTax]=useState("0");
  const [scheduleDate,setScheduleDate]=useState(today());
  const [notice,setNotice]=useState<{kind:"success"|"error";text:string}|null>(null);
+ useEffect(()=>{if(notice?.kind!=="success")return;const id=window.setTimeout(()=>setNotice(null),4500);return ()=>window.clearTimeout(id)},[notice]);
  const [busy,setBusy]=useState(false);
  const [result,setResult]=useState<Row|null>(null);
  const successRef=useRef<HTMLDivElement|null>(null);
