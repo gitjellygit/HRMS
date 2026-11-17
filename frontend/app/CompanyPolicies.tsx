@@ -63,6 +63,7 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
     body:JSON.stringify(isHR?{kind:"company_policy",reason:approvalReason,payload:{title:policyTitle.trim(),category:policyCategory,description:policyDescription.trim(),effective_date:effectiveDate,active:true,audience_ids:audience}}:{title:policyTitle.trim(),category:policyCategory,description:policyDescription.trim(),effective_date:effectiveDate,active:true,audience_ids:audience})});
    const data=await response.json().catch(()=>({}));
    if(!response.ok)throw Error(explainError(data,response.status));
+   let attachmentFailed=false;
    if(!isHR){
      setRecords(previous=>[data,...previous]);
      if(newDocument){
@@ -70,6 +71,7 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
        const uploaded=await fetch(api+"/policies/records/"+data.id+"/attachments",{method:"POST",credentials:"include",body:form});
        if(!uploaded.ok){
          const failure=await uploaded.json().catch(()=>({}));
+         attachmentFailed=true;
          setError("Policy published, but its PDF could not be attached: "+explainError(failure,uploaded.status)+". Add the document in the published policy below.");
        }else{
          const latest=await fetch(api+"/policies/records",{credentials:"include"});
@@ -78,7 +80,7 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
      }
    }
    setAdding(false);setPolicyTitle("");setPolicyDescription("");setAudience([]);setNewDocument(null);
-   setSaved(isHR?"Policy submitted for admin approval (#"+data.id+"). Attach its PDF after approval and publication.":"Company policy published to the selected employees.");
+   if(!attachmentFailed)setSaved(isHR?"Policy submitted for admin approval (#"+data.id+"). Attach its PDF after approval and publication.":"Company policy published to the selected employees.");
   }catch(err){setError((err as Error).message)}finally{setPolicyBusy(false)}
  }
  async function uploadAttachment(policyId:number){
