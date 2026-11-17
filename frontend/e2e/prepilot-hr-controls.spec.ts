@@ -1,3 +1,4 @@
+import {signOut} from "./helpers";
 import {test,expect} from '@playwright/test';
 import {login,navigate,users} from './helpers';
 import {API_URL} from '../playwright.config';
@@ -47,7 +48,7 @@ test('HR can upload one manual payslip; other employee cannot download it',async
  const slip=(await all.json()).find((row:{employee_id:number;original_name:string})=>
   row.employee_id===actor('developer_a').id&&row.original_name==='QA-november.pdf');
  expect(slip).toBeTruthy();
- await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
+ await signOut(page);
  await login(page,actor('developer_b'));
  expect((await page.request.get(API_URL+'/payroll/manual-payslips/'+slip.id+'.pdf')).status()).toBe(403);
 });
