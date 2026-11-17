@@ -61,7 +61,7 @@ export default function PeopleOpsExtras({api,user}:{api:string;user:{id:number;r
     <button className="primary">Allocate asset</button>
    </form>}
    <div className="table-wrap asset-register-table"><table><thead><tr><th>Asset</th><th>Serial</th><th>Employee</th><th>Returned</th></tr></thead>
-   <tbody>{assets.map(a=><tr key={a.id}><td>{a.name}</td><td>{a.serial_number}</td><td>#{a.employee_id}</td>
+   <tbody>{assets.map(a=><tr key={a.id}><td>{a.name}</td><td>{a.serial_number}</td><td>{employees.find(p=>p.id===a.employee_id)?.name||("Employee #"+a.employee_id)}</td>
     <td>{a.returned_at?"Yes":hr?<button className="secondary" onClick={()=>void save(
      ()=>call("/assets/"+a.id+"/return","POST"),"Asset return recorded.")}>Record return</button>:"No"}</td></tr>)}</tbody></table></div>
   </>}
@@ -69,7 +69,7 @@ export default function PeopleOpsExtras({api,user}:{api:string;user:{id:number;r
    <label>Helpdesk ticket<select value={ticketId} onChange={e=>void loadThread(e.target.value)}>
     <option value="">Select ticket</option>{tickets.map(t=><option key={t.id} value={t.id}>#{t.id} · {t.subject}</option>)}
    </select></label>
-   {thread.map(m=><div className="card" key={m.id}><strong>From employee #{m.author_id}</strong><p>{m.body}</p></div>)}
+   {thread.map(m=><div className="card" key={m.id}><strong>{employees.find(p=>p.id===m.author_id)?.name||("Employee #"+m.author_id)}</strong><p>{m.body}</p></div>)}
    {ticketId&&<form className="form" onSubmit={e=>{e.preventDefault();void save(async()=>{
      await call("/tickets/"+ticketId+"/messages","POST",{body:note});await loadThread(ticketId);setNote("");
     },"Reply added.")}}>
