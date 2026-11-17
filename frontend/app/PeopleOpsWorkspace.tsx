@@ -36,6 +36,8 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
  const [exitEmployee,setExitEmployee]=useState("");
  const [exitReason,setExitReason]=useState("");
  const [exitNotice,setExitNotice]=useState("30");
+ const [noticeEditCase,setNoticeEditCase]=useState<number|null>(null);
+ const [noticeReason,setNoticeReason]=useState("");
  const [exitTemplates,setExitTemplates]=useState<Row[]>([]);
  const [templateTitle,setTemplateTitle]=useState("");
  const [templateRole,setTemplateRole]=useState("hr");
@@ -217,14 +219,13 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
   {tab==="exit"&&<div className="ops-columns">
    <section className="employee-surface"><h3><UserRoundX size={17}/> Exit request</h3>
     {!hr&&<form className="ops-form" onSubmit={e=>{e.preventDefault();void submit("/exits",{
-      reason:draft.reason,notice_days:Number(draft.notice_days||0),
+      reason:draft.reason,
       requested_date:draft.requested_date||today()},"Resignation request submitted.")}}>
       <label className="wide">Resignation reason<textarea minLength={10} required rows={4} value={draft.reason||""}
        onChange={e=>setDraft(v=>({...v,reason:e.target.value}))}/></label>
-      {input("notice_days","Notice period (days)",true,"number")}
       <label>Request date<input type="date" value={draft.requested_date||today()}
        onChange={e=>setDraft(v=>({...v,requested_date:e.target.value}))}/></label>
-      <button className="employee-primary">Request resignation</button></form>}
+      <p className="field-help">HR determines the applicable notice period and reviews your final working day.</p><button className="employee-primary">Request resignation</button></form>}
     {hr&&<><p className="muted">Select an employee to begin their exit, then assign the configured employee and HR checklist tasks.</p>
      <form className="ops-form ops-compact-form" onSubmit={initiateExit}>
       <label>Employee<select required value={exitEmployee} onChange={e=>setExitEmployee(e.target.value)}>
@@ -267,6 +268,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
    </section>
    <section className="employee-surface"><h3>Exit cases</h3><div className="ops-table">{(hr?allExits:exits).map(x=><div className="ops-row exit-case-row" key={x.id}>
      <div className="exit-case-heading"><strong>Case #{x.id} · {x.status}</strong><span>{staff.find(p=>p.id===x.employee_id)?.name||"Employee #"+x.employee_id} · Last day {x.planned_last_day}</span></div><p>{x.reason}</p>
+      {hr&&x.status!=="settled"&&x.status!=="rejected"&&<div className="ops-form"><button type="button" className="employee-cancel" onClick={()=>{setNoticeEditCase(noticeEditCase===x.id?null:x.id);setExitNotice(String(x.notice_days));setNoticeReason("")}}>Review notice period ({x.notice_days} days)</button>{noticeEditCase===x.id&&<><label>Approved notice days<input type="number" min="0" max="365" value={exitNotice} onChange={e=>setExitNotice(e.target.value)}/></label><label>Reason for change<textarea minLength={10} required value={noticeReason} onChange={e=>setNoticeReason(e.target.value)}/></label><button type="button" className="employee-primary" disabled={busy||noticeReason.trim().length<10} onClick={()=>void save(async()=>{await call("/exits/"+x.id+"/notice","PUT",{notice_days:Number(exitNotice),reason:noticeReason});setNoticeEditCase(null)},"Employee notice period reviewed.")}>Save notice review</button></>}</div>}
       <div className="exit-task-controls"><button className="employee-cancel" type="button" onClick={()=>void loadExitTasks(x.id)}>View assigned exit tasks</button>
        {(exitTasks[x.id]||[]).map(t=><div className="exit-task-entry" key={t.id}>
         <strong>{t.title}</strong><small>{t.assignee_role==="hr"?"HR task":"Employee task"} · {t.status}</small>
