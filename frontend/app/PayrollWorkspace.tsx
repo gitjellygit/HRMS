@@ -86,11 +86,11 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
   if(!payslipFile){setError("Choose a PDF or ZIP file.");return}
   if(payslipMode==="single"&&!payslipEmployee){setError("Select the employee.");return}
   const fields=new FormData();fields.set(payslipMode==="single"?"document":"archive",payslipFile);
+  fields.set("period",payslipPeriod);fields.set("reason",payslipReason.trim());
+  if(payslipMode==="single")fields.set("employee_id",payslipEmployee);
   setBusy(true);
   try{
-   const params=new URLSearchParams({period:payslipPeriod,reason:payslipReason.trim()});
-   if(payslipMode==="single")params.set("employee_id",payslipEmployee);
-   const response=await fetch(api+"/payroll/manual-payslips"+(payslipMode==="bulk"?"/bulk":"")+"?"+params.toString(),
+   const response=await fetch(api+"/payroll/manual-payslips"+(payslipMode==="bulk"?"/bulk":""),
      {method:"POST",credentials:"include",body:fields});
    const result=await response.json().catch(()=>({}));
    if(!response.ok)throw Error(explainError(result,response.status));
