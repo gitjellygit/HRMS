@@ -22,7 +22,10 @@ test('governance request uses named requester, notifies admin, then moves into h
  }});
  expect(duplicate.status()).toBe(409);
  await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
- await login(page,actor('admin'));
+ await page.locator('input[name="email"]').fill(process.env.E2E_ADMIN_EMAIL!);
+ await page.locator('input[name="password"]').fill(process.env.E2E_ADMIN_PASSWORD!);
+ await page.getByRole('button',{name:/sign in/i}).click();
+ await expect(page.locator('.sidebar .brand')).toBeVisible();
  const notification=await page.request.get(API_URL+'/notification-center');
  expect(notification.ok()).toBeTruthy();
  expect((await notification.json()).items.some((n:{destination:string;title:string})=>n.destination==='governance'&&n.title.includes('Approval needed'))).toBeTruthy();
