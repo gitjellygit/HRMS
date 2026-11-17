@@ -177,7 +177,6 @@ class TicketReply(BaseModel):
 
 class ExitIn(BaseModel):
     reason:str=Field(min_length=10,max_length=2000)
-    notice_days:int=Field(ge=0,le=365)
     requested_date:date=Field(default_factory=date.today)
 
 class ExitUpdate(BaseModel):
@@ -431,13 +430,30 @@ def request_exit(body:ExitIn,user:Employee=Depends(current_user),db:Session=Depe
         ExitCase.status.in_(["requested","approved","clearance"])))
     if active:raise HTTPException(409,"An exit case is already in progress.")
     row=ExitCase(employee_id=user.id,reason=body.reason,
-        requested_date=body.requested_date,notice_days=body.notice_days,
-        planned_last_day=body.requested_date+timedelta(days=body.notice_days))
+        requested_date=body.requested_date,notice_days=30,
+        planned_last_day=body.requested_date+timedelta(days=30))
     db.add(row);db.flush()
     from .exit_workflow import create_tasks
     create_tasks(db,row)
     audit(db,user,"exit",row.id,"requested");db.commit()
     return {"id":row.id,"status":row.status,"last_day":row.planned_last_day}
+
+class ExitNoticeReview(BaseModel):
+    notice_days:int=Field(ge=0,le=365)
+    reason:str=Field(min_length=10,max_length=1000)
+
+@router.put("/exits/{exit_id}/notice")
+def update_exit_notice(exit_id:int,body:ExitNoticeReview,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    row=db.get(ExitCase,exit_id)
+    if not row:raise HTTPException(404,"Exit request not found.")
+    if row.status in ("rejected","settled"):raise HTTPException(409,"Closed exit cases cannot be changed.")
+    row.notice_days=body.notice_days
+    row.planned_last_day=row.requested_date+timedelta(days=body.notice_days)
+    audit(db,user,"exit",row.id,"notice_reviewed",body.reason.strip())
+    notify(db,row.employee_id,"exit","Notice period reviewed",f"HR reviewed your notice period: {body.notice_days} days; expected last working day {row.planned_last_day}.")
+    db.commit()
+    return {"id":row.id,"notice_days":row.notice_days,"planned_last_day":row.planned_last_day}
 
 @router.get("/exits")
 def exits(scope:Literal["mine","all"]="mine",user:Employee=Depends(current_user),db:Session=Depends(db_session)):
