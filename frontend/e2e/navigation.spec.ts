@@ -1,3 +1,4 @@
+import {signOut} from "./helpers";
 import { test, expect } from '@playwright/test';
 import { users, login, navigate, NAV, permitted } from './helpers';
 
@@ -53,7 +54,7 @@ test.describe('login and privacy', () => {
   });
   test('sign-out returns to login and cannot access HRMS without signing back in', async ({ page }) => {
     await login(page, users()[0]);
-    await page.locator('.sidebar nav').getByRole('button', { name: 'Sign out' }).click();
+    await signOut(page);
     await expect(page.locator('input[name="email"]')).toBeVisible();
     await page.reload();
     await expect(page.locator('input[name="email"]')).toBeVisible();
