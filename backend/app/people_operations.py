@@ -68,6 +68,7 @@ class Offer(Base):
     joining_date:Mapped[date]=mapped_column(Date)
     rendered_content:Mapped[str]=mapped_column(Text)
     document_hash:Mapped[str]=mapped_column(String(64))
+    letterhead_logo_key:Mapped[str]=mapped_column(String(100),default="")
     status:Mapped[str]=mapped_column(String(20),default="draft")
     signed_name:Mapped[str|None]=mapped_column(String(150),nullable=True)
     signed_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
@@ -330,9 +331,10 @@ def create_offer(body:OfferIn,user:Employee=Depends(current_user),db:Session=Dep
             ("annual_ctc",str(body.annual_ctc)),("joining_date",body.joining_date.isoformat())):
         content=content.replace("{{"+key+"}}",value)
     digest=hashlib.sha256(content.encode()).hexdigest()
+    letterhead=db.get(CompanyLetterhead,1)
     row=Offer(employee_id=emp.id,template_id=templ.id,title=body.title,
               annual_ctc=body.annual_ctc,joining_date=body.joining_date,rendered_content=content,
-              document_hash=digest,created_by=user.id)
+              document_hash=digest,letterhead_logo_key=letterhead.logo_key if letterhead else "",created_by=user.id)
     db.add(row);db.flush();audit(db,user,"offer",row.id,"created")
     db.commit();return {"id":row.id,"status":row.status,"hash":digest}
 
@@ -375,10 +377,9 @@ def offer_pdf(offer_id:int,user:Employee=Depends(current_user),db:Session=Depend
     if row.status=="draft" and not is_hr(user):raise HTTPException(404)
     b=io.BytesIO();pdf=canvas.Canvas(b,pagesize=(595,842))
     pdf.setTitle("Employment Offer")
-    letterhead=db.get(CompanyLetterhead,1)
-    if letterhead and letterhead.logo_key:
+    if row.letterhead_logo_key:
         from reportlab.lib.utils import ImageReader
-        logo=UPLOAD_DIR/"company_letterhead"/Path(letterhead.logo_key).name
+        logo=UPLOAD_DIR/"company_letterhead"/Path(row.letterhead_logo_key).name
         if logo.is_file():
             try:
                 pdf.drawImage(ImageReader(str(logo)),45,770,width=105,height=47,preserveAspectRatio=True,anchor="sw",mask="auto")
@@ -603,8 +604,8 @@ def request_exit(body:ExitIn,user:Employee=Depends(current_user),db:Session=Depe
         ExitCase.status.in_(["requested","approved","clearance"])))
     if active:raise HTTPException(409,"An exit case is already in progress.")
     row=ExitCase(employee_id=user.id,reason=body.reason,
-        requested_date=body.requested_date,notice_days=30,
-        planned_last_day=body.requested_date+timedelta(days=30))
+        requested_date=body.requested_date,notice_days=0,
+        planned_last_day=body.requested_date)
     db.add(row);db.flush()
     from .exit_workflow import create_tasks
     create_tasks(db,row)
