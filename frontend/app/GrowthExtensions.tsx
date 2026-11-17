@@ -41,6 +41,7 @@ export default function GrowthExtensions({api,user}:{api:string;user:{id:number;
   catch(e){setError((e as Error).message)}
  }
  const selected=manage?Number(employee):user.id;
+ const employeeName=(id:number)=>people.find(p=>p.id===id)?.name||(id===user.id?user.name:"Employee #"+id);
  return <section className="panel growth-workspace growth-extensions">
   <h2>Learning, career & 360 feedback</h2>
   <div className="time-tabs growth-tabs" role="tablist" aria-label="Learning and career sections">{([["learning","Learning & training"],["career","Career progression"],["feedback","Peer feedback"]] as const).map(([id,label])=>
