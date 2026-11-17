@@ -8,7 +8,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, select, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, select, func, text
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .main import Base, Employee, Attendance, current_user, db_session
@@ -319,8 +319,8 @@ def employee_punches(employee_id:int,work_date:date,
     start=datetime.combine(work_date,time.min,tzinfo=tz).astimezone(timezone.utc)
     end=datetime.combine(work_date+timedelta(days=1),time.min,tzinfo=tz).astimezone(timezone.utc)
     punches=db.scalars(select(Attendance).where(
-        Attendance.employee_id==employee_id,Attendance.punch_in>=start,
-        Attendance.punch_in<end).order_by(Attendance.punch_in.asc())).all()
+        Attendance.employee_id==employee_id,Attendance.punch_in<end,
+        (Attendance.punch_out>start)|(Attendance.punch_out.is_(None))).order_by(Attendance.punch_in.asc())).all()
     sessions=[]
     completed_seconds=0
     gap_seconds=0
@@ -329,19 +329,24 @@ def employee_punches(employee_id:int,work_date:date,
     for p in punches:
         opened=p.punch_in.astimezone(timezone.utc)
         closed=p.punch_out.astimezone(timezone.utc) if p.punch_out else None
-        if previous_end and opened>previous_end:
-            gap_seconds+=(opened-previous_end).total_seconds()
-        effective_end=closed or current_utc
-        seconds=max(0,(effective_end-opened).total_seconds())
+        effective_start=max(opened,start)
+        effective_end=min(closed or current_utc,end)
+        if effective_end<=effective_start:continue
+        if previous_end and effective_start>previous_end:
+            gap_seconds+=(effective_start-previous_end).total_seconds()
+        seconds=max(0,(effective_end-effective_start).total_seconds())
         completed_seconds+=seconds
         sessions.append({"id":p.id,"punch_in":p.punch_in.astimezone(tz).isoformat(),
             "punch_out":p.punch_out.astimezone(tz).isoformat() if p.punch_out else None,
+            "carried_across_midnight":opened<start or (closed is not None and closed>end),
             "status":"punched_out" if p.punch_out else "punched_in",
             "hours":round(seconds/3600,2)})
-        previous_end=closed
+        previous_end=effective_end
+    current_open=db.scalar(select(Attendance.id).where(Attendance.employee_id==employee_id,
+        Attendance.punch_out.is_(None)).limit(1))
     return {"employee_id":employee_id,"employee_name":person.name,"date":work_date,
             "timezone":timezone_name,"sessions":sessions,
-            "currently_punched_in":any(p.punch_out is None for p in punches),
+            "currently_punched_in":current_open is not None,
             "work_hours":round(completed_seconds/3600,2),
             "break_minutes":round(gap_seconds/60,1),
             "break_source":"Gaps between consecutive attendance sessions; manual or unrecorded breaks cannot be measured."}
@@ -428,6 +433,8 @@ def create_request(body:TimeRequestIn,user:Employee=Depends(current_user),db:Ses
     if body.kind=="shift_swap" and body.target_employee_id==user.id:raise HTTPException(422,"Choose another employee.")
     if body.kind=="shift_swap" and not db.get(Employee,body.target_employee_id):raise HTTPException(422,"Choose an existing colleague.")
     if body.kind=="wfh":
+        # Serialize concurrent requests for this employee/month across tabs and devices.
+        db.execute(text("SELECT pg_advisory_xact_lock(:lock)"),{"lock":600000000+user.id})
         proposed_end=body.end_date or body.work_date
         if (proposed_end-body.work_date).days>31:
             raise HTTPException(422,detail={"field":"end_date","message":"WFH requests must be for 31 days or fewer."})
