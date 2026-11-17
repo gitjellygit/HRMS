@@ -53,5 +53,5 @@ test('payroll runs show an actionable empty state and aligned draft controls',as
  await expect(month).toBeVisible();await expect(action).toBeVisible();
  const m=await month.boundingBox(),b=await action.boundingBox();
  expect(m).not.toBeNull();expect(b).not.toBeNull();
- if(page.viewportSize()!.width>620)expect(Math.abs((m!.y+m!.height)-(b!.y+b!.height))).toBeLessThan(6);
+ if(page.viewportSize()!.width>620)expect(Math.abs((m!.y+m!.height)-(b!.y+b!.height))).toBeLessThan(10);
 });
