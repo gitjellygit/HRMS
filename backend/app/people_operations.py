@@ -3,6 +3,7 @@ exit workflow, analytics, notification outbox and audit events.
 These are internal workflows, not a certified e-signature or messaging provider.
 """
 import io
+import json
 import os
 import hashlib
 import uuid
@@ -11,7 +12,7 @@ import secrets
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Literal
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, select, func
@@ -89,6 +90,8 @@ class Announcement(Base):
     title:Mapped[str]=mapped_column(String(180))
     body:Mapped[str]=mapped_column(Text)
     requires_ack:Mapped[bool]=mapped_column(Boolean,default=False)
+    media_key:Mapped[str]=mapped_column(String(100),default="")
+    audience_ids:Mapped[str]=mapped_column(Text,default="[]")
     created_by:Mapped[int]=mapped_column(ForeignKey("employees.id"))
     published_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
 
@@ -173,6 +176,7 @@ class AnnouncementIn(BaseModel):
     title:str=Field(min_length=4,max_length=180)
     body:str=Field(min_length=12,max_length=10000)
     requires_ack:bool=False
+    audience_ids:list[int]=Field(default_factory=list,max_length=500)
 
 class TicketIn(BaseModel):
     category:Literal["payroll","leave","attendance","benefits","it","other"]
@@ -421,21 +425,83 @@ def complete_task(task_id:int,user:Employee=Depends(current_user),db:Session=Dep
 @router.post("/announcements",status_code=201)
 def add_announcement(body:AnnouncementIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     require_hr(user)
-    row=Announcement(**body.model_dump(),created_by=user.id);db.add(row);db.flush()
+    data=body.model_dump(exclude={"audience_ids"})
+    row=Announcement(**data,created_by=user.id,audience_ids=json.dumps(sorted(set(body.audience_ids))))
+    db.add(row);db.flush()
     from .notification_center import add_inbox
     ids=db.scalars(select(Employee.id).where(Employee.status=="active")).all()
+    if body.audience_ids:
+        allowed=set(ids)
+        if any(item not in allowed for item in body.audience_ids):raise HTTPException(422,"Audience includes an inactive or unknown employee.")
+        ids=[item for item in sorted(set(body.audience_ids)) if item in allowed]
     for employee_id in ids:
         add_inbox(db,employee_id,"announcement",row.title,row.body,"people")
     audit(db,user,"announcement",row.id,"published");db.commit()
     return {"id":row.id,"recipients":len(ids)}
 
+@router.post("/announcements/with-media",status_code=201)
+async def publish_announcement_media(
+    title:str=Form(...),body:str=Form(...),requires_ack:bool=Form(False),
+    audience_json:str=Form("[]"),image:UploadFile|None=File(None),
+    user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    try:
+        ids=json.loads(audience_json)
+        if not isinstance(ids,list):raise ValueError()
+        payload=AnnouncementIn(title=title,body=body,requires_ack=requires_ack,audience_ids=ids)
+    except Exception:
+        raise HTTPException(422,"Choose a valid announcement audience.")
+    media_key=""
+    if image is not None:
+        if image.content_type not in ("image/png","image/jpeg","image/webp"):
+            raise HTTPException(422,"Upload a PNG, JPEG, or WebP announcement image.")
+        data=await image.read(3*1024*1024+1)
+        if len(data)>3*1024*1024:raise HTTPException(413,"Announcement image must be under 3 MB.")
+        formats=(data.startswith(bytes([137,80,78,71,13,10,26,10])),data.startswith(bytes([255,216,255])),data.startswith(b"RIFF") and data[8:12]==b"WEBP")
+        if not any(formats):raise HTTPException(422,"Announcement image is invalid.")
+        from PIL import Image
+        try:
+            im=Image.open(io.BytesIO(data))
+            im.verify()
+        except Exception:
+            raise HTTPException(422,"Cannot decode announcement image.")
+        ext={"image/png":"png","image/jpeg":"jpg","image/webp":"webp"}[image.content_type]
+        media_key=f"{uuid.uuid4().hex}.{ext}"
+        folder=UPLOAD_DIR/"announcements";folder.mkdir(parents=True,exist_ok=True)
+        (folder/media_key).write_bytes(data)
+    recipients=db.scalars(select(Employee.id).where(Employee.status=="active")).all()
+    if payload.audience_ids:
+        allowed=set(recipients)
+        if any(x not in allowed for x in payload.audience_ids):
+            raise HTTPException(422,"Audience includes an inactive or unknown employee.")
+        recipients=list(sorted(set(payload.audience_ids)))
+    row=Announcement(title=payload.title,body=payload.body,requires_ack=payload.requires_ack,
+                     audience_ids=json.dumps(sorted(set(payload.audience_ids))),media_key=media_key,created_by=user.id)
+    db.add(row);db.flush()
+    from .notification_center import add_inbox
+    for employee_id in recipients:add_inbox(db,employee_id,"announcement",row.title,row.body,"people")
+    audit(db,user,"announcement",row.id,"published")
+    db.commit()
+    return {"id":row.id,"recipients":len(recipients),"has_media":bool(media_key)}
+
+@router.get("/announcements/{announcement_id}/image")
+def announcement_image(announcement_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    row=db.get(Announcement,announcement_id)
+    if not row or not row.media_key:raise HTTPException(404,"Announcement image not found.")
+    audience=json.loads(row.audience_ids or "[]")
+    if not is_hr(user) and audience and user.id not in audience:raise HTTPException(403,"This announcement is not visible to you.")
+    path=UPLOAD_DIR/"announcements"/Path(row.media_key).name
+    if not path.is_file():raise HTTPException(404,"Image file is missing.")
+    return FileResponse(path,headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"})
+
 @router.get("/announcements")
 def announcements(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     rows=db.scalars(select(Announcement).order_by(Announcement.id.desc()).limit(100)).all()
+    rows=[row for row in rows if is_hr(user) or not json.loads(row.audience_ids or "[]") or user.id in json.loads(row.audience_ids or "[]")]
     acked=set(db.scalars(select(AnnouncementAck.announcement_id).where(
         AnnouncementAck.employee_id==user.id)).all())
     return [{"id":r.id,"title":r.title,"body":r.body,"requires_ack":r.requires_ack,
-             "acknowledged":r.id in acked,"published_at":r.published_at} for r in rows]
+             "acknowledged":r.id in acked,"published_at":r.published_at,"has_media":bool(r.media_key)} for r in rows]
 
 @router.post("/announcements/{announcement_id}/ack")
 def acknowledge(announcement_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
