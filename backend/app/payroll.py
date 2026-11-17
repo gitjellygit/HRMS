@@ -380,6 +380,12 @@ def create_run(body:RunIn,user:Employee=Depends(current_user),db:Session=Depends
         for component in effective_components(db,row["employee_id"],end):
             db.add(PayslipComponent(line_id=line.id,code=component.code,title=component.title,
                   kind=component.kind,amount=component.amount))
+    from .notification_center import add_inbox
+    reviewers=db.scalars(select(Employee.id).where(Employee.role.in_(HR),Employee.status=="active",
+                             Employee.id!=user.id)).all()
+    for reviewer_id in reviewers:
+        add_inbox(db,reviewer_id,"approval",f"Payroll draft awaiting review: {run.period}",
+                  "Payroll was calculated. Check attendance and deductions before independent approval.","payroll")
     db.commit();db.refresh(run)
     return {"id":run.id,"period":run.period,"status":run.status,"employees":len(rows)}
 
@@ -468,6 +474,9 @@ def approve_run(run_id:int,user:Employee=Depends(current_user),db:Session=Depend
     exception=db.scalar(select(PayrollLine.id).where(PayrollLine.run_id==run_id,PayrollLine.exceptions!=""))
     if exception:raise HTTPException(409,"Resolve attendance exceptions before approving payroll.")
     run.status="approved";run.approved_by=user.id;run.approved_at=now()
+    from .notification_center import add_inbox
+    add_inbox(db,run.created_by,"approval",f"Payroll approved: {run.period}",
+              f"{user.name} independently approved payroll {run.period}. It is ready to publish.","payroll")
     db.commit();return {"id":run.id,"status":run.status}
 
 @router.post("/runs/{run_id}/publish")
@@ -476,7 +485,13 @@ def publish_run(run_id:int,user:Employee=Depends(current_user),db:Session=Depend
     run=db.get(PayrollRun,run_id)
     if not run:raise HTTPException(404)
     if run.status!="approved":raise HTTPException(409,"Approve payroll before publishing.")
-    run.status="published";db.commit()
+    run.status="published"
+    from .notification_center import add_inbox
+    employee_ids=db.scalars(select(PayrollLine.employee_id).where(PayrollLine.run_id==run.id)).all()
+    for employee_id in employee_ids:
+        add_inbox(db,employee_id,"payroll",f"Payslip published: {run.period}",
+                  "Your monthly payslip is ready under Payroll & expenses → My payslips.","payroll")
+    db.commit()
     return {"id":run.id,"status":"published","money_transferred":False}
 
 def _payslip_period(value:str)->str:
@@ -708,4 +723,7 @@ def review_expense(claim_id:int,body:ReviewIn,user:Employee=Depends(current_user
     if body.approve and not row.receipt_key:raise HTTPException(422,"Receipt required for approval.")
     row.status="approved" if body.approve else "rejected"
     row.reviewed_by=user.id;row.reviewed_at=now()
+    from .notification_center import add_inbox
+    add_inbox(db,row.employee_id,"approval",f"Expense claim {row.status}",
+              f"{user.name} {row.status} your reimbursement claim: {row.title}.","payroll")
     db.commit();return expense_view(row)
