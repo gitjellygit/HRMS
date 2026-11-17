@@ -1200,3 +1200,9 @@ select{background-clip:padding-box}
 [data-theme=dark] .ops-category-manager{border-color:#51617a}
 @media(max-width:680px){.department-distribution-row{grid-template-columns:1fr auto}.department-distribution-track{grid-column:1/-1;grid-row:2}}
 @media(prefers-reduced-motion:reduce){.department-distribution-track>div{transition:none}}
+
+.leave-policy-distribution{display:flex;align-items:end;flex-wrap:wrap;gap:12px;padding:12px 0}
+.leave-policy-distribution label{flex:1;min-width:170px}
+.leave-policy-distribution input{width:100%;min-height:42px;border:1px solid #cbd5e1;padding:9px 12px;border-radius:9px}
+.leave-policy-distribution button{min-height:42px}
+[data-theme=dark] .leave-policy-distribution input{background:#1d293c;color:#f5f6ff;border-color:#51617a}
