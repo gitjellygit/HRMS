@@ -23,6 +23,7 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
  const [audience,setAudience]=useState<number[]>([]);
  const [staff,setStaff]=useState<{id:number;name:string;status?:string}[]>([]);
  const [document,setDocument]=useState<File|null>(null);
+ const [newDocument,setNewDocument]=useState<File|null>(null);
  const [uploading,setUploading]=useState<number|null>(null);
  useEffect(()=>{
   if(["super_admin","admin","hr"].includes(user.role)){
@@ -61,7 +62,22 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
     body:JSON.stringify(isHR?{kind:"company_policy",reason:approvalReason,payload:{title:policyTitle.trim(),category:policyCategory,description:policyDescription.trim(),effective_date:effectiveDate,active:true,audience_ids:audience}}:{title:policyTitle.trim(),category:policyCategory,description:policyDescription.trim(),effective_date:effectiveDate,active:true,audience_ids:audience})});
    const data=await response.json().catch(()=>({}));
    if(!response.ok)throw Error(explainError(data,response.status));
-   if(!isHR)setRecords(previous=>[data,...previous]);setAdding(false);setPolicyTitle("");setPolicyDescription("");setAudience([]);setSaved(isHR?"Policy submitted for admin approval (#"+data.id+").":"Company policy created successfully.");
+   if(!isHR){
+     setRecords(previous=>[data,...previous]);
+     if(newDocument){
+       const form=new FormData();form.set("document",newDocument);
+       const uploaded=await fetch(api+"/policies/records/"+data.id+"/attachments",{method:"POST",credentials:"include",body:form});
+       if(!uploaded.ok){
+         const failure=await uploaded.json().catch(()=>({}));
+         setError("Policy published, but its PDF could not be attached: "+explainError(failure,uploaded.status)+". Add the document in the published policy below.");
+       }else{
+         const latest=await fetch(api+"/policies/records",{credentials:"include"});
+         if(latest.ok)setRecords(await latest.json());
+       }
+     }
+   }
+   setAdding(false);setPolicyTitle("");setPolicyDescription("");setAudience([]);setNewDocument(null);
+   setSaved(isHR?"Policy submitted for admin approval (#"+data.id+"). Attach its PDF after approval and publication.":"Company policy published to the selected employees.");
   }catch(err){setError((err as Error).message)}finally{setPolicyBusy(false)}
  }
  async function uploadAttachment(policyId:number){
@@ -93,7 +109,7 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
     </form>
    </div>}
    <section className="policy-records">
-    <div className="employee-title-row"><div><h3>Company policy register</h3><p>Publish and maintain HR policy documents and effective dates.</p></div>{["super_admin","admin","hr"].includes(user.role)&&<button type="button" className="employee-primary" onClick={()=>setAdding(v=>!v)}><Plus size={16}/> {adding?"Close":"Add policy"}</button>}</div>
+    <div className="employee-title-row"><div><h3>Employee policy hub</h3><p>Read published company policies, download documents and review effective dates.</p></div>{["super_admin","admin","hr"].includes(user.role)&&<button type="button" className="employee-primary" onClick={()=>setAdding(v=>!v)}><Plus size={16}/> {adding?"Close":"Add policy"}</button>}</div>
     {adding&&<form className="policy-record-form" onSubmit={createRecord}>
      <div className="employee-form-grid">
       <label className="employee-field">Policy title<input value={policyTitle} onChange={e=>setPolicyTitle(e.target.value)} minLength={3} maxLength={150} required placeholder="e.g. Remote work policy"/></label>
@@ -101,6 +117,7 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
       <label className="employee-field">Effective date<input type="date" required value={effectiveDate} onChange={e=>setEffectiveDate(e.target.value)}/></label>
      </div>
      <label className="employee-field">Policy details<textarea rows={5} minLength={20} maxLength={10000} value={policyDescription} required placeholder="Write the policy and its conditions…" onChange={e=>setPolicyDescription(e.target.value)}/></label>
+     <label className="employee-field policy-new-file">Policy document (optional PDF, max 5 MB)<input type="file" accept=".pdf,application/pdf" onChange={e=>setNewDocument(e.target.files?.[0]||null)}/><small className="field-help">{isHR?"HR submits the policy for approval first; upload the PDF once an admin publishes it.":"When you publish the policy, its PDF will be attached automatically."}</small></label>
      <fieldset className="policy-audience"><legend>Who can view this policy?</legend>
       <label><input type="checkbox" checked={audience.length===0} onChange={()=>setAudience([])}/> All employees</label>
       <div className="policy-audience-list">{staff.filter(p=>p.status!=="inactive").map(p=><label key={p.id}>
