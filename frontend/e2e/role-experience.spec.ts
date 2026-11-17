@@ -45,7 +45,9 @@ test('employees see only their own appraisals',async({page})=>{
  await create(person('developer_b').id);
  await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
  await login(page,person('developer_a'));
- await navigate(page,'Appraisals');
+ await navigate(page,'Performance & growth');
+ await page.getByRole('tab',{name:'Appraisal cycles'}).click();
+ await expect(page.getByText('Previous appraisal ratings')).toBeVisible();
  const list=await page.request.get(API_URL+'/appraisals');
  expect(list.status()).toBe(200);
  expect((await list.json()).every((p:{employee_id:number})=>p.employee_id===person('developer_a').id)).toBeTruthy();
