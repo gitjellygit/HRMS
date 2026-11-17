@@ -1173,3 +1173,9 @@ button.employee-cancel:disabled,button.auth-submit:disabled{cursor:not-allowed!i
 select{background-clip:padding-box}
 [data-theme="dark"] select option{background:#202d43!important;color:#f1f4ff!important}
 [data-theme="dark"] select:disabled{background-color:#253047!important;color:#b3bfd3!important}
+
+/* HR leave custom month-by-month policy editor */
+.leave-month-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:12px 0}
+.leave-month-grid label{display:flex;flex-direction:column;gap:5px;font-weight:600;color:var(--hrms-text,#26344d)}
+.leave-month-grid input{width:100%;min-width:0;border:1px solid #cbd5e1;border-radius:9px;padding:9px;background:var(--hrms-surface,#fff);color:inherit}
+@media(max-width:660px){.leave-month-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
