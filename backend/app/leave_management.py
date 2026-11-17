@@ -36,6 +36,7 @@ class LeavePolicy(Base):
     annual_days: Mapped[Decimal] = mapped_column(Numeric(7, 2), default=Decimal("0"))
     monthly_accrual: Mapped[Decimal] = mapped_column(Numeric(7, 2), default=Decimal("0"))
     late_year_monthly_accrual: Mapped[Decimal] = mapped_column(Numeric(7, 2), default=Decimal("0"),server_default="0")
+    monthly_schedule: Mapped[str | None] = mapped_column(Text, nullable=True)  # 12 FY-month values, Apr-Mar
     carry_forward_limit: Mapped[Decimal] = mapped_column(Numeric(7, 2), default=Decimal("0"))
     encashment_allowed: Mapped[bool] = mapped_column(Boolean, default=False)
     probation_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -136,6 +137,7 @@ class PolicyIn(BaseModel):
     annual_days: Decimal = Field(default=0,ge=0,le=365)
     monthly_accrual: Decimal = Field(default=0,ge=0,le=31)
     late_year_monthly_accrual: Decimal = Field(default=0,ge=0,le=31)
+    monthly_schedule: list[Decimal] | None = Field(default=None,min_length=12,max_length=12)
     carry_forward_limit: Decimal = Field(default=0,ge=0,le=365)
     encashment_allowed: bool = False
     probation_allowed: bool = True
@@ -146,6 +148,13 @@ class PolicyIn(BaseModel):
     def valid_chain(self):
         if not self.approval_chain or len(self.approval_chain)>3 or len(set(self.approval_chain))!=len(self.approval_chain):
             raise ValueError("Approval stages must be unique and limited to manager, HR and admin.")
+        if self.monthly_schedule is not None:
+            if any(not value.is_finite() or value < 0 or value > 31 for value in self.monthly_schedule):
+                raise ValueError("Each month must contain a leave credit between 0 and 31 days.")
+            if sum(self.monthly_schedule) > 365:
+                raise ValueError("Total annual leave credits cannot exceed 365.")
+            if self.annual_days or self.monthly_accrual or self.late_year_monthly_accrual:
+                raise ValueError("Custom monthly schedule cannot be combined with annual or tiered accrual.")
         return self
 
 
@@ -370,7 +379,7 @@ def used_days(db: Session, employee_id: int, year: int, kind: str) -> Decimal:
     return Decimal(value or 0)
 
 
-def tiered_monthly_entitlement(joined:date,fy:int,through:date,first_rate:Decimal,late_rate:Decimal)->Decimal:
+def tiered_monthly_entitlement(joined:date,fy:int,through:date,first_rate:Decimal,late_rate:Decimal, schedule:list[Decimal]|None=None)->Decimal:
     """April-Nov accrual and December-March accrual; joining month prorated."""
     start,end=fy_bounds(fy)
     through=min(through,end)
@@ -381,7 +390,7 @@ def tiered_monthly_entitlement(joined:date,fy:int,through:date,first_rate:Decima
     until=date(through.year,through.month,1)
     while cursor<=until:
         fy_month=((cursor.month-4)%12)+1
-        monthly=Decimal(late_rate) if fy_month>=9 and late_rate>0 else Decimal(first_rate)
+        monthly=Decimal(schedule[fy_month-1]) if schedule is not None else (Decimal(late_rate) if fy_month>=9 and late_rate>0 else Decimal(first_rate))
         month_after=date(cursor.year+1,1,1) if cursor.month==12 else date(cursor.year,cursor.month+1,1)
         month_end=month_after-timedelta(days=1)
         if cursor.year==joined.year and cursor.month==joined.month:
@@ -399,8 +408,9 @@ def base_entitlement(db: Session,employee_id: int,year: int,kind: str, config: L
                   LeaveEntitlement.year==year,LeaveEntitlement.leave_type==kind))
     if ent is not None:
         return Decimal(ent.allocated_days)
-    if config.monthly_accrual:
-        # Monthly accrual is proportional to employment months elapsed in this FY.
+    schedule=[Decimal(v) for v in json.loads(config.monthly_schedule)] if config.monthly_schedule else None
+    if schedule is not None or config.monthly_accrual:
+        # Monthly credits accrue through the current month; the joining month is prorated.
         today=date.today()
         through=min(end,today)
         if through<max(start,staff.joining_date):
@@ -408,7 +418,7 @@ def base_entitlement(db: Session,employee_id: int,year: int,kind: str, config: L
         start_month=max(start,staff.joining_date)
         return tiered_monthly_entitlement(staff.joining_date,year,through,
                                             Decimal(config.monthly_accrual),
-                                            Decimal(config.late_year_monthly_accrual))
+                                            Decimal(config.late_year_monthly_accrual),schedule)
     return prorated_entitlement(Decimal(config.annual_days),staff.joining_date,year)
 
 
@@ -517,7 +527,7 @@ def financial_year_hr_overview(fy: int | None=Query(default=None,ge=2020,le=2100
 @router.get("/policies")
 def policies(user: Employee = Depends(current_user),db: Session = Depends(db_session)):
     rows=db.scalars(select(LeavePolicy).order_by(LeavePolicy.leave_type)).all()
-    return [{"leave_type":p.leave_type,"annual_days":float(p.annual_days),"monthly_accrual":float(p.monthly_accrual),"late_year_monthly_accrual":float(p.late_year_monthly_accrual),
+    return [{"leave_type":p.leave_type,"annual_days":float(p.annual_days),"monthly_accrual":float(p.monthly_accrual),"late_year_monthly_accrual":float(p.late_year_monthly_accrual),"monthly_schedule":json.loads(p.monthly_schedule) if p.monthly_schedule else None,
              "carry_forward_limit":float(p.carry_forward_limit),"encashment_allowed":p.encashment_allowed,
              "probation_allowed":p.probation_allowed,"approval_chain":p.approval_chain.split(",") if p.approval_chain else [],
              "active":p.active} for p in rows]
@@ -529,7 +539,8 @@ def save_policy(body: PolicyIn,user: Employee = Depends(policy_admin),db: Sessio
     if row is None:
         row=LeavePolicy(leave_type=body.leave_type)
         db.add(row)
-    values=body.model_dump(exclude={"leave_type","approval_chain"})
+    values=body.model_dump(exclude={"leave_type","approval_chain","monthly_schedule"})
+    row.monthly_schedule=json.dumps([float(v) for v in body.monthly_schedule]) if body.monthly_schedule is not None else None
     for key,value in values.items():
         setattr(row,key,value)
     row.approval_chain=",".join(body.approval_chain)
