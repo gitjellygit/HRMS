@@ -88,8 +88,8 @@ def test_hr_manual_payslip_single_and_bulk_owner_only():
     with TestClient(app) as c:
         admin,manager,worker,colleague=seed(c)
         content=_pdf()
-        single=c.post(f"/payroll/manual-payslips?employee_id={worker}&period=2026-11&reason=Manual+November+payroll+pilot",
-          headers=ORIGIN,files={"document":("payslip.pdf",content,"application/pdf")})
+        single=c.post("/payroll/manual-payslips",
+          headers=ORIGIN,data={"employee_id":worker,"period":"2026-11","reason":"Manual November payroll pilot"},files={"document":("payslip.pdf",content,"application/pdf")})
         assert single.status_code==201,single.text
         docid=single.json()["uploaded"][0]["id"]
         with SessionLocal() as db:
@@ -98,8 +98,8 @@ def test_hr_manual_payslip_single_and_bulk_owner_only():
         archive=io.BytesIO()
         with zipfile.ZipFile(archive,"w",compression=zipfile.ZIP_DEFLATED) as zf:
             zf.writestr(f"{code}.pdf",content)
-        bulk=c.post("/payroll/manual-payslips/bulk?period=2026-12&reason=Verified+bulk+import+for+pilot",
-          headers=ORIGIN,files={"archive":("monthly.zip",archive.getvalue(),"application/zip")})
+        bulk=c.post("/payroll/manual-payslips/bulk",
+          headers=ORIGIN,data={"period":"2026-12","reason":"Verified bulk import for pilot"},files={"archive":("monthly.zip",archive.getvalue(),"application/zip")})
         assert bulk.status_code==201,bulk.text
         assert len(bulk.json()["uploaded"])==1
         _switch(c,"time.worker.qa@example.org")
@@ -107,8 +107,8 @@ def test_hr_manual_payslip_single_and_bulk_owner_only():
         assert my.status_code==200,my.text
         assert any(x.get("source")=="manual" and x["period"]=="2026-11" for x in my.json())
         assert c.get(f"/payroll/manual-payslips/{docid}.pdf").status_code==200
-        assert c.post(f"/payroll/manual-payslips?employee_id={worker}&period=2026-12&reason=Try+to+overwrite+salary",
-             headers=ORIGIN,files={"document":("x.pdf",content,"application/pdf")}).status_code==403
+        assert c.post("/payroll/manual-payslips",
+             headers=ORIGIN,data={"employee_id":worker,"period":"2026-12","reason":"Try to overwrite salary"},files={"document":("x.pdf",content,"application/pdf")}).status_code==403
         _switch(c,"time.colleague.qa@example.org")
         assert c.get(f"/payroll/manual-payslips/{docid}.pdf").status_code==403
         assert not any(x.get("source")=="manual" and x["period"]=="2026-11" for x in c.get("/payroll/my-payslips").json())
