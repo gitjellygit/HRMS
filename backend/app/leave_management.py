@@ -35,6 +35,7 @@ class LeavePolicy(Base):
     leave_type: Mapped[str] = mapped_column(String(30), unique=True, index=True)
     annual_days: Mapped[Decimal] = mapped_column(Numeric(7, 2), default=Decimal("0"))
     monthly_accrual: Mapped[Decimal] = mapped_column(Numeric(7, 2), default=Decimal("0"))
+    late_year_monthly_accrual: Mapped[Decimal] = mapped_column(Numeric(7, 2), default=Decimal("0"),server_default="0")
     carry_forward_limit: Mapped[Decimal] = mapped_column(Numeric(7, 2), default=Decimal("0"))
     encashment_allowed: Mapped[bool] = mapped_column(Boolean, default=False)
     probation_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -134,6 +135,7 @@ class PolicyIn(BaseModel):
     leave_type: Literal["casual","sick","earned","maternity","paternity","comp_off","loss_of_pay"]
     annual_days: Decimal = Field(default=0,ge=0,le=365)
     monthly_accrual: Decimal = Field(default=0,ge=0,le=31)
+    late_year_monthly_accrual: Decimal = Field(default=0,ge=0,le=31)
     carry_forward_limit: Decimal = Field(default=0,ge=0,le=365)
     encashment_allowed: bool = False
     probation_allowed: bool = True
@@ -382,9 +384,25 @@ def base_entitlement(db: Session,employee_id: int,year: int,kind: str, config: L
         if through<max(start,staff.joining_date):
             return Decimal("0")
         start_month=max(start,staff.joining_date)
-        n_months=(through.year-start_month.year)*12+(through.month-start_month.month)+1
-        # No daily proration in monthly-accrual mode.
-        return Decimal(n_months)*Decimal(config.monthly_accrual)
+        # Monthly credit is earned as months arrive, never granted upfront.
+        # India FY months 1-8 are April-November; 9-12 are December-March.
+        # The first joining month is prorated for the days employed.
+        credited=Decimal("0")
+        cursor=date(start_month.year,start_month.month,1)
+        until=date(through.year,through.month,1)
+        while cursor<=until:
+            fy_month=((cursor.month-4)%12)+1
+            monthly=Decimal(config.monthly_accrual)
+            if fy_month>=9 and config.late_year_monthly_accrual>0:
+                monthly=Decimal(config.late_year_monthly_accrual)
+            month_after=date(cursor.year+1,1,1) if cursor.month==12 else date(cursor.year,cursor.month+1,1)
+            month_end=month_after-timedelta(days=1)
+            if cursor.year==staff.joining_date.year and cursor.month==staff.joining_date.month:
+                eligible=(month_end-max(cursor,staff.joining_date)).days+1
+                monthly=monthly*Decimal(eligible)/Decimal((month_end-cursor).days+1)
+            credited+=monthly
+            cursor=month_after
+        return (credited*2).quantize(Decimal("1"),rounding=ROUND_HALF_UP)/Decimal(2)
     return prorated_entitlement(Decimal(config.annual_days),staff.joining_date,year)
 
 
@@ -493,7 +511,7 @@ def financial_year_hr_overview(fy: int | None=Query(default=None,ge=2020,le=2100
 @router.get("/policies")
 def policies(user: Employee = Depends(current_user),db: Session = Depends(db_session)):
     rows=db.scalars(select(LeavePolicy).order_by(LeavePolicy.leave_type)).all()
-    return [{"leave_type":p.leave_type,"annual_days":float(p.annual_days),"monthly_accrual":float(p.monthly_accrual),
+    return [{"leave_type":p.leave_type,"annual_days":float(p.annual_days),"monthly_accrual":float(p.monthly_accrual),"late_year_monthly_accrual":float(p.late_year_monthly_accrual),
              "carry_forward_limit":float(p.carry_forward_limit),"encashment_allowed":p.encashment_allowed,
              "probation_allowed":p.probation_allowed,"approval_chain":p.approval_chain.split(",") if p.approval_chain else [],
              "active":p.active} for p in rows]
