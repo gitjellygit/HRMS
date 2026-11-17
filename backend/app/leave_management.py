@@ -640,7 +640,7 @@ def financial_year_hr_overview(fy: int | None=Query(default=None,ge=2020,le=2100
         result.append({"id":person.id,"name":person.name,"manager_id":core.manager_id if core else None,"department":person.department,
                        "role":person.role,"status":person.status,"joining_date":person.joining_date,
                        "currently_checked_in":person.id in ongoing,
-                       "leave_balances":[balance(db,person.id,fy,kind) for kind in kinds]})
+                       "leave_balances":[balance(db,person.id,fy if fy is not None else policy_start_year(date.today(),p.year_type),p.leave_type) for p in db.scalars(select(LeavePolicy).where(LeavePolicy.active.is_(True))).all()]})
     return {"fy":fy,"fy_label":f"FY {fy}-{str(fy+1)[-2:]}",
             "headcount":sum(1 for x in staff if x.status=="active"),
             "currently_checked_in":len(ongoing),
@@ -657,6 +657,17 @@ def policies(user: Employee = Depends(current_user),db: Session = Depends(db_ses
              "carry_forward_limit":float(p.carry_forward_limit),"encashment_allowed":p.encashment_allowed,
              "probation_allowed":p.probation_allowed,"approval_chain":p.approval_chain.split(",") if p.approval_chain else [],
              "active":p.active} for p in rows]
+
+
+@router.get("/policies/{kind}/history")
+def policy_history(kind:str,user:Employee=Depends(hr_only),db:Session=Depends(db_session)):
+    if kind not in KINDS:raise HTTPException(404,"Unknown leave type.")
+    config=db.scalar(select(LeavePolicy).where(LeavePolicy.leave_type==kind))
+    if not config:raise HTTPException(404,"Leave policy not found.")
+    versions=db.scalars(select(LeavePolicyVersion).where(
+        LeavePolicyVersion.leave_type==kind).order_by(LeavePolicyVersion.effective_from.desc())).all()
+    return [{"id":v.id,"effective_from":v.effective_from,"terms":json.loads(v.snapshot_json),
+             "reason":v.reason,"actor_id":v.actor_id,"created_at":v.created_at} for v in versions]
 
 
 @router.put("/policies")
