@@ -80,6 +80,10 @@ def test_calendar_policy_versions_and_current_terms_are_immutable():
         after=client.get(f"/leave/balances?employee_id={worker}").json()
         current=next(b for b in after if b["leave_type"]=="paternity")
         assert current["allocated"]==prior["allocated"],"Future policy must not revise already granted entitlement"
+        effective_rows=client.get("/leave/policies").json()
+        effective=next(p for p in effective_rows if p["leave_type"]==kind)
+        assert effective["annual_days"]==20 and effective["active"] is True
+        assert effective["scheduled_from"]==next_day.isoformat()
         history=client.get(f"/leave/policies/{kind}/history")
         assert history.status_code==200,history.text
         entries=history.json()
