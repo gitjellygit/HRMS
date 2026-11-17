@@ -82,7 +82,7 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
     <label>End date<input type="date" required value={target} onChange={e=>setTarget(e.target.value)}/></label>
     <button className="primary" disabled={busy}>Create cycle</button>
    </form></div>}
-   <form className="form" onSubmit={e=>{e.preventDefault();void save(
+   <div className="growth-action-card"><h3>Submit self-assessment</h3><p className="muted">Choose an open cycle, then submit your notes.</p><form className="form" onSubmit={e=>{e.preventDefault();void save(
     ()=>call("/reviews","POST",{cycle_id:Number(cycle),employee_id:user.id,self_notes:detail}),"Self-review submitted.")}}>
     <label>Review cycle<select value={cycle} required onChange={e=>setCycle(e.target.value)}><option value="">Choose cycle</option>
     {cycles.filter(c=>c.status==="open").map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
