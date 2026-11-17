@@ -29,6 +29,24 @@ def test_tiered_fy_credit_and_joining_month_proration():
     assert tiered_monthly_entitlement(date(2026,10,16),fy,date(2026,11,30),Decimal("1.5"),Decimal("2.5"))==Decimal("2.5")
     assert tiered_monthly_entitlement(date(2027,4,1),fy,date(2027,3,31),Decimal("1.5"),Decimal("2.5"))==Decimal("0")
 
+
+def test_custom_monthly_leave_schedule_and_validation():
+    from pydantic import ValidationError
+    from app.leave_management import PolicyIn
+    credits=[Decimal("1.5")]*8+[Decimal("2.5")]*4
+    assert tiered_monthly_entitlement(date(2026,4,1),2026,date(2027,3,31),Decimal("0"),Decimal("0"),credits)==Decimal("22")
+    assert tiered_monthly_entitlement(date(2026,4,1),2026,date(2026,11,30),Decimal("0"),Decimal("0"),credits)==Decimal("12")
+    assert tiered_monthly_entitlement(date(2026,10,16),2026,date(2026,11,30),Decimal("0"),Decimal("0"),credits)==Decimal("2.5")
+    p=PolicyIn(leave_type="earned",monthly_schedule=credits)
+    assert len(p.monthly_schedule)==12
+    for invalid in ([Decimal("1")]*11,[Decimal("-1")]+[Decimal("1")]*11):
+        try:
+            PolicyIn(leave_type="earned",monthly_schedule=invalid)
+        except ValidationError:
+            pass
+        else:
+            raise AssertionError("Invalid monthly leave credit schedule was accepted")
+
 def test_wfh_limit_is_server_side_monthly_and_rejected_day_does_not_count():
     with TestClient(app) as c:
         admin,manager,worker,colleague=seed(c)
