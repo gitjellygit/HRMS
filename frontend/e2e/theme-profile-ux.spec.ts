@@ -56,10 +56,13 @@ test('profile menu actions retain readable contrast in both themes',async({page}
   // Wait for the 150ms hover-color transition to finish before measuring final contrast.
   await page.waitForTimeout(250);
   const contrast=await action.evaluate(el=>{
-   const parse=(value:string)=>{const match=value.match(/rgba?\\(([^)]+)\\)/);return match?match[1].split(',').slice(0,3).map(Number):[0,0,0]};
+   const parse=(value:string)=>{const components=value.match(/[0-9]+(?:\.[0-9]+)?/g);if(!components||components.length<3)throw Error("Unexpected computed RGB color: "+value);return components.slice(0,3).map(Number)};
    const lum=(rgb:number[])=>rgb.map(v=>{v/=255;return v<=0.04045?v/12.92:Math.pow((v+0.055)/1.055,2.4)}).reduce((sum,v,i)=>sum+v*[0.2126,0.7152,0.0722][i],0);
-   const text=lum(parse(getComputedStyle(el).color));
-   const background=lum(parse(getComputedStyle(el).backgroundColor));
+   const foreground=getComputedStyle(el).color;
+   const backgroundColor=getComputedStyle(el).backgroundColor;
+   if(backgroundColor==="rgba(0, 0, 0, 0)")throw Error("Hover background is transparent: no measurable contrast");
+   const text=lum(parse(foreground));
+   const background=lum(parse(backgroundColor));
    return (Math.max(text,background)+0.05)/(Math.min(text,background)+0.05);
   });
   await action.click();
