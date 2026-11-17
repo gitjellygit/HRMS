@@ -111,7 +111,14 @@ def create_company_policy(body:PolicyRecordIn,user:Employee=Depends(current_user
     row=CompanyPolicyRecord(title=body.title.strip(),category=body.category,
                             description=body.description.strip(),effective_date=body.effective_date,
                             active=body.active,audience_ids=json.dumps(body.audience_ids),created_by=user.id)
-    db.add(row);db.commit();db.refresh(row)
+    db.add(row);db.flush()
+    if row.active:
+        from .notification_center import add_inbox
+        recipients=body.audience_ids or list(db.scalars(select(Employee.id).where(Employee.status=="active")).all())
+        for recipient_id in recipients:
+            add_inbox(db,recipient_id,"policy",f"New company policy: {row.title}",
+                      f"A new {row.category} policy is available in the Policy Hub. Effective {row.effective_date}.","policies")
+    db.commit();db.refresh(row)
     return record_json(db,row)
 
 @router.post("/records/{policy_id}/attachments",status_code=201)
