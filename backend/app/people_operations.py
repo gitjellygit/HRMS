@@ -318,7 +318,10 @@ def add_task(body:TaskIn,user:Employee=Depends(current_user),db:Session=Depends(
     if not db.get(Employee,body.employee_id):raise HTTPException(422,"Employee not found.")
     if body.assigned_to and not db.get(Employee,body.assigned_to):raise HTTPException(422,"Assignee not found.")
     row=OnboardingTask(**body.model_dump());db.add(row);db.flush()
-    audit(db,user,"onboarding",row.id,"created");db.commit()
+    audit(db,user,"onboarding",row.id,"created")
+    if row.assigned_to is not None:
+        notify(db,row.assigned_to,"onboarding","New onboarding task assigned",f"{row.title} for employee #{row.employee_id}")
+    db.commit()
     return {"id":row.id,"status":row.status}
 
 @router.get("/onboarding")
