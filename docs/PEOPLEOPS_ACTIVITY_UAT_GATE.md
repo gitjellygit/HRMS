@@ -7,6 +7,7 @@
 - `20261117_tiered_leave_accrual.sql` (PR #48)
 - `20261117_manual_payslips.sql` (PR #48)
 - `20261117_custom_monthly_leave_schedule.sql`
+- `20261117_leave_policy_year_and_versions.sql` (after custom monthly schedule)
 - `20261117_company_letterhead.sql`
 - `20261117_offer_logo_snapshot.sql`
 - `20261117_onboarding_categories.sql`
@@ -25,8 +26,13 @@ Migration scripts are explicit and the existing automatic deployment script is n
 - Onboarding progress scoped by employee, category CRUD/archive, selected assignee notification and task permission.
 - Employee resignation does not accept selected notice; HR reviews notice with mandatory audit reason.
 - Leave 12-month custom schedule, annual distribution with roundoff, joining-date proration, FY rollover, carry-forward and overlapping requests.
-- Calendar-year policy semantics and effective-dated policy versioning are **not yet complete**. Do not activate those options or represent these features as finished.
+- Calendar-year policy semantics and immutable effective-dated policy versioning are implemented in draft; verify the revised leave engine in backend and browser UAT before enabling them in production.
+- Regression coverage must confirm policy-year boundaries, leap year, partial joining months, prospective policy changes, prior-year carry-forward and permissions.
 - Activity agent: Windows 10/11 pilot, tray visibility, start, reason-to-exit, heartbeat, forced kill/offline inference, revocation, no screenshots/keystrokes/URLs. Verify status after 100 seconds without heartbeat.
 - Activity agent requires one-time HR device enrollment token, HTTPS-only API host and disclosed monitoring policy.
 - Test browser dark-mode hover contrast, theme transition, profile Sign out and outside click from PR #48 on Hostinger-staging build.
 - No live Hostinger deployment until migration, backups, UAT, security and privacy approvals.
+
+## CI migration smoke rehearsal
+
+`backend/tests/test_peopleops_migrations_rehearsal.py` applies the new migration scripts twice to a disposable legacy PostgreSQL schema, validates the baseline snapshot and confirms idempotence. This does not replace a rehearsal against a sanitized/restored Hostinger snapshot and a backup of the uploads directory.
