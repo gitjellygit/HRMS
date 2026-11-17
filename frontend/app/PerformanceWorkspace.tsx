@@ -53,6 +53,7 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
   finally{setBusy(false)}
  }
  const editable=canAssign?employee:user.id;
+ const employeeName=(id:number)=>team.find(p=>p.id===id)?.name||(id===user.id?user.name:"Employee #"+id);
  return <><section className="panel growth-workspace">
   <h2>Performance & growth</h2>
   <p className="muted">Track individual goals, self and manager reviews, and development plans.</p>
