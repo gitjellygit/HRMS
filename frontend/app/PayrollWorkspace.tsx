@@ -28,6 +28,11 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
  const [runDetail,setRunDetail]=useState<Row|null>(null);
  const [claim,setClaim]=useState({title:"",category:"travel",amount:"",incurred_on:today(),note:""});
  const [receipt,setReceipt]=useState<File|null>(null);
+ const [payslipEmployee,setPayslipEmployee]=useState("");
+ const [payslipPeriod,setPayslipPeriod]=useState(period());
+ const [payslipReason,setPayslipReason]=useState("");
+ const [payslipFile,setPayslipFile]=useState<File|null>(null);
+ const [payslipMode,setPayslipMode]=useState<"single"|"bulk">("single");
  const [message,setMessage]=useState("");
  const [error,setError]=useState("");const [fieldError,setFieldError]=useState("");
  const [busy,setBusy]=useState(false);
@@ -75,6 +80,25 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
    if(!chosen){setComponents([]);return}
    void call("/components?employee_id="+chosen).then(setComponents).catch(()=>setComponents([]));
  },[chosen,api]);
+ async function uploadPayslips(event:React.FormEvent){
+  event.preventDefault();clear();
+  if(payslipReason.trim().length<10){setError("Explain why you are uploading or correcting a payslip (minimum 10 characters).");return}
+  if(!payslipFile){setError("Choose a PDF or ZIP file.");return}
+  if(payslipMode==="single"&&!payslipEmployee){setError("Select the employee.");return}
+  const fields=new FormData();fields.set(payslipMode==="single"?"document":"archive",payslipFile);
+  setBusy(true);
+  try{
+   const params=new URLSearchParams({period:payslipPeriod,reason:payslipReason.trim()});
+   if(payslipMode==="single")params.set("employee_id",payslipEmployee);
+   const response=await fetch(api+"/payroll/manual-payslips"+(payslipMode==="bulk"?"/bulk":"")+"?"+params.toString(),
+     {method:"POST",credentials:"include",body:fields});
+   const result=await response.json().catch(()=>({}));
+   if(!response.ok)throw Error(explainError(result,response.status));
+   setMessage("Imported "+result.uploaded.length+" payslip(s). Employees can download their private PDFs.");
+   setPayslipFile(null);setPayslipReason("");
+   await refresh();
+  }catch(e){setError((e as Error).message)}finally{setBusy(false)}
+ }
  function clear(){setError("");setMessage("");setFieldError("");setValidation([])}
  function requirements(kind:"structure"|"statutory"|"components"){
   const problems:string[]=[];
@@ -266,10 +290,24 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
         },"Attendance exception resolved and audit reason recorded.");
        }}>Resolve exception</button></>}</div>:"No exceptions"}</td></tr>)}</tbody></table></div></div>}
   </section>}
-  {tab==="payslips"&&<section className="employee-surface">
-   <h3><FileDown size={19}/> Published payslips</h3><p className="muted">Confidential — only published payslips can be downloaded by authorized users.</p>
-   <div className="ops-table">{slips.length?slips.map(s=><div className="ops-row" key={s.line_id}><strong>{s.period}</strong><span>Gross {cash(s.gross)}</span><span>Net {cash(s.net)}</span>
-    <a className="employee-primary" href={api+"/payroll/payslips/"+s.line_id+".pdf"} download>Download PDF</a></div>):<p>No payslips published yet.</p>}</div>
+  {tab==="payslips"&&<section className="employee-surface payroll-hybrid-payslips">
+   <h3><FileDown size={19}/> My published payslips</h3><p className="muted">System PDFs appear after payroll publication. HR-imported PDFs override the month's displayed copy without changing approved payroll calculations.</p>
+   <div className="ops-table">{slips.length?slips.map(s=><div className="ops-row" key={(s.source||"generated")+":"+(s.id||s.line_id)}>
+    <strong>{s.period}</strong><span>{s.source==="manual"?"HR-uploaded PDF":"System-generated PDF"}</span>
+    <span>{s.source==="manual"?(s.original_name||"Manual payslip"):"Net "+cash(s.net)}</span>
+    <a className="employee-primary" href={api+"/payroll/"+(s.source==="manual"?"manual-payslips/"+s.id+".pdf":"payslips/"+s.line_id+".pdf")} download>Download PDF</a></div>):<p>No payslips published yet.</p>}</div>
+   {hr&&<form className="payroll-manual-upload" onSubmit={uploadPayslips}>
+    <h3>HR manual payslip import</h3><p className="muted">Upload one PDF or bulk ZIP for hybrid payroll. This publishes a private payslip, not salary payments.</p>
+    <div className="payroll-manual-modes"><label><input type="radio" checked={payslipMode==="single"} onChange={()=>{setPayslipMode("single");setPayslipFile(null)}}/> Single employee</label><label><input type="radio" checked={payslipMode==="bulk"} onChange={()=>{setPayslipMode("bulk");setPayslipFile(null)}}/> Bulk ZIP</label></div>
+    <div className="employee-form-grid">
+     {payslipMode==="single"&&<label>Employee<select value={payslipEmployee} onChange={e=>setPayslipEmployee(e.target.value)} required><option value="">Select employee</option>{employees.map(e=><option value={e.id} key={e.id}>{e.name}{e.employee_code?" ("+e.employee_code+")":""}</option>)}</select></label>}
+     <label>Pay period<input type="month" required value={payslipPeriod} onChange={e=>setPayslipPeriod(e.target.value)}/></label>
+     <label>{payslipMode==="single"?"Payslip PDF (max 5 MB)":"ZIP archive (max 16 MB, 50 PDFs)"}<input type="file" required accept={payslipMode==="single"?".pdf,application/pdf":".zip,application/zip"} onChange={e=>setPayslipFile(e.target.files?.[0]||null)}/></label>
+    </div>
+    {payslipMode==="bulk"&&<p className="field-help">Place PDFs at the ZIP root and name each one by employee code (e.g. JG-001.pdf). The chosen period applies to all files.</p>}
+    <label>Mandatory reason<textarea required minLength={10} maxLength={500} rows={2} value={payslipReason} onChange={e=>setPayslipReason(e.target.value)} placeholder="Explain the manual payslip import or correction"/></label>
+    <button type="submit" disabled={busy} className="employee-primary">{busy?"Uploading…":"Publish manual payslip"+(payslipMode==="bulk"?"s":"")}</button>
+   </form>}
   </section>}
   {tab==="expenses"&&<div className="ops-columns">
    <section className="employee-surface"><h3><ReceiptText size={19}/> New reimbursement claim</h3>
