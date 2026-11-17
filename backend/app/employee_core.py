@@ -205,7 +205,7 @@ class EmployeeAccountUpdate(BaseModel):
     @classmethod
     def validate_phone(cls, value: str) -> str:
         value = value.strip()
-        if value and not re.fullmatch(r"\\+?[0-9]{7,15}", re.sub(r"[\\s()-]", "", value)):
+        if value and not re.fullmatch(r"\+?[0-9]{7,15}", re.sub(r"[\\s()-]", "", value)):
             raise ValueError("Phone must contain 7-15 digits.")
         return value
 
