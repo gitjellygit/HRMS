@@ -103,6 +103,15 @@ def test_shifts_rosters_swap_colleague_consent_and_timesheets():
         assert c.post("/time/timesheets",headers=ORIGIN,json={
             "work_date":str(date.today()),"task":"Impossible hours","hours":22}).status_code==422
         assert c.post(f"/time/timesheets/{work.json()['id']}/submit",headers=ORIGIN).json()["status"]=="submitted"
+        c.post("/auth/logout",headers=ORIGIN)
+        sign(c,"time.manager.qa@example.org")
+        assert any(n["destination"]=="time" and "Timesheet awaiting review: Time Worker" in n["title"] for n in c.get("/notification-center").json()["items"])
+        reviewed=c.post(f"/time/timesheets/{work.json()['id']}/review",headers=ORIGIN,json={
+            "approve":True,"reason":"Verified submitted hours for assigned work"})
+        assert reviewed.status_code==200,reviewed.text
+        c.post("/auth/logout",headers=ORIGIN)
+        sign(c,"time.worker.qa@example.org")
+        assert any(n["destination"]=="time" and n["title"]=="Your timesheet was approved" for n in c.get("/notification-center").json()["items"])
 
 def test_geofence_cannot_be_bypassed_and_biometric_needs_device_secret():
     with TestClient(app) as c:
