@@ -17,17 +17,17 @@ def test_device_enrollment_heartbeat_reason_and_private_status():
         assert enrolled.status_code==201,enrolled.text
         token=enrolled.json()["token"]
         device_id=enrolled.json()["device_id"]
-        beat=c.post("/activity-agent/heartbeat",headers={"Authorization":"Bearer "+token},json={
+        beat=c.post("/activity-agent/heartbeat",headers={**ORIGIN,"Authorization":"Bearer "+token},json={
             "state":"monitoring","active_seconds":345,"idle_seconds":55,"apps":{"chrome":145,"code":200}})
         assert beat.status_code==200,beat.text
         devices=c.get("/activity-agent/devices")
         assert devices.status_code==200
         device=next(item for item in devices.json() if item["id"]==device_id)
         assert device["status"]=="monitoring" and device["apps"]["code"]==200
-        bad=c.post("/activity-agent/heartbeat",headers={"Authorization":"Bearer "+token},json={
+        bad=c.post("/activity-agent/heartbeat",headers={**ORIGIN,"Authorization":"Bearer "+token},json={
             "state":"stopped","active_seconds":350,"idle_seconds":55,"exit_reason":"short"})
         assert bad.status_code==422
-        stopped=c.post("/activity-agent/heartbeat",headers={"Authorization":"Bearer "+token},json={
+        stopped=c.post("/activity-agent/heartbeat",headers={**ORIGIN,"Authorization":"Bearer "+token},json={
             "state":"stopped","active_seconds":350,"idle_seconds":55,
             "exit_reason":"Employee ended the work session for the day.","apps":{"chrome":150,"code":200}})
         assert stopped.status_code==200,stopped.text
@@ -40,7 +40,7 @@ def test_device_enrollment_heartbeat_reason_and_private_status():
         as_user(c,"admin@example.com","test-admin-password-12345")
         revoke=c.post(f"/activity-agent/devices/{device_id}/revoke",headers=ORIGIN)
         assert revoke.status_code==200
-        assert c.post("/activity-agent/heartbeat",headers={"Authorization":"Bearer "+token},json={
+        assert c.post("/activity-agent/heartbeat",headers={**ORIGIN,"Authorization":"Bearer "+token},json={
             "state":"monitoring","active_seconds":1,"idle_seconds":0}).status_code==401
 
 def test_onboarding_categories_assignment_and_visibility():
