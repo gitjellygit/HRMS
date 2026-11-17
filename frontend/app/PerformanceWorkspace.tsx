@@ -50,16 +50,16 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
   finally{setBusy(false)}
  }
  const editable=canAssign?employee:user.id;
- return <><section className="panel">
+ return <><section className="panel growth-workspace">
   <h2>Performance & growth</h2>
   <p className="muted">Track individual goals, self and manager reviews, and development plans.</p>
-  <div className="time-tabs" role="tablist">{([["goals","Goals & KRAs"],["reviews","Appraisal cycles"],["development","Development plans"]] as const).map(([key,label])=>
-   <button key={key} type="button" role="tab" aria-selected={area===key} onClick={()=>setArea(key)}>{label}</button>)}</div>
+  <div className="time-tabs growth-tabs" role="tablist" aria-label="Performance areas">{([["goals","Goals & KRAs"],["reviews","Appraisal cycles"],["development","Development plans"]] as const).map(([key,label])=>
+   <button key={key} type="button" role="tab" aria-selected={area===key} className={area===key?"active":""} onClick={()=>{setArea(key);setTitle("");setDetail("");setError("");setMessage("")}}>{label}</button>)}</div>
   {error&&<p role="alert" className="error">{error}</p>}{message&&<p role="status">{message}</p>}
-  {canAssign&&<label>Assign to employee <select value={employee} onChange={e=>setEmployee(e.target.value)}>
+  {canAssign&&<label className="growth-target-label">Employee <select value={employee} onChange={e=>setEmployee(e.target.value)}>
     <option value={user.id}>Myself</option>{team.filter(e=>e.id!==user.id).map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
    </select></label>}
-  {area==="goals"&&<>
+  {area==="goals"&&<div className="growth-area-content">
    <form className="form" onSubmit={e=>{e.preventDefault();void save(
     ()=>call("/goals","POST",{employee_id:Number(editable),title,description:detail,target_date:target}),"Goal added.")}}>
     <label>Goal title<input required minLength={3} maxLength={180} value={title} onChange={e=>setTitle(e.target.value)}/></label>
@@ -74,21 +74,21 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
       key={g.id+":"+g.progress} onBlur={e=>{const value=Number(e.target.value);if(value!==g.progress&&value>=0&&value<=100)
       void save(()=>call("/goals/"+g.id+"/progress","PATCH",{progress:value}),"Progress updated.")}}/></label>
     </td></tr>)}</tbody></table></div>
-  </>}
-  {area==="reviews"&&<>
-   {hr&&<form className="form" onSubmit={e=>{e.preventDefault();void save(
+  </div>}
+  {area==="reviews"&&<div className="growth-area-content">
+   {hr&&<div className="growth-action-card"><h3>Create appraisal cycle</h3><p className="muted">Set up a period for employee self-assessments.</p><form className="form" onSubmit={e=>{e.preventDefault();void save(
     ()=>call("/cycles","POST",{name:title,start_date:today(),end_date:target}),"Review cycle created.")}}>
     <label>Cycle name<input minLength={3} required value={title} onChange={e=>setTitle(e.target.value)}/></label>
     <label>End date<input type="date" required value={target} onChange={e=>setTarget(e.target.value)}/></label>
     <button className="primary" disabled={busy}>Create cycle</button>
-   </form>}
+   </form></div>}
    <form className="form" onSubmit={e=>{e.preventDefault();void save(
     ()=>call("/reviews","POST",{cycle_id:Number(cycle),employee_id:user.id,self_notes:detail}),"Self-review submitted.")}}>
     <label>Review cycle<select value={cycle} required onChange={e=>setCycle(e.target.value)}><option value="">Choose cycle</option>
     {cycles.filter(c=>c.status==="open").map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
     <label className="wide">Self assessment<textarea minLength={10} required value={detail} onChange={e=>setDetail(e.target.value)}/></label>
     <button className="primary" disabled={busy}>Submit self-review</button>
-   </form>
+   </form></div>
    {reviews.map(r=><article key={r.id} className="card">
     <strong>Cycle #{r.cycle_id} · Employee #{r.employee_id}</strong>
     <p>{r.self_notes}</p><p>Manager rating: {r.manager_rating??"Pending"} · {r.status}</p>
@@ -101,8 +101,8 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
       <button disabled={busy} className="primary">Complete review</button>
      </form>}
    </article>)}
-  </>}
-  {area==="development"&&<>
+  </div>}
+  {area==="development"&&<div className="growth-area-content">
    <form className="form" onSubmit={e=>{e.preventDefault();void save(
     ()=>call("/plans","POST",{employee_id:Number(editable),skill:title,action:detail,target_date:target}),"Development plan added.")}}>
     <label>Skill or growth area<input required minLength={2} value={title} onChange={e=>setTitle(e.target.value)}/></label>
@@ -116,6 +116,6 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
      ()=>call("/plans/"+p.id,"PATCH",{status:e.target.value}),"Development status updated.")}>
      <option value="planned">Planned</option><option value="in_progress">In progress</option><option value="completed">Completed</option>
     </select></label></div>)}
-  </>}
+  </div>}
  </section><GrowthExtensions api={api} user={user}/></>;
 }
