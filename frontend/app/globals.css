@@ -943,3 +943,13 @@ button.employee-cancel:disabled,button.auth-submit:disabled{cursor:not-allowed!i
 .time-workspace .time-columns>.employee-surface,
 .ops-area .ops-columns>.employee-surface{min-width:0;height:100%;border-radius:var(--hrms-card-radius)}
 :where(.panel,.card,.employee-surface,.overview-feature-card){border-radius:var(--hrms-card-radius)}
+
+.employee-account-edit{display:grid;gap:14px;margin:20px 0;padding:18px;border:1px solid #dfe4ef;border-radius:12px;background:#f8f9fd}
+.employee-account-edit-heading h3{margin:0 0 5px;font-size:15px;color:#303c57}
+.employee-account-edit-heading p{margin:0;font-size:12px;line-height:1.5;color:#62718a}
+.employee-account-edit .core-label{min-width:0}
+.employee-account-edit .core-label input,.employee-account-edit .core-label textarea{width:100%;box-sizing:border-box;min-height:var(--hrms-control-height)}
+.employee-account-edit .core-label textarea{min-height:68px;resize:vertical}
+[data-theme="dark"] .employee-account-edit{background:#202a40;border-color:#47516b}
+[data-theme="dark"] .employee-account-edit-heading h3{color:#edf1ff}
+[data-theme="dark"] .employee-account-edit-heading p{color:#bfcae0}
