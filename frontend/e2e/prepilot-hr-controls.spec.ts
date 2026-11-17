@@ -34,7 +34,7 @@ test('HR can upload one manual payslip; other employee cannot download it',async
  await page.getByRole('tab',{name:'My payslips'}).click();
  const form=page.locator('.payroll-manual-upload');
  await expect(form).toBeVisible();
- await form.getByLabel('Employee').selectOption(String(actor('developer_a').id));
+ await form.locator('select').first().selectOption(String(actor('developer_a').id));
  await form.getByLabel('Pay period').fill('2026-11');
  const pdf=Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF');
  await form.getByLabel('Payslip PDF (max 5 MB)').setInputFiles({
