@@ -130,7 +130,7 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
      ]).map(({id,label,Icon})=>
     <button role="tab" aria-selected={tab===id} className={tab===id?"active":""} key={id} onClick={()=>{setTab(id);clear()}}><Icon size={16}/>{label}</button>)}
   </div>
-  {error&&<div className="time-form-error" role="alert"><AlertCircle size={17}/><div><strong>Check the highlighted field</strong><p>{error}</p></div></div>}
+  {error&&<div className="time-form-error" role="alert"><AlertCircle size={17}/><div><strong>{errorField==="manager_id"?"Reporting manager not assigned":"Check the highlighted field"}</strong><p>{errorField==="manager_id"?"Your employee record has no reporting manager. Ask HR/Admin to open Employees → Edit details → Reporting & organization, assign a manager and save.":error}</p></div></div>}
   {notice&&<FeedbackMotion type={notice==="Request approved."?"congrats":"success"} compact message={notice}/>}
   {busy&&<FeedbackMotion type="loading" compact message="Saving your changes…"/>}
 
