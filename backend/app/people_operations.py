@@ -225,7 +225,32 @@ def create_template(body:TemplateIn,user:Employee=Depends(current_user),db:Sessi
 @router.get("/offer-templates")
 def templates(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     require_hr(user)
-    return [{"id":r.id,"name":r.name,"content":r.content} for r in db.scalars(select(OfferTemplate)).all()]
+    return [{"id":r.id,"name":r.name,"content":r.content,"active":r.active} for r in db.scalars(select(OfferTemplate)).all()]
+
+@router.put("/offer-templates/{template_id}")
+def update_offer_template(template_id:int,body:TemplateIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    row=db.get(OfferTemplate,template_id)
+    if not row:raise HTTPException(404,"Offer template not found.")
+    if not row.active:raise HTTPException(409,"Archived templates cannot be edited. Create a new template.")
+    duplicate=db.scalar(select(OfferTemplate.id).where(OfferTemplate.name==body.name,OfferTemplate.id!=template_id))
+    if duplicate:raise HTTPException(409,"Another offer template already uses this name.")
+    row.name=body.name
+    row.content=body.content
+    audit(db,user,"offer_template",row.id,"updated")
+    db.commit()
+    return {"id":row.id,"name":row.name,"active":row.active}
+
+@router.delete("/offer-templates/{template_id}")
+def archive_offer_template(template_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    row=db.get(OfferTemplate,template_id)
+    if not row:raise HTTPException(404,"Offer template not found.")
+    row.active=False
+    audit(db,user,"offer_template",row.id,"archived")
+    db.commit()
+    return {"id":row.id,"active":False}
+
 
 @router.post("/offers",status_code=201)
 def create_offer(body:OfferIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
