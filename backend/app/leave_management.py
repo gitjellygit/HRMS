@@ -670,12 +670,28 @@ def financial_year_hr_overview(fy: int | None=Query(default=None,ge=2020,le=2100
 
 @router.get("/policies")
 def policies(user: Employee = Depends(current_user),db: Session = Depends(db_session)):
-    rows=db.scalars(select(LeavePolicy).order_by(LeavePolicy.leave_type)).all()
-    return [{"leave_type":p.leave_type,"annual_days":float(p.annual_days),"monthly_accrual":float(p.monthly_accrual),"late_year_monthly_accrual":float(p.late_year_monthly_accrual),"monthly_schedule":json.loads(p.monthly_schedule) if p.monthly_schedule else None,"year_type":p.year_type,"effective_from":(db.scalar(select(func.max(LeavePolicyVersion.effective_from)).where(LeavePolicyVersion.leave_type==p.leave_type)) or date.today()),
-             "carry_forward_limit":float(p.carry_forward_limit),"encashment_allowed":p.encashment_allowed,
-             "probation_allowed":p.probation_allowed,"approval_chain":p.approval_chain.split(",") if p.approval_chain else [],
-             "active":p.active} for p in rows]
-
+    results=[]
+    for row in db.scalars(select(LeavePolicy).order_by(LeavePolicy.leave_type)).all():
+        versions=policy_versions(db,row)
+        current=terms_at(versions,date.today())
+        terms=current or policy_snapshot(row)
+        scheduled=next((effective for effective,_ in versions if effective>date.today()),None)
+        results.append({
+            "leave_type":row.leave_type,
+            "annual_days":float(terms.get("annual_days",0)),
+            "monthly_accrual":float(terms.get("monthly_accrual",0)),
+            "late_year_monthly_accrual":float(terms.get("late_year_monthly_accrual",0)),
+            "monthly_schedule":terms.get("monthly_schedule"),
+            "year_type":terms.get("year_type","financial"),
+            "effective_from":versions[-1][0],
+            "scheduled_from":scheduled,
+            "carry_forward_limit":float(terms.get("carry_forward_limit",0)),
+            "encashment_allowed":bool(terms.get("encashment_allowed",False)),
+            "probation_allowed":bool(terms.get("probation_allowed",True)),
+            "approval_chain":str(terms.get("approval_chain","manager,hr")).split(","),
+            "active":bool(current and current.get("active",True)),
+        })
+    return results
 
 @router.get("/policies/{kind}/history")
 def policy_history(kind:str,user:Employee=Depends(hr_only),db:Session=Depends(db_session)):
