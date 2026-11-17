@@ -37,6 +37,8 @@ test('success confirmation automatically clears while screen remains active',asy
  // Confirm the common timer contract in the rendered app: any successful
  // banner that appears should leave the DOM after the reading interval.
  // Use the existing time request flow with a working approval manager.
+ await page.locator('[name=kind]').selectOption('overtime');
+ await page.locator('[name=hours]').fill('1');
  await page.locator('[name=reason]').fill('Testing automatic confirmation dismiss behavior in QA');
  await page.getByRole('button',{name:'Send for manager approval'}).click();
  await expect(success).toBeVisible();
