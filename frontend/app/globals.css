@@ -1179,3 +1179,24 @@ select{background-clip:padding-box}
 .leave-month-grid label{display:flex;flex-direction:column;gap:5px;font-weight:600;color:var(--hrms-text,#26344d)}
 .leave-month-grid input{width:100%;min-width:0;border:1px solid #cbd5e1;border-radius:9px;padding:9px;background:var(--hrms-surface,#fff);color:inherit}
 @media(max-width:660px){.leave-month-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* People Operations UAT polish: consistent controls, readable tabs and responsive department breakdown. */
+.department-distribution-row{display:grid;grid-template-columns:minmax(120px,1fr) minmax(80px,2fr) auto;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid var(--hrms-line,#e2e8f0)}
+.department-distribution-row>span{font-weight:600;min-width:0;overflow-wrap:anywhere}
+.department-distribution-row>strong{font-size:13px;white-space:nowrap;font-weight:600}
+.department-distribution-track{height:9px;background:#e7edf6;border-radius:20px;overflow:hidden}
+.department-distribution-track>div{height:100%;background:#6676df;border-radius:20px;transition:width .25s ease}
+.ops-area .ops-form select,.ops-area .ops-form input:not([type=checkbox]):not([type=radio]),.ops-area .ops-form textarea{min-height:42px;min-width:0;max-width:100%;border-radius:10px;border:1px solid #cad5e4;background:#fff;color:#25344d;padding:9px 12px;line-height:1.4}
+.ops-area .ops-form select:focus-visible,.ops-area .ops-form input:focus-visible,.ops-area .ops-form textarea:focus-visible{outline:2px solid #6c77dd;outline-offset:2px}
+.ops-area .time-tabs{display:flex;gap:7px;flex-wrap:wrap;border-bottom:1px solid #dbe3ef;padding-bottom:9px;margin-bottom:17px}
+.ops-area .time-tabs button{border-radius:10px 10px 4px 4px;min-height:39px;padding:8px 14px}
+.ops-area .time-tabs button[aria-selected=true]{background:#eef0ff;color:#343d9f;border-color:#8791df;font-weight:700}
+.ops-category-manager{margin-top:16px;padding:14px;border:1px solid #d5deec;border-radius:12px}
+.ops-category-manager summary{cursor:pointer;font-weight:700;padding:5px}
+[data-theme=dark] .department-distribution-track{background:#344156}
+[data-theme=dark] .department-distribution-track>div{background:#a8b2ff}
+[data-theme=dark] .ops-area .ops-form :is(input:not([type=checkbox]):not([type=radio]),textarea,select){background:#1d293c;border-color:#51617a;color:#f1f5ff}
+[data-theme=dark] .ops-area .time-tabs button[aria-selected=true]{background:#363d69;color:#f1f5ff;border-color:#777fc7}
+[data-theme=dark] .ops-category-manager{border-color:#51617a}
+@media(max-width:680px){.department-distribution-row{grid-template-columns:1fr auto}.department-distribution-track{grid-column:1/-1;grid-row:2}}
+@media(prefers-reduced-motion:reduce){.department-distribution-track>div{transition:none}}
