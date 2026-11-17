@@ -26,11 +26,11 @@ test('profile menu closes outside and on Escape, and logout is in profile menu',
  const bg=await appearance.evaluate(el=>getComputedStyle(el).backgroundColor);
  expect(bg).not.toBe('rgba(0, 0, 0, 0)');
  expect(after).toBeTruthy();expect(before).toBeTruthy();
- await page.evaluate(()=>document.documentElement.dataset.theme='light');
+ await page.evaluate(()=>{document.documentElement.dataset.theme='light';localStorage.setItem('jellygit-theme','light')});
 });
 
 test('success confirmation automatically clears while screen remains active',async({page})=>{
- await login(page,actor('hr'));
+ await login(page,actor('developer_b'));
  await navigate(page,'Time & shifts');
  await page.getByRole('tab',{name:'Requests'}).click();
  const success=page.getByText('Request sent', {exact:false});
