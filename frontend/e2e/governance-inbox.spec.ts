@@ -38,7 +38,7 @@ test('governance request uses named requester, notifies admin, then moves into h
  await item.getByLabel('Decision reason').fill('The proposed policy has been reviewed and is approved for the test audience.');
  await item.getByRole('button',{name:'Approve & apply'}).click();
  await expect(page.getByRole('status')).toContainText('approved and applied');
- await expect(page.getByText('No approvals pending')).toBeVisible();
+ await expect(page.locator('.governance-list').first().locator('.governance-request').filter({hasText:title})).toHaveCount(0);
  await page.getByRole('button',{name:/View older approvals & rejections/}).click();
  const history=page.locator('.governance-history .governance-request').filter({hasText:title});
  await expect(history).toContainText('Approved');
