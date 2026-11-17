@@ -1,3 +1,4 @@
+import {signOut} from "./helpers";
 import {test,expect} from "@playwright/test";
 import {login,navigate,users} from "./helpers";
 import {API_URL,WEB_URL} from "../playwright.config";
@@ -11,7 +12,7 @@ test("notification bell shows announcements, supports read/archive and historica
   headers:{Origin:WEB_URL},data:{title,
    body:"Please read the employee-pilot announcement before continuing your tasks.",requires_ack:true}});
  expect(announced.status()).toBe(201);
- await page.locator(".sidebar nav").getByRole("button",{name:"Sign out"}).click();
+ await signOut(page);
  await login(page,role("developer_a"));
  const bell=page.getByRole("button",{name:/Notifications, \d+ unread/});
  await expect(bell).toBeVisible();
@@ -37,7 +38,7 @@ test("role-aware overview shows relevant projects and attendance starts collapse
  await attend.locator("summary").click();
  await expect(attend).toHaveAttribute("open","");
  await expect(attend.getByRole("heading",{name:"Recent attendance"})).toBeVisible();
- await page.locator(".sidebar nav").getByRole("button",{name:"Sign out"}).click();
+ await signOut(page);
  await login(page,role("accountant"));
  await navigate(page,"Overview");
  await expect(page.getByRole("heading",{name:"Active billable projects"})).toBeVisible();
