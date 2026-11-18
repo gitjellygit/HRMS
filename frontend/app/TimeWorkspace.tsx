@@ -1,4 +1,5 @@
 "use client";
+import {useTransientMessage} from "./useTransientMessage";
 import {explainError} from "./formErrors";
 import {useCallback,useEffect,useRef,useState} from "react";
 import {Clock3,CalendarDays,MapPin,FileClock,Users,BriefcaseBusiness,Settings2,AlertCircle} from "lucide-react";
@@ -19,8 +20,14 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
  const [errorField,setErrorField]=useState("");
- const [notice,setNotice]=useState("");
+ const [notice,setNotice]=useTransientMessage();
  const [daily,setDaily]=useState<Row[]>([]);
+ const [auditEmployee,setAuditEmployee]=useState("");
+ const [auditDate,setAuditDate]=useState(today());
+ const [auditZone,setAuditZone]=useState("America/New_York");
+ const [auditDetails,setAuditDetails]=useState<Row|null>(null);
+ const [auditError,setAuditError]=useState("");
+ const [wfhBalance,setWfhBalance]=useState<Row|null>(null);
  const [policy,setPolicy]=useState<Row>(initialPolicy);
  const [shifts,setShifts]=useState<Row[]>([]);
  const [rosters,setRosters]=useState<Row[]>([]);
@@ -64,15 +71,22 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
    isApprover?fetch(api+"/core/employees",{credentials:"include"}).then(r=>r.ok?r.json():[]):Promise.resolve([]),
    fetch(api+"/project-management/projects",{credentials:"include"}).then(r=>r.ok?r.json():[]),
    isApprover?call("/timesheets?scope=approvals"):Promise.resolve([]),
-   call("/project-assignments")
+   call("/project-assignments"),call("/wfh-balance?year="+requestForm.work_date.slice(0,4)+"&month="+Number(requestForm.work_date.slice(5,7)))
   ]);
   const value=(n:number)=>fetches[n].status==="fulfilled"?(fetches[n] as PromiseFulfilledResult<any>).value:undefined;
   setDaily(value(0)||[]);setPolicy(value(1)||initialPolicy);setShifts(value(2)||[]);
   setRosters(value(3)||[]);setRequests(value(4)||[]);setApprovals(value(5)||[]);
   setTimesheets(value(6)||[]);setStaff(value(7)||[]);setProjectOptions(value(8)||[]);
-  setTimesheetApprovals(value(9)||[]);setProjectAssignments(value(10)||[]);
- },[call,api,isHR,isApprover]);
+  setTimesheetApprovals(value(9)||[]);setProjectAssignments(value(10)||[]);setWfhBalance(value(11)||null);
+ },[call,api,isHR,isApprover,requestForm.work_date]);
  useEffect(()=>{void load()},[load]);
+ async function loadAudit(){
+  setAuditError("");setAuditDetails(null);
+  if(!auditEmployee){setAuditError("Select an employee.");return}
+  try{setAuditDetails(await call("/employee-punches?employee_id="+encodeURIComponent(auditEmployee)+"&work_date="+auditDate+"&timezone_name="+encodeURIComponent(auditZone)))}
+  catch(e){setAuditError((e as Error).message)}
+ }
+ const fmtTime=(value:string|null|undefined)=>value?new Intl.DateTimeFormat("en-GB",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false,timeZone:auditZone}).format(new Date(value)):"—";
  function clear(){setError("");setErrorField("");setNotice("")}
  function showError(err:unknown,field?:string){
   const e=err as Error&{field?:string};setError(e.message||"Please check the highlighted field.");
@@ -145,8 +159,23 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
    </section>
   </div>}
 
+  {tab==="today"&&isHR&&<section className="employee-surface time-attendance-audit">
+    <h3>HR attendance audit</h3><p className="muted">Select employee, work date and time zone. Breaks are inferred gaps between recorded sessions.</p>
+    <div className="time-audit-filters">
+     <label>Employee<select value={auditEmployee} onChange={e=>setAuditEmployee(e.target.value)}><option value="">Select an employee</option>{staff.filter(p=>p.status!=="inactive").map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+     <label>Work date<input type="date" value={auditDate} onChange={e=>setAuditDate(e.target.value)}/></label>
+     <label>Time zone<select value={auditZone} onChange={e=>setAuditZone(e.target.value)}>{TIME_ZONES.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
+     <button type="button" className="employee-primary" disabled={!auditEmployee} onClick={()=>void loadAudit()}>View punch record</button>
+    </div>
+    {auditError&&<p role="alert" className="error">{auditError}</p>}
+    {auditDetails&&<div className="time-audit-results">
+      <div className="time-audit-summary"><strong>{auditDetails.employee_name} · {auditDetails.date}</strong><span>{auditDetails.timezone}</span><span>{auditDetails.currently_punched_in?"Punched in":"No active session on this date"}</span><strong>Work: {auditDetails.work_hours}h</strong><strong>Inferred breaks: {auditDetails.break_minutes} min</strong></div>
+      <div className="table-wrap"><table><thead><tr><th>#</th><th>Punch in</th><th>Punch out</th><th>Hours</th><th>Status</th></tr></thead><tbody>{auditDetails.sessions.map((row:Row,i:number)=><tr key={row.id}><td>{i+1}</td><td>{fmtTime(row.punch_in)}</td><td>{fmtTime(row.punch_out)}</td><td>{row.hours}</td><td>{row.status==="punched_in"?"Punched in":"Punched out"}</td></tr>)}</tbody></table>{auditDetails.sessions.length===0&&<p>No punches on the selected day.</p>}</div><p className="field-help">{auditDetails.break_source}</p>
+    </div>}
+   </section>}
   {tab==="requests"&&<div className="time-columns">
    <section className="employee-surface"><h3>Submit a time request</h3>
+    {requestForm.kind==="wfh"&&wfhBalance&&<p className="time-request-description">WFH allowance: {wfhBalance.used_or_pending}/{wfhBalance.monthly_limit} days pending/approved this month; {wfhBalance.remaining} remaining. The server checks each requested month.</p>}
     <form className="time-form" onSubmit={submitRequest} noValidate>
      <label>Request type<select name="kind" value={requestForm.kind} onChange={e=>setRequestForm(v=>({...v,kind:e.target.value}))}>{requestOptions.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
      <p className="time-request-description wide">{requestForm.kind==="on_duty"?"Use this when your manager sends you to a client site or another approved work location. This is not a normal office punch.":requestForm.kind==="wfh"?"Request approval to work remotely from home.":requestForm.kind==="regularization"?"Correct a missing or incorrect attendance punch; choose the timezone where you worked.":requestForm.kind==="overtime"?"Request approval for extra working hours.":"Request to exchange an assigned shift with a colleague."}</p>

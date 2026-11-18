@@ -1,4 +1,5 @@
 "use client";
+import {useTransientMessage} from "./useTransientMessage";
 import {useEffect,useState} from "react";
 import FeedbackMotion from "./FeedbackMotion";
 import {explainError} from "./formErrors";
@@ -11,7 +12,7 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
  const [policy,setPolicy]=useState<ProjectPolicy|null>(null);
  const [amount,setAmount]=useState("");
  const [error,setError]=useState("");
- const [saved,setSaved]=useState("");
+ const [saved,setSaved]=useTransientMessage();
  const [saving,setSaving]=useState(false);
  const [records,setRecords]=useState<{id:number;title:string;category:string;description:string;effective_date:string;active:boolean;attachments?:{id:number;name:string}[]}[]>([]);
  const [adding,setAdding]=useState(false);

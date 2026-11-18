@@ -1,3 +1,4 @@
+import {signOut} from "./helpers";
 import {test,expect} from '@playwright/test';
 import {login,navigate,users} from './helpers';
 import {API_URL,WEB_URL} from '../playwright.config';
@@ -21,7 +22,7 @@ test('governance request uses named requester, notifies admin, then moves into h
    effective_date:new Date().toISOString().slice(0,10),active:true,audience_ids:[]}
  }});
  expect(duplicate.status()).toBe(409);
- await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
+ await signOut(page);
  await page.locator('input[name="email"]').fill(process.env.E2E_ADMIN_EMAIL!);
  await page.locator('input[name="password"]').fill(process.env.E2E_ADMIN_PASSWORD!);
  await page.getByRole('button',{name:/sign in/i}).click();

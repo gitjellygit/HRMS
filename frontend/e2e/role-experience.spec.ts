@@ -1,3 +1,4 @@
+import {signOut} from "./helpers";
 import {test,expect} from '@playwright/test';
 import {login,navigate,users} from './helpers';
 import {API_URL,WEB_URL} from '../playwright.config';
@@ -24,7 +25,7 @@ test('sourcing employee sees only their projects, not other employee rates',asyn
  };
  const mine=await create('Owned QA Project',person('developer_a').id);
  const other=await create('Private Other Project',person('developer_b').id);
- await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
+ await signOut(page);
  await login(page,person('developer_a'));
  await navigate(page,'Projects');
  await expect(page.locator('.project-page')).toContainText('Owned QA Project '+unique);
@@ -43,7 +44,7 @@ test('employees see only their own appraisals',async({page})=>{
  };
  await create(person('developer_a').id);
  await create(person('developer_b').id);
- await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
+ await signOut(page);
  await login(page,person('developer_a'));
  await navigate(page,'Performance & growth');
  await page.getByRole('tab',{name:'Appraisal cycles'}).click();
@@ -87,7 +88,7 @@ test('HR reset reports missing SMTP and new employee must change initial passwor
  expect(reset.status()).toBe(503);
  const resetBody=await reset.json();
  expect(JSON.stringify(resetBody)).not.toContain('temporary_password');
- await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
+ await signOut(page);
  await page.goto('/');
  await page.locator('input[name="email"]').fill(email);
  await page.locator('input[name="password"]').fill('InitialSecret!1234');

@@ -1,4 +1,5 @@
 "use client";
+import {useTransientMessage} from "./useTransientMessage";
 import {explainError} from "./formErrors";
 import {useEffect,useState} from "react";
 import GrowthExtensions from "./GrowthExtensions";
@@ -22,7 +23,7 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
  const [target,setTarget]=useState(today());
  const [cycle,setCycle]=useState("");
  const [rating,setRating]=useState(3);
- const [message,setMessage]=useState("");
+ const [message,setMessage]=useTransientMessage();
  const [error,setError]=useState("");
  const [busy,setBusy]=useState(false);
  const canAssign=hr||user.role==="manager";

@@ -3,18 +3,22 @@ exit workflow, analytics, notification outbox and audit events.
 These are internal workflows, not a certified e-signature or messaging provider.
 """
 import io
+import json
+import re
 import os
 import hashlib
+import uuid
+from pathlib import Path
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Literal
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, select, func
 from sqlalchemy.orm import Mapped, Session, mapped_column
-from .main import Base, Employee, Attendance, current_user, db_session
+from .main import Base, Employee, Attendance, current_user, db_session, UPLOAD_DIR
 from .employee_core import EmployeeCore
 from .leave_management import LeaveRequest
 from .payroll import PayrollLine, PayrollRun
@@ -41,6 +45,12 @@ class HRAudit(Base):
     note:Mapped[str]=mapped_column(String(500),default="")
     created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
 
+class CompanyLetterhead(Base):
+    __tablename__="people_company_letterhead"
+    id:Mapped[int]=mapped_column(primary_key=True)
+    logo_key:Mapped[str]=mapped_column(String(100),default="")
+    updated_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
+
 class OfferTemplate(Base):
     __tablename__="people_offer_templates"
     id:Mapped[int]=mapped_column(primary_key=True)
@@ -58,10 +68,18 @@ class Offer(Base):
     joining_date:Mapped[date]=mapped_column(Date)
     rendered_content:Mapped[str]=mapped_column(Text)
     document_hash:Mapped[str]=mapped_column(String(64))
+    letterhead_logo_key:Mapped[str]=mapped_column(String(100),default="")
     status:Mapped[str]=mapped_column(String(20),default="draft")
     signed_name:Mapped[str|None]=mapped_column(String(150),nullable=True)
     signed_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
     created_by:Mapped[int]=mapped_column(ForeignKey("employees.id"))
+
+class OnboardingCategory(Base):
+    __tablename__="people_onboarding_categories"
+    id:Mapped[int]=mapped_column(primary_key=True)
+    slug:Mapped[str]=mapped_column(String(30),unique=True,index=True)
+    display_name:Mapped[str]=mapped_column(String(80))
+    active:Mapped[bool]=mapped_column(Boolean,default=True)
 
 class OnboardingTask(Base):
     __tablename__="people_onboarding_tasks"
@@ -81,6 +99,8 @@ class Announcement(Base):
     title:Mapped[str]=mapped_column(String(180))
     body:Mapped[str]=mapped_column(Text)
     requires_ack:Mapped[bool]=mapped_column(Boolean,default=False)
+    media_key:Mapped[str]=mapped_column(String(100),default="")
+    audience_ids:Mapped[str]=mapped_column(Text,default="[]")
     created_by:Mapped[int]=mapped_column(ForeignKey("employees.id"))
     published_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
 
@@ -155,7 +175,7 @@ class SignIn(BaseModel):
 
 class TaskIn(BaseModel):
     employee_id:int
-    category:Literal["document","asset","induction","hr","it"]
+    category:str=Field(min_length=2,max_length=30,pattern=r"^[a-z][a-z0-9_]*$")
     title:str=Field(min_length=3,max_length=150)
     due_date:date|None=None
     assigned_to:int|None=None
@@ -165,6 +185,7 @@ class AnnouncementIn(BaseModel):
     title:str=Field(min_length=4,max_length=180)
     body:str=Field(min_length=12,max_length=10000)
     requires_ack:bool=False
+    audience_ids:list[int]=Field(default_factory=list,max_length=500)
 
 class TicketIn(BaseModel):
     category:Literal["payroll","leave","attendance","benefits","it","other"]
@@ -177,7 +198,6 @@ class TicketReply(BaseModel):
 
 class ExitIn(BaseModel):
     reason:str=Field(min_length=10,max_length=2000)
-    notice_days:int=Field(ge=0,le=365)
     requested_date:date=Field(default_factory=date.today)
 
 class ExitUpdate(BaseModel):
@@ -215,6 +235,41 @@ def notify(db,employee_id,event,subject,body):
         db.add(NotifyOutbox(employee_id=employee_id,event=event,subject=subject,body=body,
                             channel=channel,status="queued"))
 
+@router.post("/letterhead/logo")
+async def upload_letterhead_logo(file:UploadFile=File(...),user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    if file.content_type not in ("image/png","image/jpeg"):
+        raise HTTPException(422,"Upload a PNG or JPEG company logo.")
+    content=await file.read(2*1024*1024+1)
+    if len(content)>2*1024*1024:
+        raise HTTPException(413,"Company logo must be smaller than 2 MB.")
+    if not (content.startswith(bytes([137,80,78,71,13,10,26,10])) or content.startswith(bytes([255,216,255]))):
+        raise HTTPException(422,"Invalid PNG/JPEG file.")
+    from reportlab.lib.utils import ImageReader
+    try:
+        ImageReader(io.BytesIO(content)).getSize()
+    except Exception:
+        raise HTTPException(422,"Cannot read the company logo image.")
+    key=f"{uuid.uuid4().hex}.{'png' if file.content_type=='image/png' else 'jpg'}"
+    destination=UPLOAD_DIR/"company_letterhead"
+    destination.mkdir(parents=True,exist_ok=True)
+    (destination/key).write_bytes(content)
+    row=db.get(CompanyLetterhead,1)
+    if not row:
+        row=CompanyLetterhead(id=1)
+        db.add(row)
+    row.logo_key=key
+    row.updated_at=now()
+    audit(db,user,"letterhead",1,"logo_updated")
+    db.commit()
+    return {"ok":True,"has_logo":True}
+
+@router.get("/letterhead")
+def get_letterhead(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    row=db.get(CompanyLetterhead,1)
+    return {"has_logo":bool(row and row.logo_key)}
+
 @router.post("/offer-templates",status_code=201)
 def create_template(body:TemplateIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     require_hr(user)
@@ -225,7 +280,32 @@ def create_template(body:TemplateIn,user:Employee=Depends(current_user),db:Sessi
 @router.get("/offer-templates")
 def templates(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     require_hr(user)
-    return [{"id":r.id,"name":r.name,"content":r.content} for r in db.scalars(select(OfferTemplate)).all()]
+    return [{"id":r.id,"name":r.name,"content":r.content,"active":r.active} for r in db.scalars(select(OfferTemplate)).all()]
+
+@router.put("/offer-templates/{template_id}")
+def update_offer_template(template_id:int,body:TemplateIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    row=db.get(OfferTemplate,template_id)
+    if not row:raise HTTPException(404,"Offer template not found.")
+    if not row.active:raise HTTPException(409,"Archived templates cannot be edited. Create a new template.")
+    duplicate=db.scalar(select(OfferTemplate.id).where(OfferTemplate.name==body.name,OfferTemplate.id!=template_id))
+    if duplicate:raise HTTPException(409,"Another offer template already uses this name.")
+    row.name=body.name
+    row.content=body.content
+    audit(db,user,"offer_template",row.id,"updated")
+    db.commit()
+    return {"id":row.id,"name":row.name,"active":row.active}
+
+@router.delete("/offer-templates/{template_id}")
+def archive_offer_template(template_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    row=db.get(OfferTemplate,template_id)
+    if not row:raise HTTPException(404,"Offer template not found.")
+    row.active=False
+    audit(db,user,"offer_template",row.id,"archived")
+    db.commit()
+    return {"id":row.id,"active":False}
+
 
 @router.post("/offers",status_code=201)
 def create_offer(body:OfferIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
@@ -251,9 +331,10 @@ def create_offer(body:OfferIn,user:Employee=Depends(current_user),db:Session=Dep
             ("annual_ctc",str(body.annual_ctc)),("joining_date",body.joining_date.isoformat())):
         content=content.replace("{{"+key+"}}",value)
     digest=hashlib.sha256(content.encode()).hexdigest()
+    letterhead=db.get(CompanyLetterhead,1)
     row=Offer(employee_id=emp.id,template_id=templ.id,title=body.title,
               annual_ctc=body.annual_ctc,joining_date=body.joining_date,rendered_content=content,
-              document_hash=digest,created_by=user.id)
+              document_hash=digest,letterhead_logo_key=letterhead.logo_key if letterhead else "",created_by=user.id)
     db.add(row);db.flush();audit(db,user,"offer",row.id,"created")
     db.commit();return {"id":row.id,"status":row.status,"hash":digest}
 
@@ -296,7 +377,15 @@ def offer_pdf(offer_id:int,user:Employee=Depends(current_user),db:Session=Depend
     if row.status=="draft" and not is_hr(user):raise HTTPException(404)
     b=io.BytesIO();pdf=canvas.Canvas(b,pagesize=(595,842))
     pdf.setTitle("Employment Offer")
-    pdf.setFont("Helvetica-Bold",18);pdf.drawString(45,784,"JellyGit | Employment Offer")
+    if row.letterhead_logo_key:
+        from reportlab.lib.utils import ImageReader
+        logo=UPLOAD_DIR/"company_letterhead"/Path(row.letterhead_logo_key).name
+        if logo.is_file():
+            try:
+                pdf.drawImage(ImageReader(str(logo)),45,770,width=105,height=47,preserveAspectRatio=True,anchor="sw",mask="auto")
+            except Exception:
+                pass
+    pdf.setFont("Helvetica-Bold",18);pdf.drawString(170,784,"Employment Offer")
     pdf.setFont("Helvetica",10)
     from reportlab.lib.utils import simpleSplit
     y=740
@@ -312,13 +401,75 @@ def offer_pdf(offer_id:int,user:Employee=Depends(current_user),db:Session=Depend
     return StreamingResponse(b,media_type="application/pdf",headers={
        "Content-Disposition":f'attachment; filename="offer-{offer_id}.pdf"',"Cache-Control":"private, no-store"})
 
+def ensure_onboarding_defaults(db:Session):
+    defaults={"document":"Document","asset":"Asset","induction":"Induction","hr":"HR","it":"IT"}
+    existing=set(db.scalars(select(OnboardingCategory.slug).where(OnboardingCategory.slug.in_(defaults))).all())
+    missing=[OnboardingCategory(slug=slug,display_name=label) for slug,label in defaults.items() if slug not in existing]
+    if missing:
+        db.add_all(missing)
+        db.flush()
+
+class CategoryIn(BaseModel):
+    slug:str=Field(min_length=2,max_length=30,pattern=r"^[a-z][a-z0-9_]*$")
+    display_name:str=Field(min_length=2,max_length=80)
+
+class CategoryEdit(BaseModel):
+    display_name:str=Field(min_length=2,max_length=80)
+    active:bool=True
+
+@router.get("/onboarding/categories")
+def onboarding_categories(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    ensure_onboarding_defaults(db)
+    db.commit()
+    rows=db.scalars(select(OnboardingCategory).order_by(OnboardingCategory.display_name)).all()
+    return [{"id":r.id,"slug":r.slug,"display_name":r.display_name,"active":r.active} for r in rows]
+
+@router.post("/onboarding/categories",status_code=201)
+def create_onboarding_category(body:CategoryIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    if db.scalar(select(OnboardingCategory.id).where(OnboardingCategory.slug==body.slug)):
+        raise HTTPException(409,"Onboarding category already exists.")
+    category=OnboardingCategory(slug=body.slug,display_name=body.display_name)
+    db.add(category);db.flush()
+    audit(db,user,"onboarding_category",category.id,"created")
+    db.commit()
+    return {"id":category.id,"slug":category.slug}
+
+@router.put("/onboarding/categories/{category_id}")
+def edit_onboarding_category(category_id:int,body:CategoryEdit,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    category=db.get(OnboardingCategory,category_id)
+    if not category:raise HTTPException(404,"Onboarding category not found.")
+    category.display_name=body.display_name
+    category.active=body.active
+    audit(db,user,"onboarding_category",category.id,"updated")
+    db.commit()
+    return {"id":category.id,"active":category.active}
+
+@router.delete("/onboarding/categories/{category_id}")
+def archive_onboarding_category(category_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    category=db.get(OnboardingCategory,category_id)
+    if not category:raise HTTPException(404,"Onboarding category not found.")
+    category.active=False
+    audit(db,user,"onboarding_category",category.id,"archived")
+    db.commit()
+    return {"id":category.id,"active":False}
+
 @router.post("/onboarding",status_code=201)
 def add_task(body:TaskIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     require_hr(user)
     if not db.get(Employee,body.employee_id):raise HTTPException(422,"Employee not found.")
-    if body.assigned_to and not db.get(Employee,body.assigned_to):raise HTTPException(422,"Assignee not found.")
+    ensure_onboarding_defaults(db)
+    if not db.scalar(select(OnboardingCategory.id).where(OnboardingCategory.slug==body.category,OnboardingCategory.active.is_(True))):
+        raise HTTPException(422,"Choose an active onboarding category.")
+    if body.assigned_to is None:raise HTTPException(422,"Select a responsible employee for this onboarding task.")
+    if not db.get(Employee,body.assigned_to):raise HTTPException(422,"Assignee not found.")
     row=OnboardingTask(**body.model_dump());db.add(row);db.flush()
-    audit(db,user,"onboarding",row.id,"created");db.commit()
+    audit(db,user,"onboarding",row.id,"created")
+    if row.assigned_to is not None:
+        notify(db,row.assigned_to,"onboarding","New onboarding task assigned",f"{row.title} for employee #{row.employee_id}")
+    db.commit()
     return {"id":row.id,"status":row.status}
 
 @router.get("/onboarding")
@@ -342,21 +493,83 @@ def complete_task(task_id:int,user:Employee=Depends(current_user),db:Session=Dep
 @router.post("/announcements",status_code=201)
 def add_announcement(body:AnnouncementIn,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     require_hr(user)
-    row=Announcement(**body.model_dump(),created_by=user.id);db.add(row);db.flush()
+    data=body.model_dump(exclude={"audience_ids"})
+    row=Announcement(**data,created_by=user.id,audience_ids=json.dumps(sorted(set(body.audience_ids))))
+    db.add(row);db.flush()
     from .notification_center import add_inbox
     ids=db.scalars(select(Employee.id).where(Employee.status=="active")).all()
+    if body.audience_ids:
+        allowed=set(ids)
+        if any(item not in allowed for item in body.audience_ids):raise HTTPException(422,"Audience includes an inactive or unknown employee.")
+        ids=[item for item in sorted(set(body.audience_ids)) if item in allowed]
     for employee_id in ids:
         add_inbox(db,employee_id,"announcement",row.title,row.body,"people")
     audit(db,user,"announcement",row.id,"published");db.commit()
     return {"id":row.id,"recipients":len(ids)}
 
+@router.post("/announcements/with-media",status_code=201)
+async def publish_announcement_media(
+    title:str=Form(...),body:str=Form(...),requires_ack:bool=Form(False),
+    audience_json:str=Form("[]"),image:UploadFile|None=File(None),
+    user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    try:
+        ids=json.loads(audience_json)
+        if not isinstance(ids,list):raise ValueError()
+        payload=AnnouncementIn(title=title,body=body,requires_ack=requires_ack,audience_ids=ids)
+    except Exception:
+        raise HTTPException(422,"Choose a valid announcement audience.")
+    media_key=""
+    if image is not None:
+        if image.content_type not in ("image/png","image/jpeg","image/webp"):
+            raise HTTPException(422,"Upload a PNG, JPEG, or WebP announcement image.")
+        data=await image.read(3*1024*1024+1)
+        if len(data)>3*1024*1024:raise HTTPException(413,"Announcement image must be under 3 MB.")
+        formats=(data.startswith(bytes([137,80,78,71,13,10,26,10])),data.startswith(bytes([255,216,255])),data.startswith(b"RIFF") and data[8:12]==b"WEBP")
+        if not any(formats):raise HTTPException(422,"Announcement image is invalid.")
+        from PIL import Image
+        try:
+            im=Image.open(io.BytesIO(data))
+            im.verify()
+        except Exception:
+            raise HTTPException(422,"Cannot decode announcement image.")
+        ext={"image/png":"png","image/jpeg":"jpg","image/webp":"webp"}[image.content_type]
+        media_key=f"{uuid.uuid4().hex}.{ext}"
+        folder=UPLOAD_DIR/"announcements";folder.mkdir(parents=True,exist_ok=True)
+        (folder/media_key).write_bytes(data)
+    recipients=db.scalars(select(Employee.id).where(Employee.status=="active")).all()
+    if payload.audience_ids:
+        allowed=set(recipients)
+        if any(x not in allowed for x in payload.audience_ids):
+            raise HTTPException(422,"Audience includes an inactive or unknown employee.")
+        recipients=list(sorted(set(payload.audience_ids)))
+    row=Announcement(title=payload.title,body=payload.body,requires_ack=payload.requires_ack,
+                     audience_ids=json.dumps(sorted(set(payload.audience_ids))),media_key=media_key,created_by=user.id)
+    db.add(row);db.flush()
+    from .notification_center import add_inbox
+    for employee_id in recipients:add_inbox(db,employee_id,"announcement",row.title,row.body,"people")
+    audit(db,user,"announcement",row.id,"published")
+    db.commit()
+    return {"id":row.id,"recipients":len(recipients),"has_media":bool(media_key)}
+
+@router.get("/announcements/{announcement_id}/image")
+def announcement_image(announcement_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    row=db.get(Announcement,announcement_id)
+    if not row or not row.media_key:raise HTTPException(404,"Announcement image not found.")
+    audience=json.loads(row.audience_ids or "[]")
+    if not is_hr(user) and audience and user.id not in audience:raise HTTPException(403,"This announcement is not visible to you.")
+    path=UPLOAD_DIR/"announcements"/Path(row.media_key).name
+    if not path.is_file():raise HTTPException(404,"Image file is missing.")
+    return FileResponse(path,headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"})
+
 @router.get("/announcements")
 def announcements(user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     rows=db.scalars(select(Announcement).order_by(Announcement.id.desc()).limit(100)).all()
+    rows=[row for row in rows if is_hr(user) or not json.loads(row.audience_ids or "[]") or user.id in json.loads(row.audience_ids or "[]")]
     acked=set(db.scalars(select(AnnouncementAck.announcement_id).where(
         AnnouncementAck.employee_id==user.id)).all())
     return [{"id":r.id,"title":r.title,"body":r.body,"requires_ack":r.requires_ack,
-             "acknowledged":r.id in acked,"published_at":r.published_at} for r in rows]
+             "acknowledged":r.id in acked,"published_at":r.published_at,"has_media":bool(r.media_key)} for r in rows]
 
 @router.post("/announcements/{announcement_id}/ack")
 def acknowledge(announcement_id:int,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
@@ -403,13 +616,30 @@ def request_exit(body:ExitIn,user:Employee=Depends(current_user),db:Session=Depe
         ExitCase.status.in_(["requested","approved","clearance"])))
     if active:raise HTTPException(409,"An exit case is already in progress.")
     row=ExitCase(employee_id=user.id,reason=body.reason,
-        requested_date=body.requested_date,notice_days=body.notice_days,
-        planned_last_day=body.requested_date+timedelta(days=body.notice_days))
+        requested_date=body.requested_date,notice_days=0,
+        planned_last_day=body.requested_date)
     db.add(row);db.flush()
     from .exit_workflow import create_tasks
     create_tasks(db,row)
     audit(db,user,"exit",row.id,"requested");db.commit()
     return {"id":row.id,"status":row.status,"last_day":row.planned_last_day}
+
+class ExitNoticeReview(BaseModel):
+    notice_days:int=Field(ge=0,le=365)
+    reason:str=Field(min_length=10,max_length=1000)
+
+@router.put("/exits/{exit_id}/notice")
+def update_exit_notice(exit_id:int,body:ExitNoticeReview,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    require_hr(user)
+    row=db.get(ExitCase,exit_id)
+    if not row:raise HTTPException(404,"Exit request not found.")
+    if row.status in ("rejected","settled"):raise HTTPException(409,"Closed exit cases cannot be changed.")
+    row.notice_days=body.notice_days
+    row.planned_last_day=row.requested_date+timedelta(days=body.notice_days)
+    audit(db,user,"exit",row.id,"notice_reviewed",body.reason.strip())
+    notify(db,row.employee_id,"exit","Notice period reviewed",f"HR reviewed your notice period: {body.notice_days} days; expected last working day {row.planned_last_day}.")
+    db.commit()
+    return {"id":row.id,"notice_days":row.notice_days,"planned_last_day":row.planned_last_day}
 
 @router.get("/exits")
 def exits(scope:Literal["mine","all"]="mine",user:Employee=Depends(current_user),db:Session=Depends(db_session)):

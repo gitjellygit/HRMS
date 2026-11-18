@@ -1,4 +1,5 @@
 "use client";
+import {useTransientMessage} from "./useTransientMessage";
 import {useEffect,useState} from "react";
 import {CalendarDays,CheckCircle2,Clock3,Search,Users} from "lucide-react";
 
@@ -17,7 +18,7 @@ export default function HRDesk({api}:{api:string}){
  const [kind,setKind]=useState("");
  const [days,setDays]=useState("");
  const [error,setError]=useState("");
- const [notice,setNotice]=useState("");
+ const [notice,setNotice]=useTransientMessage();
  const [saving,setSaving]=useState(false);
  async function load(){
   setError("");

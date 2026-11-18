@@ -1,4 +1,5 @@
 "use client";
+import {useTransientMessage} from "./useTransientMessage";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ChangePassword from "./ChangePassword";
 import {explainError} from "./formErrors";
@@ -30,7 +31,7 @@ export default function CoreWorkspace({api,mode,user,employeeId,onBack,onPasswor
  const isHR=["super_admin","admin","hr"].includes(user.role);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
- const [success,setSuccess]=useState("");
+ const [success,setSuccess]=useTransientMessage();
  const [person,setPerson]=useState<RecordType|null>(null);
  const [draft,setDraft]=useState<Core>({});
  const [accountDraft,setAccountDraft]=useState({name:"",email:"",designation:"",phone:"",joining_date:"",reason:""});

@@ -1,3 +1,4 @@
+import {signOut} from "./helpers";
 import {test,expect} from "@playwright/test";
 import {login,navigate,users} from "./helpers";
 import {API_URL,WEB_URL} from "../playwright.config";
@@ -33,7 +34,7 @@ test("HR creates a cycle and employee completes a self-review",async({page})=>{
  expect(cycles.status()).toBe(200);
  const cycle=(await cycles.json()).find((c:{name:string})=>c.name===label);
  expect(cycle).toBeTruthy();
- await page.locator(".sidebar nav").getByRole("button",{name:"Sign out"}).click();
+ await signOut(page);
  await login(page,person("developer_b"));
  await navigate(page,"Performance & growth");
  await page.getByRole("tab",{name:"Appraisal cycles"}).click();

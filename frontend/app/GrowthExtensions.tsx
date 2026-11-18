@@ -1,4 +1,5 @@
 "use client";
+import {useTransientMessage} from "./useTransientMessage";
 import {useEffect,useState} from "react";
 
 type Row=Record<string,any>;
@@ -18,7 +19,7 @@ export default function GrowthExtensions({api,user}:{api:string;user:{id:number;
  const [reviewer,setReviewer]=useState("");
  const [cycle,setCycle]=useState("");
  const [score,setScore]=useState(3);
- const [message,setMessage]=useState("");
+ const [message,setMessage]=useTransientMessage();
  const [error,setError]=useState("");
  async function call(path:string,method="GET",body?:unknown){
   const r=await fetch(api+path,{method,credentials:"include",headers:{"Content-Type":"application/json"},

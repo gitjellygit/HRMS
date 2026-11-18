@@ -231,6 +231,9 @@ def sync_matured_bonuses(db: Session) -> int:
             db.add(bonus)
             db.flush()
             db.add(ProjectBonusAward(project_id=project.id,bonus_id=bonus.id,awarded_by_id=None))
+            from .notification_center import add_inbox
+            add_inbox(db,owner.id,"bonus","Project milestone bonus recorded",
+                      f"Your bonus for {project.name} has reached its milestone and awaits approval.","dashboard")
             db.commit()
             created+=1
         except Exception:
@@ -264,6 +267,9 @@ def award_bonus(project_id: int,user: Employee = Depends(manage),db: Session = D
     db.add(bonus)
     db.flush()
     db.add(ProjectBonusAward(project_id=project_id,bonus_id=bonus.id,awarded_by_id=user.id))
+    from .notification_center import add_inbox
+    add_inbox(db,owner.id,"bonus","Project milestone bonus recorded",
+              f"Your bonus for {project.name} has reached its milestone and awaits approval.","dashboard")
     try:
         db.commit()
     except IntegrityError as exc:

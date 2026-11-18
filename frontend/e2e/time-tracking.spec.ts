@@ -1,3 +1,4 @@
+import {signOut} from "./helpers";
 import {test,expect} from '@playwright/test';
 import {login,navigate,users} from './helpers';
 import {API_URL,WEB_URL} from '../playwright.config';
@@ -22,7 +23,7 @@ test('employee can request WFH and manager can approve it',async({page})=>{
  await page.getByRole('button',{name:'Send for manager approval'}).click();
  await expect(page.locator('.motion-feedback').last()).toContainText('Request sent');
  await expect(page.locator('.time-list').first()).toContainText(reason);
- await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
+ await signOut(page);
  await login(page,persona('manager'));
  await navigate(page,'Time & shifts');
  await page.getByRole('tab',{name:'Requests'}).click();
@@ -91,7 +92,7 @@ test('manager reviews display employee names, not numeric IDs',async({page})=>{
  await page.locator('[name=reason]').fill(reason);
  await page.getByRole('button',{name:'Send for manager approval'}).click();
  await expect(page.locator('.motion-feedback').last()).toContainText('Request sent');
- await page.locator('.sidebar nav').getByRole('button',{name:'Sign out'}).click();
+ await signOut(page);
  await login(page,persona('manager'));
  const inbox=await page.request.get(API_URL+'/notification-center');
  expect(inbox.ok()).toBeTruthy();

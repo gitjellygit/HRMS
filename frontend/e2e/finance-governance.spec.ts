@@ -1,3 +1,4 @@
+import {signOut} from "./helpers";
 import {test,expect} from "@playwright/test";
 import {login,navigate,users} from "./helpers";
 import {API_URL,WEB_URL} from "../playwright.config";
@@ -20,7 +21,7 @@ async function project(page:any,rateUnit="hour"){
 test("accountant can see sourced placements, configure recipient and prepare invoice",async({page})=>{
  await login(page,role("hr"));
  const id=await project(page);
- await page.locator(".sidebar nav").getByRole("button",{name:"Sign out"}).click();
+ await signOut(page);
  await login(page,role("accountant"));
  await navigate(page,"Finance & invoicing");
  await expect(page.getByRole("heading",{name:"Project billing"})).toBeVisible();
@@ -53,7 +54,7 @@ test("employee cannot access finance, but can complete a welcome orientation",as
  expect((await status.json()).total_steps).toBe(7);
  const again=await page.request.post(API_URL+"/people/onboarding/orientation/"+role("developer_a").id,{headers:origin});
  expect((await again.json()).created).toBe(0);
- await page.locator(".sidebar nav").getByRole("button",{name:"Sign out"}).click();
+ await signOut(page);
  await login(page,role("developer_a"));
  await expect(page.locator(".sidebar nav").getByRole("button",{name:"Finance & invoicing"})).toHaveCount(0);
  expect((await page.request.get(API_URL+"/finance/projects")).status()).toBe(403);
@@ -70,7 +71,7 @@ test("accountant can save a weekly invoice rate in a single action and expand th
  const profile=await (await page.request.get(API_URL+"/finance/projects")).json();
  const row=profile.find((x:any)=>x.id===pid);
  expect(row).toBeTruthy();
- await page.locator(".sidebar nav").getByRole("button",{name:"Sign out"}).click();
+ await signOut(page);
  await login(page,role("accountant"));
  await navigate(page,"Finance & invoicing");
  await page.getByRole("button",{name:new RegExp(row.project_number)}).click();

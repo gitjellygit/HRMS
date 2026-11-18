@@ -8,7 +8,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, select, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, select, func, text
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .main import Base, Employee, Attendance, current_user, db_session
@@ -304,6 +304,78 @@ def roster(employee_id:int|None=None,user:Employee=Depends(current_user),db:Sess
              "timezone":db.get(Shift,r.shift_id).timezone}
             for r in db.scalars(select(Roster).where(Roster.employee_id==owner).order_by(Roster.work_date.desc())).all()]
 
+@router.get("/employee-punches")
+def employee_punches(employee_id:int,work_date:date,
+                     timezone_name:Literal["America/New_York","America/Chicago","Asia/Kolkata","UTC"]="America/New_York",
+                     user:Employee=Depends(only_hr),db:Session=Depends(db_session)):
+    """HR audit view: exact recorded sessions and observed gaps, in a selected IANA zone.
+
+    Gaps between completed punches are inferred breaks, not a dedicated break timer.
+    Sessions belong to their local punch-in date; after-midnight punches start a new day.
+    """
+    person=db.get(Employee,employee_id)
+    if not person:raise HTTPException(404,"Employee not found")
+    tz=ZoneInfo(timezone_name)
+    start=datetime.combine(work_date,time.min,tzinfo=tz).astimezone(timezone.utc)
+    end=datetime.combine(work_date+timedelta(days=1),time.min,tzinfo=tz).astimezone(timezone.utc)
+    punches=db.scalars(select(Attendance).where(
+        Attendance.employee_id==employee_id,Attendance.punch_in<end,
+        (Attendance.punch_out>start)|(Attendance.punch_out.is_(None))).order_by(Attendance.punch_in.asc())).all()
+    sessions=[]
+    completed_seconds=0
+    gap_seconds=0
+    previous_end=None
+    current_utc=NOW()
+    for p in punches:
+        opened=p.punch_in.astimezone(timezone.utc)
+        closed=p.punch_out.astimezone(timezone.utc) if p.punch_out else None
+        effective_start=max(opened,start)
+        effective_end=min(closed or current_utc,end)
+        if effective_end<=effective_start:continue
+        if previous_end and effective_start>previous_end:
+            gap_seconds+=(effective_start-previous_end).total_seconds()
+        seconds=max(0,(effective_end-effective_start).total_seconds())
+        completed_seconds+=seconds
+        sessions.append({"id":p.id,"punch_in":p.punch_in.astimezone(tz).isoformat(),
+            "punch_out":p.punch_out.astimezone(tz).isoformat() if p.punch_out else None,
+            "carried_across_midnight":opened<start or (closed is not None and closed>end),
+            "status":"punched_out" if p.punch_out else "punched_in",
+            "hours":round(seconds/3600,2)})
+        previous_end=effective_end
+    current_open=db.scalar(select(Attendance.id).where(Attendance.employee_id==employee_id,
+        Attendance.punch_out.is_(None)).limit(1))
+    return {"employee_id":employee_id,"employee_name":person.name,"date":work_date,
+            "timezone":timezone_name,"sessions":sessions,
+            "currently_punched_in":current_open is not None,
+            "work_hours":round(completed_seconds/3600,2),
+            "break_minutes":round(gap_seconds/60,1),
+            "break_source":"Gaps between consecutive attendance sessions; manual or unrecorded breaks cannot be measured."}
+
+
+@router.get("/wfh-balance")
+def wfh_balance(year:int|None=None,month:int|None=None,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
+    today=date.today()
+    year=year or today.year
+    month=month or today.month
+    if not 2020<=year<=2100 or not 1<=month<=12:
+        raise HTTPException(422,"Choose a valid year and month")
+    first=date(year,month,1)
+    next_month=date(year+1,1,1) if month==12 else date(year,month+1,1)
+    requested=db.scalars(select(TimeRequest).where(TimeRequest.employee_id==user.id,
+        TimeRequest.kind=="wfh",TimeRequest.status.in_(("pending","approved")),
+        TimeRequest.work_date<next_month,
+        (TimeRequest.end_date.is_(None)) | (TimeRequest.end_date>=first))).all()
+    reserved_dates=set()
+    for req in requested:
+        d=max(first,req.work_date)
+        last=min(next_month-timedelta(days=1),req.end_date or req.work_date)
+        while d<=last:
+            reserved_dates.add(d)
+            d+=timedelta(days=1)
+    return {"year":year,"month":month,"monthly_limit":2,
+            "used_or_pending":len(reserved_dates),"remaining":max(0,2-len(reserved_dates))}
+
+
 @router.get("/daily")
 def daily(employee_id:int|None=None,month:int=0,user:Employee=Depends(current_user),db:Session=Depends(db_session)):
     if not 0<=month<=12:raise HTTPException(422,"Month must be between 1 and 12.")
@@ -360,6 +432,34 @@ def create_request(body:TimeRequestIn,user:Employee=Depends(current_user),db:Ses
     if body.work_date>date.today()+timedelta(days=365):raise HTTPException(422,"Date is too far in the future.")
     if body.kind=="shift_swap" and body.target_employee_id==user.id:raise HTTPException(422,"Choose another employee.")
     if body.kind=="shift_swap" and not db.get(Employee,body.target_employee_id):raise HTTPException(422,"Choose an existing colleague.")
+    if body.kind=="wfh":
+        # Serialize concurrent requests for this employee/month across tabs and devices.
+        db.execute(text("SELECT pg_advisory_xact_lock(:lock)"),{"lock":600000000+user.id})
+        proposed_end=body.end_date or body.work_date
+        if (proposed_end-body.work_date).days>31:
+            raise HTTPException(422,detail={"field":"end_date","message":"WFH requests must be for 31 days or fewer."})
+        requested=db.scalars(select(TimeRequest).where(
+            TimeRequest.employee_id==user.id,TimeRequest.kind=="wfh",
+            TimeRequest.status.in_(("pending","approved")),
+            TimeRequest.work_date<=proposed_end,
+            (TimeRequest.end_date.is_(None)) | (TimeRequest.end_date>=body.work_date))).all()
+        new_dates=set()
+        day=body.work_date
+        while day<=proposed_end:
+            new_dates.add(day)
+            day+=timedelta(days=1)
+        months={(d.year,d.month) for d in new_dates}
+        for year,month in months:
+            existing_dates=set()
+            for req in requested:
+                d=req.work_date
+                while d<=(req.end_date or req.work_date):
+                    if d.year==year and d.month==month:existing_dates.add(d)
+                    d+=timedelta(days=1)
+            count=len(existing_dates|{d for d in new_dates if d.year==year and d.month==month})
+            if count>2:
+                raise HTTPException(422,detail={"field":"work_date","message":
+                    f"Only two WFH days are allowed per month. {year}-{month:02d} already has {len(existing_dates)} pending or approved day(s)."})
     row=TimeRequest(employee_id=user.id,**body.model_dump())
     if body.kind=="shift_swap":row.status="pending_colleague"
     db.add(row);db.flush()
