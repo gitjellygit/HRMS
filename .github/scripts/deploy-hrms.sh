@@ -15,9 +15,42 @@ if [[ "$PREVIOUS_SHA" == "$TARGET_SHA" ]]; then echo "Already deployed"; exit 0;
 # additive migrations from 2026-11-17, never arbitrary future SQL/Compose changes.
 CHANGED="$(git diff --name-only "$PREVIOUS_SHA" "$TARGET_SHA" -- backend/migrations/ docker-compose.yml)"
 if [[ -n "$CHANGED" ]]; then
-  if [[ "$SCHEMA_APPROVAL" != "APPROVE-20261117-MIGRATIONS" ]]; then
-    echo "Schema changes detected; select reviewed migration approval in manual workflow."; exit 1
-  fi
+  if [[ "$SCHEMA_APPROVAL" == "APPROVE-20261119-PROBATION" ]]; then
+    # Exactly the one approved migration may change. A Compose edit, a new
+    # migration, or any additional SQL changes require a fresh review.
+    if [[ "$CHANGED" != "backend/migrations/20261119_leave_probation_months.sql" ]]; then
+      echo "Probation approval cannot cover unreviewed migrations or Compose edits."
+      printf '%s\n' "$CHANGED"
+      exit 1
+    fi
+    echo "Verifying the approved probation schema on the VPS."
+    docker compose exec -T db sh -c 'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
+DO $probation_gate$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='leave_policies'
+      AND column_name='probation_months'
+      AND data_type='integer' AND is_nullable='NO'
+      AND column_default LIKE '%3%'
+  ) THEN
+    RAISE EXCEPTION 'Missing or unexpected leave_policies.probation_months; apply reviewed migration first';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid='public.leave_policies'::regclass
+      AND conname='leave_policies_probation_months_range'
+      AND contype='c' AND convalidated
+  ) THEN
+    RAISE EXCEPTION 'Missing validated probation_months range constraint';
+  END IF;
+  IF EXISTS (SELECT 1 FROM leave_policies WHERE probation_months NOT BETWEEN 0 AND 12) THEN
+    RAISE EXCEPTION 'Invalid probation_months values detected';
+  END IF;
+END $probation_gate$;
+SQL
+    echo "Reviewed probation migration verified; release may continue."
+  elif [[ "$SCHEMA_APPROVAL" == "APPROVE-20261117-MIGRATIONS" ]]; then
   EXPECTED="$(printf '%s\n' \
     backend/migrations/20261117_activity_agent_app_usage.sql \
     backend/migrations/20261117_activity_agent_devices.sql \
@@ -79,6 +112,10 @@ BEGIN
 END $schema_gate$;
 SQL
   echo "Reviewed migration schema verified; release can continue."
+  else
+    echo "Schema changes detected; select the matching reviewed migration approval in manual workflow."
+    exit 1
+  fi
 fi
 rollback() {
  code=$?
