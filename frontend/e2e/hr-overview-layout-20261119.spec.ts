@@ -34,8 +34,8 @@ test('HR overview keeps email queue compact, explains queued state and aligns ov
  await page.getByRole('button',{name:'Show 5 more messages'}).click();
  await expect(table.locator('tbody tr')).toHaveCount(10);
  const form=page.locator('.hr-override-form');
- await expect(form.getByLabel('Override employee')).toBeVisible();
- await expect(form.getByLabel('Override leave type')).toBeVisible();
+ await expect(form.getByRole('button',{name:'Override employee'})).toBeVisible();
+ await expect(form.getByRole('button',{name:'Override leave type'})).toBeVisible();
  await expect(form.getByLabel('Override days')).toBeVisible();
  await expect(form.getByRole('button',{name:'Save override'})).toBeVisible();
  await toggle.click();
