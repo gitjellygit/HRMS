@@ -22,7 +22,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate production release script syntax
-        run: bash -n .github/scripts/deploy-hrms.sh
+        run: |
+          bash -n .github/scripts/deploy-hrms.sh
+          python3 -m py_compile .github/scripts/migrate-hrms.py
+          python3 .github/scripts/test_migrate_hrms.py
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
