@@ -6,14 +6,6 @@ on:
         description: "Type DEPLOY to authorize production release of the selected main commit"
         required: true
         type: string
-      schema_approval:
-        description: "For reviewed 2026-11-17 migrations only: select approval AFTER VPS schema has been applied and verified"
-        required: true
-        type: choice
-        default: "NO-SCHEMA-APPROVAL"
-        options:
-          - "NO-SCHEMA-APPROVAL"
-          - "APPROVE-20261117-MIGRATIONS"
 permissions:
   contents: read
   actions: read
@@ -97,8 +89,7 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           DEPLOY_SHA: ${{ github.sha }}
-          SCHEMA_APPROVAL: ${{ inputs.schema_approval }}
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/hrms_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes \
-            "$VPS_USER@$VPS_HOST" "bash -se -- $DEPLOY_SHA $SCHEMA_APPROVAL" < .github/scripts/deploy-hrms.sh
+            "$VPS_USER@$VPS_HOST" "bash -se -- $DEPLOY_SHA" < .github/scripts/deploy-hrms.sh
