@@ -13,6 +13,19 @@ spec.loader.exec_module(m)
 
 
 class MigratorTests(unittest.TestCase):
+    def test_ledger_query_uses_real_newline_not_literal_psql_backslash_command(self):
+        # Regression: the literal characters \\n after SQL are interpreted by
+        # psql as an invalid client-side command, preventing legacy bootstrap.
+        captured=[]
+        def fake_psql(statement, **kwargs):
+            captured.append(statement)
+            return ""
+        with patch.object(m,"psql",side_effect=fake_psql):
+            self.assertEqual(m.ledger_entries(),{})
+        self.assertEqual(len(captured),1)
+        self.assertTrue(captured[0].endswith(";\n"))
+        self.assertNotIn(";\\\\n",captured[0])
+
     def test_git_manifest_covers_all_sql_files_once_and_in_dependency_order(self):
         sha=subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip()
         names=[n for n,_ in m.manifest(sha)]
