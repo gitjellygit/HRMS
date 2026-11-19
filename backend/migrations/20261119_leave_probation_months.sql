@@ -9,5 +9,5 @@ BEGIN
     ADD CONSTRAINT leave_policies_probation_months_range
     CHECK (probation_months BETWEEN 0 AND 12);
  END IF;
-END
+END;
 $migration$;
