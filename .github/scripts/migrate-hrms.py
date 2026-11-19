@@ -117,7 +117,7 @@ def psql(statement, *, single_transaction=False):
 def ledger_entries():
     output = psql(
         "SELECT name || E'\\t' || trim(checksum_sha256) "
-        "FROM public.hrms_schema_migrations ORDER BY applied_at, name;\\n"
+        "FROM public.hrms_schema_migrations ORDER BY applied_at, name;\n"
     )
     entries = {}
     for row in output.splitlines():
