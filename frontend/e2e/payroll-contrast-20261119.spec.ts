@@ -1,11 +1,11 @@
-import {test,expect,Page,Locator} from '@playwright/test';
+import {test,expect,Locator} from '@playwright/test';
 import {login,navigate,users} from './helpers';
 
 /** Explicit WCAG 2.1 AA 4.5:1 text contrast against its rendered surface.
  * Checking colors differ is not sufficient: pale text on pale backgrounds
  * looked acceptable to the previous smoke tests but was unreadable in the UI.
  */
-async function checkContrast(locator:Locator,background:Locator,label:string){
+async function checkContrast(locator:Locator,surface:".payroll-validation"|".payroll-net-preview",label:string){
  const sample=await locator.evaluate((el,bgSelector)=>{
   const bg=el.closest(bgSelector);
   if(!bg)throw Error('Missing background surface for contrast assertion');
@@ -13,7 +13,7 @@ async function checkContrast(locator:Locator,background:Locator,label:string){
    foreground:getComputedStyle(el).color,
    background:getComputedStyle(bg).backgroundColor
   };
- },background===locator?'.payroll-validation':await background.evaluate(el=>el.classList.contains('payroll-validation')?'.payroll-validation':'.payroll-net-preview'));
+ },surface);
  const rgb=(value:string)=>{
   const numbers=value.match(/[0-9]+(?:\.[0-9]+)?/g)?.map(Number)||[];
   if(numbers.length<3)throw Error('Not an RGB color: '+value);
@@ -40,23 +40,23 @@ for(const theme of ['light','dark'] as const){
   await expect(page.getByRole('heading',{name:'Configure employee payroll'})).toBeVisible();
   const preview=page.locator('.payroll-net-preview');
   await expect(preview).toBeVisible();
-  await checkContrast(preview.locator('span'),preview,'Proposed gross monthly salary label');
-  await checkContrast(preview.locator('strong'),preview,'Proposed gross monthly salary total');
-  await checkContrast(preview.locator('small'),preview,'Gross monthly salary explanation');
+  await checkContrast(preview.locator('span'),'.payroll-net-preview','Proposed gross monthly salary label');
+  await checkContrast(preview.locator('strong'),'.payroll-net-preview','Proposed gross monthly salary total');
+  await checkContrast(preview.locator('small'),'.payroll-net-preview','Gross monthly salary explanation');
 
   await page.getByRole('button',{name:'Submit salary approval request'}).click();
   const warning=page.locator('.payroll-validation');
   await expect(warning).toBeVisible();
   await expect(warning.getByText('Fix these fields before submitting:')).toBeVisible();
-  await checkContrast(warning.locator('strong'),warning,'Validation heading');
-  await checkContrast(warning.locator('li').first(),warning,'Validation error list item');
+  await checkContrast(warning.locator('strong'),'.payroll-validation','Validation heading');
+  await checkContrast(warning.locator('li').first(),'.payroll-validation','Validation error list item');
   await page.getByRole('tab',{name:'Statutory deductions'}).click();
   await page.getByRole('button',{name:'Submit statutory approval request'}).click();
   await expect(warning).toBeVisible();
-  await checkContrast(warning.locator('strong'),warning,'Statutory validation heading');
+  await checkContrast(warning.locator('strong'),'.payroll-validation','Statutory validation heading');
   await page.getByRole('tab',{name:'Additional earnings'}).click();
   await page.getByRole('button',{name:'Submit component approval request'}).click();
   await expect(warning).toBeVisible();
-  await checkContrast(warning.locator('strong'),warning,'Earnings validation heading');
+  await checkContrast(warning.locator('strong'),'.payroll-validation','Earnings validation heading');
  });
 }
