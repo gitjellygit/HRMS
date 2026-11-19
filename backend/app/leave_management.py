@@ -43,6 +43,7 @@ class LeavePolicy(Base):
     carry_forward_limit: Mapped[Decimal] = mapped_column(Numeric(7, 2), default=Decimal("0"))
     encashment_allowed: Mapped[bool] = mapped_column(Boolean, default=False)
     probation_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
+    probation_months: Mapped[int] = mapped_column(Integer, default=3, server_default="3")
     approval_chain: Mapped[str] = mapped_column(String(100), default="manager,hr")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -157,7 +158,8 @@ class PolicyIn(BaseModel):
     change_reason: str = Field(default="",max_length=500)
     carry_forward_limit: Decimal = Field(default=0,ge=0,le=365)
     encashment_allowed: bool = False
-    probation_allowed: bool = True
+    probation_allowed: bool = False
+    probation_months: int = Field(default=3,ge=0,le=12)
     approval_chain: list[Literal["manager","hr","admin"]] = Field(default_factory=lambda:["manager","hr"])
     active: bool = True
 
@@ -391,7 +393,7 @@ def policy_snapshot(row:LeavePolicy)->dict:
             "monthly_schedule":json.loads(row.monthly_schedule) if row.monthly_schedule else None,
             "carry_forward_limit":str(row.carry_forward_limit or 0),"year_type":row.year_type or "financial",
             "active":bool(row.active),"approval_chain":row.approval_chain or "manager,hr",
-            "probation_allowed":bool(row.probation_allowed),"encashment_allowed":bool(row.encashment_allowed)}
+            "probation_allowed":bool(row.probation_allowed),"probation_months":int(row.probation_months or 0),"encashment_allowed":bool(row.encashment_allowed)}
 
 
 def policy_versions(db:Session,row:LeavePolicy)->list[tuple[date,dict]]:
@@ -456,6 +458,22 @@ def apply_leave_policy(db:Session,body:PolicyIn,actor_id:int|None=None,reason:st
     return row
 
 
+
+def add_calendar_months(start:date,months:int)->date:
+    """Calendar-month probation expiry; clamp days for shorter months."""
+    import calendar
+    index=(start.month-1)+months
+    year=start.year+index//12
+    month=index%12+1
+    return date(year,month,min(start.day,calendar.monthrange(year,month)[1]))
+
+
+def eligibility_date(joined:date,terms:dict)->date:
+    """Old policy versions that allowed probation leave remain unchanged."""
+    if terms.get("probation_allowed",True):
+        return joined
+    return add_calendar_months(joined,int(terms.get("probation_months",3)))
+
 def prorated_entitlement(annual:Decimal,joined:date,year:int,year_type:str="financial")->Decimal:
     start,end=policy_bounds(year,year_type)
     eligible_from=max(start,joined)
@@ -515,7 +533,7 @@ def base_entitlement(db:Session,employee_id:int,year:int,kind:str,config:LeavePo
     months_seen=set()
     while cursor<=through:
         terms=terms_at(versions,cursor)
-        if terms and terms.get("active",True):
+        if terms and terms.get("active",True) and cursor>=eligibility_date(staff.joining_date,terms):
             schedule=terms.get("monthly_schedule")
             first=Decimal(str(terms.get("monthly_accrual",0)))
             late=Decimal(str(terms.get("late_year_monthly_accrual",0)))
@@ -539,7 +557,7 @@ def base_entitlement(db:Session,employee_id:int,year:int,kind:str,config:LeavePo
         cursor=today+timedelta(days=1)
         while cursor<=extra_until:
             terms=terms_at(versions,cursor)
-            if terms and terms.get("active",True):
+            if terms and terms.get("active",True) and cursor>=eligibility_date(staff.joining_date,terms):
                 schedule=terms.get("monthly_schedule")
                 first=Decimal(str(terms.get("monthly_accrual",0)))
                 late=Decimal(str(terms.get("late_year_monthly_accrual",0)))
@@ -556,7 +574,7 @@ def base_entitlement(db:Session,employee_id:int,year:int,kind:str,config:LeavePo
         terms=terms_at(versions,min(cursor,today))
         if terms and terms.get("active",True):
             schedule=terms.get("monthly_schedule")
-            if schedule is None and Decimal(str(terms.get("monthly_accrual",0)))==0 and cursor>=staff.joining_date:
+            if schedule is None and Decimal(str(terms.get("monthly_accrual",0)))==0 and cursor>=eligibility_date(staff.joining_date,terms) and today>=eligibility_date(staff.joining_date,terms):
                 credited+=Decimal(str(terms.get("annual_days",0)))/period_days
         cursor+=timedelta(days=1)
     return (credited*2).quantize(Decimal("1"),rounding=ROUND_HALF_UP)/Decimal(2)
@@ -688,6 +706,7 @@ def policies(user: Employee = Depends(current_user),db: Session = Depends(db_ses
             "carry_forward_limit":float(terms.get("carry_forward_limit",0)),
             "encashment_allowed":bool(terms.get("encashment_allowed",False)),
             "probation_allowed":bool(terms.get("probation_allowed",True)),
+            "probation_months":int(terms.get("probation_months",3)),
             "approval_chain":str(terms.get("approval_chain","manager,hr")).split(","),
             "active":bool(current and current.get("active",True)),
         })
@@ -743,8 +762,11 @@ def request_leave(body: LeaveIn,user: Employee = Depends(current_user),db: Sessi
     if policy_start_year(body.start_date,basis)!=policy_start_year(body.end_date,basis):
         raise HTTPException(422,"Split leave requests crossing the configured leave-year boundary.")
     core=db.get(EmployeeCore,user.id)
-    if core and core.lifecycle=="probation" and not config.probation_allowed:
-        raise HTTPException(422,"Leave type is restricted during probation")
+    terms=terms_at(policy_versions(db,config),body.start_date) or policy_snapshot(config)
+    if not terms.get("probation_allowed",True):
+        eligible=eligibility_date(user.joining_date,terms)
+        if body.start_date<eligible:
+            raise HTTPException(422,f"Leave becomes available after probation on {eligible.isoformat()}. Contact HR for a policy exception.")
     manager_id=core.manager_id if core else None
     stages=chain_for(config,manager_id)
     location=user_location(db,user.id)
