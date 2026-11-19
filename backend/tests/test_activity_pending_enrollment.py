@@ -29,7 +29,7 @@ def test_one_use_invite_pending_assignment_and_heartbeat_gate():
         assert c.post(f"/activity-agent/devices/{device_id}/assign",headers=ORIGIN,
               json={"employee_id":employee}).status_code==200
         assert c.get("/activity-agent/status",headers=auth).json()=={"status":"assigned","assigned":True}
-        beat=c.post("/activity-agent/heartbeat",headers={**auth,"Content-Type":"application/json"},
+        beat=c.post("/activity-agent/heartbeat",headers={**ORIGIN,**auth,"Content-Type":"application/json"},
             json={"state":"monitoring","active_seconds":120,"idle_seconds":15,"apps":{"code":100}})
         assert beat.status_code==200,beat.text
         assert c.post(f"/activity-agent/devices/{device_id}/assign",headers=ORIGIN,
@@ -43,6 +43,7 @@ def test_only_hr_may_issue_invites_or_assign_devices():
         invited=c.post("/activity-agent/invitations",headers=ORIGIN)
         assert invited.status_code==201
         code=invited.json()["invitation_code"]
+        c.post("/auth/logout",headers=ORIGIN)
         device=c.post("/activity-agent/register",json={"invitation_code":code,"device_label":"JG-IT-012"})
         assert device.status_code==201
         c.post("/auth/logout",headers=ORIGIN)
