@@ -29,10 +29,10 @@ class MigratorTests(unittest.TestCase):
     def test_git_manifest_covers_all_sql_files_once_and_in_dependency_order(self):
         sha=subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip()
         names=[n for n,_ in m.manifest(sha)]
-        self.assertEqual(len(names),22)
+        self.assertEqual(len(names),23)
         self.assertLess(names.index("20261117_activity_agent_devices.sql"),
                         names.index("20261117_activity_agent_app_usage.sql"))
-        self.assertEqual(names[-1],"20261119_leave_probation_months.sql")
+        self.assertEqual(names[-1],"20261119_pending_activity_devices.sql")
 
     def test_verify_rejects_checksum_mutation_and_out_of_order_ledger(self):
         files=[("20261101_a.sql",b"SELECT 1;"),("20261102_b.sql",b"SELECT 2;"),
