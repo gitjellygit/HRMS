@@ -19,14 +19,20 @@ test('HR can inspect employee punches in New York time without modifying attenda
  await expect(audit.locator('.time-audit-results')).toContainText('Inferred breaks');
 });
 
-test('HR can configure separate April-Nov and December-March accrual rates',async({page})=>{
+test('HR can configure April–March month-specific credits without technical rate fields',async({page})=>{
  await login(page,actor('hr'));
  await navigate(page,'Leave requests');
  await page.getByRole('button',{name:'Policies & balances'}).click();
- await expect(page.getByText('Monthly accrual Dec–Mar (days)')).toBeVisible();
- await page.getByLabel('Monthly accrual (days)',{exact:true}).fill('1.5');
- await page.getByLabel('Monthly accrual Dec–Mar (days)').fill('2.5');
- await expect(page.getByText(/22-day example/)).toBeVisible();
+ const form=page.locator('.jg-leave-simple-form');
+ await form.getByRole('button',{name:/Add leave each month/}).click();
+ for(const name of ['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov']){
+  await form.getByLabel(name+' monthly leave days').fill('1.5');
+ }
+ for(const name of ['Dec','Jan','Feb','Mar']){
+  await form.getByLabel(name+' monthly leave days').fill('2.5');
+ }
+ await expect(form.getByText('22.00 days')).toBeVisible();
+ await expect(form.getByText('Monthly accrual Dec–Mar (days)')).toHaveCount(0);
 });
 
 test('HR can upload one manual payslip; other employee cannot download it',async({page})=>{
