@@ -25,7 +25,7 @@ test('HR attendance dashboard filters by employee and expands session timeline',
  const day=dashboard.locator('.jg-team-attendance-day').first();
  await day.locator('.jg-team-attendance-toggle').click();
  await expect(day.locator('table')).toBeVisible();
- await expect(day.getByText('8.00')).toBeVisible();
+ await expect(day.getByRole('cell',{name:'8.00',exact:true})).toBeVisible();
  await expect(day.getByText('Not tracked')).toBeVisible();
  const range=dashboard.getByRole('button',{name:'Attendance date range'});
  await range.click();
