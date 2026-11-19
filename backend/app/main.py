@@ -547,6 +547,40 @@ def attendance(employee_id: int | None = None, user: Employee = Depends(current_
         raise HTTPException(403, "Insufficient permissions")
     return db.scalars(select(Attendance).where(Attendance.employee_id == target).order_by(Attendance.id.desc()).limit(100)).all()
 
+@app.get("/attendance/team")
+def team_attendance(start_date: date, end_date: date, employee_id: int | None = None,
+                    limit: int = 250, offset: int = 0,
+                    start_utc_offset: int = 0, end_utc_offset: int = 0,
+                    user: Employee = Depends(require("admin","hr")),
+                    db: Session = Depends(db_session)):
+    """Paginated HR punch logs with caller-local day boundaries, including DST.
+
+    JS getTimezoneOffset() is positive west of UTC. Separate start/end
+    offsets keep month/year ranges correct when daylight saving time changes.
+    """
+    if end_date < start_date or (end_date-start_date).days > 366:
+        raise HTTPException(422, "Select a valid attendance range of up to 366 days.")
+    if limit < 1 or limit > 500 or offset < 0:
+        raise HTTPException(422, "Use a page size between 1 and 500 and a nonnegative offset.")
+    if not (-840 <= start_utc_offset <= 840 and -840 <= end_utc_offset <= 840):
+        raise HTTPException(422, "Invalid local time zone offset.")
+    start = datetime.combine(start_date, datetime.min.time(),
+                             tzinfo=timezone(timedelta(minutes=-start_utc_offset))).astimezone(timezone.utc)
+    end = datetime.combine(end_date + timedelta(days=1), datetime.min.time(),
+                           tzinfo=timezone(timedelta(minutes=-end_utc_offset))).astimezone(timezone.utc)
+    query = select(Attendance, Employee.name).join(Employee, Employee.id == Attendance.employee_id).where(
+        Attendance.punch_in < end,
+        func.coalesce(Attendance.punch_out, datetime.now(timezone.utc)) >= start
+    )
+    if employee_id is not None:
+        query = query.where(Attendance.employee_id == employee_id)
+    result = db.execute(query.order_by(Attendance.punch_in.desc(),Attendance.id.desc()).offset(offset).limit(limit+1)).all()
+    rows = result[:limit]
+    return {"items":[{"id":entry.id,"employee_id":entry.employee_id,"employee_name":name,
+                       "punch_in":entry.punch_in,"punch_out":entry.punch_out} for entry,name in rows],
+            "has_more":len(result)>limit,"next_offset":offset+len(rows)}
+
+
 @app.post("/leaves", status_code=410)
 def apply_leave(user: Employee = Depends(current_user)):
     raise HTTPException(410, detail="Legacy leave submission retired; use /leave/requests.")

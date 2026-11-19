@@ -7,20 +7,21 @@ test('HR sees effective-dated leave calendar editor and 12-month preview',async(
  await navigate(page,'Leave requests');
  await page.getByRole('button',{name:'Policies & balances'}).click();
  await expect(page.getByText('Leave policies',{exact:true})).toBeVisible();
- const year=page.getByLabel('Leave year');
- await expect(year).toBeVisible();
- await expect(year.locator('option')).toHaveText([
-  'Financial year (April–March)','Calendar year (January–December)'
- ]);
- await expect(page.getByLabel('Effective from')).toBeVisible();
- await expect(page.getByLabel('Reason for policy update')).toBeVisible();
- const method=page.getByLabel('Accrual method');
- await method.selectOption('custom');
- const section=page.locator('.leave-policy-panel');
- await expect(section.getByLabel('Apr leave credit')).toBeVisible();
- await expect(section.getByLabel('Mar leave credit')).toBeVisible();
- await expect(section.locator('.leave-month-grid input')).toHaveCount(12);
- await expect(section.getByText('Annual entitlement: 22.00 days',{exact:false})).toBeVisible();
+ const editor=page.locator('.jg-leave-simple-form');
+ await expect(editor).toBeVisible();
+ await expect(editor.getByText('1. Leave year')).toBeVisible();
+ await expect(editor.getByRole('button',{name:/Yearly allowance at once/})).toBeVisible();
+ await expect(editor.getByRole('button',{name:/Add leave each month/})).toBeVisible();
+ await expect(editor.getByText('3. Probation and new joiners')).toBeVisible();
+ await editor.getByRole('button',{name:/Add leave each month/}).click();
+ await expect(editor.getByLabel('Apr monthly leave days')).toBeVisible();
+ await expect(editor.getByLabel('Mar monthly leave days')).toBeVisible();
+ await expect(editor.locator('.jg-leave-month-grid input')).toHaveCount(12);
+ await expect(editor.getByText('Full-year allowance')).toBeVisible();
+ await expect(editor.getByLabel('Reason for policy update')).toBeVisible();
+ await expect(editor.getByRole('button',{name:'Save leave policy'})).toBeVisible();
+ await editor.getByRole('button',{name:/Preview new joiner entitlement/}).click();
+ await expect(editor.getByLabel('Sample joining date')).toBeVisible();
  await expect(page.getByText('Policy change history',{exact:false})).toBeVisible();
- await expect(page.getByRole('button',{name:'Save policy'})).toBeVisible();
+ await expect(editor.getByRole('button',{name:'Save leave policy'})).toBeVisible();
 });
