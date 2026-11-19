@@ -224,8 +224,8 @@ export default function CoreWorkspace({api,mode,user,employeeId,onBack,onPasswor
      <div className="employee-form-grid">
       {([["name","Full name","text"],["email","Work email","email"],["designation","Designation","text"],["phone","Phone number","tel"],["joining_date","Date of joining","date"]] as const).map(([field,label,type])=><label className="core-label" key={field}>{label}<input type={type} value={accountDraft[field]} required={field!=="phone"} onChange={e=>setAccountDraft(d=>({...d,[field]:e.target.value}))}/></label>)}
      </div>
-     <label className="core-label">Reason for changes (minimum 10 characters)<textarea value={accountDraft.reason} minLength={10} maxLength={300} required rows={2} onChange={e=>setAccountDraft(d=>({...d,reason:e.target.value}))} placeholder="Why are the employee details changing?"/></label>
-     <div className="core-form-actions"><button className="employee-primary" disabled={busy}>{busy?"Saving…":"Save employee details"}</button></div>
+     <label className="core-label">Reason for update (minimum 10 characters)<textarea value={accountDraft.reason} minLength={10} maxLength={300} required rows={2} onChange={e=>setAccountDraft(d=>({...d,reason:e.target.value}))} placeholder="Why are the employee details changing?"/></label>
+     <div className="core-form-actions"><button className="employee-primary" disabled={busy}>{busy?"Saving…":target===user.id?"Save profile changes":"Save employee changes"}</button></div>
     </form>}
     <h3 className="core-subhead">Reporting & organization</h3>
    {!isHR&&<p className="field-help">HR manages these records. To update your own personal details, submit a profile change request below for approval.</p>}
