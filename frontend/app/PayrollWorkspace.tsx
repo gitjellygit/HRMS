@@ -1,3 +1,4 @@
+import AppSelect from "./AppSelect";
 "use client";
 import {useTransientMessage} from "./useTransientMessage";
 import {explainError} from "./formErrors";
@@ -173,11 +174,11 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
      <div className="payroll-step-title"><span className="payroll-step-number">1</span>
        <div><h3>Choose an employee</h3><p className="field-help">The selected employee is shared across all payroll settings below.</p></div></div>
      <label className="payroll-field">Employee <span className="payroll-required">Required</span>
-      <span className="payroll-select-wrap"><select aria-label="Employee for payroll configuration" value={chosen}
+      <span className="payroll-select-wrap"><AppSelect aria-label="Employee for payroll configuration" value={chosen}
         onChange={e=>{setChosen(e.target.value);setValidation([]);setError("")}}>
         <option value="">Choose an employee to continue</option>
         {employees.filter(e=>e.id!==user.id).map(e=><option key={e.id} value={e.id}>{e.name} · {e.employee_code||e.department||e.email}</option>)}
-       </select><ChevronDown size={16}/></span>
+       </AppSelect><ChevronDown size={16}/></span>
      </label>
      {chosen?<p className="payroll-helper success"><CheckCircle2 size={15}/> Editing a proposal for {employees.find(e=>String(e.id)===chosen)?.name||"selected employee"}.</p>:
       <p className="payroll-helper"><Info size={15}/> Choose an employee before sending any salary, deduction, or component request. You cannot modify your own compensation.</p>}
@@ -220,8 +221,8 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
          onChange={e=>setComponent(v=>({...v,code:e.target.value}))}/></label>
         <label className="payroll-field">Display label<input value={component.title} placeholder="e.g. Shift allowance"
          onChange={e=>setComponent(v=>({...v,title:e.target.value}))}/></label>
-        <label className="payroll-field">Type<select value={component.kind}
-         onChange={e=>setComponent(v=>({...v,kind:e.target.value}))}><option value="earning">Earning / allowance</option><option value="deduction">Deduction</option></select></label>
+        <label className="payroll-field">Type<AppSelect value={component.kind}
+         onChange={e=>setComponent(v=>({...v,kind:e.target.value}))}><option value="earning">Earning / allowance</option><option value="deduction">Deduction</option></AppSelect></label>
         <label className="payroll-field">Monthly amount (INR)<input type="number" min="0" step="0.01" placeholder="0.00"
          value={component.amount} onChange={e=>setComponent(v=>({...v,amount:e.target.value}))}/></label>
         <label className="payroll-field">Effective from<input type="date" value={component.effective_from}
@@ -303,7 +304,7 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
     <h3>HR manual payslip import</h3><p className="muted">Upload one PDF or bulk ZIP for hybrid payroll. This publishes a private payslip, not salary payments.</p>
     <div className="payroll-manual-modes"><label><input type="radio" checked={payslipMode==="single"} onChange={()=>{setPayslipMode("single");setPayslipFile(null)}}/> Single employee</label><label><input type="radio" checked={payslipMode==="bulk"} onChange={()=>{setPayslipMode("bulk");setPayslipFile(null)}}/> Bulk ZIP</label></div>
     <div className="employee-form-grid">
-     {payslipMode==="single"&&<label>Employee<select value={payslipEmployee} onChange={e=>setPayslipEmployee(e.target.value)} required><option value="">Select employee</option>{employees.map(e=><option value={e.id} key={e.id}>{e.name}{e.employee_code?" ("+e.employee_code+")":""}</option>)}</select></label>}
+     {payslipMode==="single"&&<label>Employee<AppSelect value={payslipEmployee} onChange={e=>setPayslipEmployee(e.target.value)} required><option value="">Select employee</option>{employees.map(e=><option value={e.id} key={e.id}>{e.name}{e.employee_code?" ("+e.employee_code+")":""}</option>)}</AppSelect></label>}
      <label>Pay period<input type="month" required value={payslipPeriod} onChange={e=>setPayslipPeriod(e.target.value)}/></label>
      <label>{payslipMode==="single"?"Payslip PDF (max 5 MB)":"ZIP archive (max 16 MB, 50 PDFs)"}<input ref={payslipInputRef} type="file" required accept={payslipMode==="single"?".pdf,application/pdf":".zip,application/zip"} onChange={e=>setPayslipFile(e.target.files?.[0]||null)}/></label>
     </div>
@@ -323,7 +324,7 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
       setClaim({title:"",category:"travel",amount:"",incurred_on:today(),note:""});setReceipt(null);
      },"Expense claim submitted.")}}>
       <label>Expense title<input required minLength={4} value={claim.title} onChange={e=>setClaim(v=>({...v,title:e.target.value}))}/></label>
-      <label>Category<select value={claim.category} onChange={e=>setClaim(v=>({...v,category:e.target.value}))}>{["travel","food","equipment","internet","other"].map(c=><option key={c}>{c}</option>)}</select></label>
+      <label>Category<AppSelect value={claim.category} onChange={e=>setClaim(v=>({...v,category:e.target.value}))}>{["travel","food","equipment","internet","other"].map(c=><option key={c}>{c}</option>)}</AppSelect></label>
       <label>Amount (INR)<input required min=".01" max="1000000" type="number" step=".01" value={claim.amount} onChange={e=>setClaim(v=>({...v,amount:e.target.value}))}/></label>
       <label>Expense date<input required type="date" value={claim.incurred_on} onChange={e=>setClaim(v=>({...v,incurred_on:e.target.value}))}/></label>
       <label className="wide">Explanation<textarea rows={3} value={claim.note} onChange={e=>setClaim(v=>({...v,note:e.target.value}))}/></label>
