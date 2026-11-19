@@ -17,6 +17,16 @@ function dates(which:Range){
  if(which==="lastyear")return [localDate(new Date(now.getFullYear()-1,0,1)),localDate(new Date(now.getFullYear()-1,11,31))];
  return [localDate(new Date(now.getFullYear(),now.getMonth(),now.getDate()-29)),localDate(now)];
 }
+function attendanceParams(from:string,to:string,offset:number){
+ const start=new Date(from+"T00:00:00");
+ const nextDay=new Date(to+"T00:00:00");
+ nextDay.setDate(nextDay.getDate()+1);
+ return new URLSearchParams({
+  start_date:from,end_date:to,limit:"150",offset:String(offset),
+  start_utc_offset:String(start.getTimezoneOffset()),
+  end_utc_offset:String(nextDay.getTimezoneOffset())
+ });
+}
 const duration=(entry:Session)=>entry.punch_out?Math.max(0,(new Date(entry.punch_out).getTime()-new Date(entry.punch_in).getTime())/3600000):null;
 const formatTime=(value:string)=>new Date(value).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
 export default function TeamAttendanceDashboard({api,staff}:{api:string;staff:{id:number;name:string}[]}){
@@ -37,7 +47,7 @@ export default function TeamAttendanceDashboard({api,staff}:{api:string;staff:{i
   if(!valid){setRows([]);setError("Choose a valid date range of 366 days or fewer.");return}
   const abort=new AbortController();
   setLoading(true);setError("");setRows([]);setOffset(0);setHasMore(false);setOpened({});
-  const params=new URLSearchParams({start_date:from,end_date:to,limit:"150",offset:"0"});
+  const params=attendanceParams(from,to,0);
   if(person)params.set("employee_id",person);
   fetch(api+"/attendance/team?"+params,{credentials:"include",signal:abort.signal})
    .then(async res=>{if(!res.ok){const body=await res.json().catch(()=>({}));throw Error(typeof body.detail==="string"?body.detail:"Could not load team attendance.")}return res.json() as Promise<Result>})
@@ -49,7 +59,7 @@ export default function TeamAttendanceDashboard({api,staff}:{api:string;staff:{i
  async function loadMore(){
   setLoading(true);
   try{
-   const params=new URLSearchParams({start_date:from,end_date:to,limit:"150",offset:String(offset)});
+   const params=attendanceParams(from,to,offset);
    if(person)params.set("employee_id",person);
    const res=await fetch(api+"/attendance/team?"+params,{credentials:"include"});
    if(!res.ok)throw Error("Could not load more attendance records.");
@@ -81,7 +91,7 @@ export default function TeamAttendanceDashboard({api,staff}:{api:string;staff:{i
    <label>Date range<AppSelect aria-label="Attendance date range" value={range} onChange={e=>chooseRange(e.target.value as Range)}><option value="last7">Last 7 days</option><option value="last30">Last 30 days</option><option value="last90">Last 90 days</option><option value="month">This month</option><option value="previous">Previous month</option><option value="year">This year</option><option value="lastyear">Last year</option><option value="custom">Custom dates</option></AppSelect></label>
    {range==="custom"&&<><label>From<input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label><label>To<input type="date" value={to} onChange={e=>setTo(e.target.value)}/></label></>}
   </div>
-  <p className="field-help">Times are displayed in your browser's local time zone. Gross hours are calculated from completed punches; effective hours are unavailable until break/active-time tracking is configured.</p>
+  <p className="field-help">Dates and times use your browser's time zone, including daylight-saving changes. Gross hours use completed punch sessions; effective hours need reliable break/active-time records.</p>
   {error&&<div className="error" role="alert">{error}</div>}
   {loading&&rows.length===0?<div role="status" className="jg-team-attendance-empty">Loading attendance records…</div>:groups.length===0?<div className="jg-team-attendance-empty">No attendance sessions found for these filters.</div>:
    <div className="jg-team-attendance-log">{groups.map(([key,items])=>{
