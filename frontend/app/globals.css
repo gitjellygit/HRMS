@@ -1310,3 +1310,13 @@ input[type="file"]:focus-visible{outline:3px solid #7a8fe2;outline-offset:2px}
 .growth-workspace>.growth-area-content{background:transparent!important;border:0!important;box-shadow:none!important}
 [data-theme="dark"] .growth-workspace>.muted{color:#c1cee5!important}
 @media(max-width:750px){.employee-account-edit>.core-label{max-width:100%}}
+
+/* Fully custom Browse control with a genuine accessible native input overlay. */
+.jg-upload-picker{display:flex;align-items:center;gap:12px;position:relative;min-height:47px;width:100%;min-width:0;padding:6px 10px;border:1px dashed var(--jg-control-border);border-radius:10px;background:var(--jg-control-bg);color:var(--jg-control-ink);cursor:pointer}
+.jg-upload-picker:hover{border-color:#8c81c7;background:var(--jg-tabs-bg)}
+.jg-upload-picker:focus-within{outline:3px solid #8298ec;outline-offset:2px}
+.jg-upload-picker input[type="file"]{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;opacity:0!important;z-index:2;cursor:pointer!important;padding:0!important;display:block}
+.jg-upload-action{flex:none;display:inline-flex;align-items:center;gap:7px;border-radius:7px;background:var(--jg-tabs-bg);border:1px solid var(--jg-control-border);padding:8px 11px;font-size:12px;font-weight:700;color:var(--jg-control-ink)}
+.jg-upload-filename{font-size:12px;color:var(--jg-tabs-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.jg-upload-picker:has(input:disabled){opacity:.5;cursor:not-allowed}
+[data-theme="dark"] .jg-upload-picker:hover{background:#263651}
