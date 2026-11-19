@@ -1,3 +1,4 @@
+import AppSelect from "./AppSelect";
 "use client";
 import {useTransientMessage} from "./useTransientMessage";
 import {useEffect,useState} from "react";
@@ -117,7 +118,7 @@ export default function CompanyPolicies({api,user}:{api:string;user:{id:number;r
     {adding&&<form className="policy-record-form" onSubmit={createRecord}>
      <div className="employee-form-grid">
       <label className="employee-field">Policy title<input value={policyTitle} onChange={e=>setPolicyTitle(e.target.value)} minLength={3} maxLength={150} required placeholder="e.g. Remote work policy"/></label>
-      <label className="employee-field">Category<select value={policyCategory} onChange={e=>setPolicyCategory(e.target.value)}>{["general","leave","attendance","payroll","security","onboarding"].map(c=><option key={c} value={c}>{c[0].toUpperCase()+c.slice(1)}</option>)}</select></label>
+      <label className="employee-field">Category<AppSelect value={policyCategory} onChange={e=>setPolicyCategory(e.target.value)}>{["general","leave","attendance","payroll","security","onboarding"].map(c=><option key={c} value={c}>{c[0].toUpperCase()+c.slice(1)}</option>)}</AppSelect></label>
       <label className="employee-field">Effective date<input type="date" required value={effectiveDate} onChange={e=>setEffectiveDate(e.target.value)}/></label>
      </div>
      <label className="employee-field">Policy details<textarea rows={5} minLength={20} maxLength={10000} value={policyDescription} required placeholder="Write the policy and its conditions…" onChange={e=>setPolicyDescription(e.target.value)}/></label>
