@@ -1,5 +1,6 @@
 "use client";
 import AppSelect from "./AppSelect";
+import AnnouncementTemplates,{type AnnouncementPreset} from "./AnnouncementTemplates";
 import {useTransientMessage} from "./useTransientMessage";
 import {useEffect,useState} from "react";
 import {ClipboardCheck,Send,LifeBuoy,UserRoundX,BarChart3,Bell,ShieldCheck,FileSignature} from "lucide-react";
@@ -22,6 +23,8 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
  const [announcementImage,setAnnouncementImage]=useState<File|null>(null);
  const [announcementPreview,setAnnouncementPreview]=useState("");
  const [announcementAudience,setAnnouncementAudience]=useState<number[]>([]);
+ const [announcementPreset,setAnnouncementPreset]=useState("");
+ const [audienceSearch,setAudienceSearch]=useState("");
  const [offers,setOffers]=useState<Row[]>([]);
  const [tasks,setTasks]=useState<Row[]>([]);
  const [onboardingEmployee,setOnboardingEmployee]=useState("");
@@ -197,15 +200,19 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
   </div>}
   {tab==="announcements"&&<div className="ops-columns">
    <section className="employee-surface"><h3><Send size={17}/> Announcements and policies</h3>
-    {hr&&<div className="jellygit-template-download"><BrandIllustration asset="welcome-card-template" alt="Welcome to the Team card design" className="jellygit-template-art"/><div><strong>New-joiner announcement design</strong><p className="muted">This exported card is a visual reference. Edit the original Canva design to replace the sample text before publishing.</p><a href="/assets/welcome-card-template.webp" download="jellygit-welcome-template.webp">Download card template</a></div></div>}
-    {hr&&<form className="ops-form" onSubmit={e=>{e.preventDefault();void save(async()=>{const form=new FormData();form.append("title",String(draft.title));form.append("body",String(draft.body));form.append("requires_ack",String(Boolean(draft.requires_ack)));form.append("audience_json",JSON.stringify(announcementAudience));if(announcementImage)form.append("image",announcementImage);const response=await fetch(api+"/people/announcements/with-media",{method:"POST",credentials:"include",body:form});if(!response.ok){const data=await response.json().catch(()=>({}));throw Error(explainError(data,response.status))}setAnnouncementImage(null);setAnnouncementPreview("");setAnnouncementAudience([])},"Announcement published.")}}>
+    {hr&&<AnnouncementTemplates selected={announcementPreset} onPick={(p:AnnouncementPreset)=>{setAnnouncementPreset(p.key);setDraft(v=>({...v,title:p.headline,body:p.message}))}}/>}
+    {hr&&<form className="ops-form" onSubmit={e=>{e.preventDefault();void save(async()=>{const form=new FormData();form.append("title",String(draft.title));form.append("body",String(draft.body));form.append("requires_ack",String(Boolean(draft.requires_ack)));form.append("audience_json",JSON.stringify(announcementAudience));if(announcementImage)form.append("image",announcementImage);const response=await fetch(api+"/people/announcements/with-media",{method:"POST",credentials:"include",body:form});if(!response.ok){const data=await response.json().catch(()=>({}));throw Error(explainError(data,response.status))}setAnnouncementImage(null);setAnnouncementPreview("");setAnnouncementAudience([]);setAnnouncementPreset("");setAudienceSearch("")},"Announcement published.")}}>
       {input("title","Title",true)}
       <label className="wide">Announcement<textarea minLength={12} required rows={4} value={draft.body||""}
        onChange={e=>setDraft(v=>({...v,body:e.target.value}))}/></label>
       <label className="wide ops-check"><input type="checkbox" checked={!!draft.requires_ack}
        onChange={e=>setDraft(v=>({...v,requires_ack:e.target.checked}))}/>Require employee acknowledgement</label>
       <label className="wide">Announcement image (optional, PNG/JPEG/WebP; max 3 MB)<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>{const file=e.target.files?.[0]||null;setAnnouncementImage(file);if(file){const reader=new FileReader();reader.onload=()=>setAnnouncementPreview(String(reader.result||""));reader.readAsDataURL(file)}else setAnnouncementPreview("")}}/></label>
-      <label className="wide">Send to employees (leave unselected for everyone)<AppSelect multiple size={Math.min(6,Math.max(3,staff.length))} value={announcementAudience.map(String)} onChange={e=>setAnnouncementAudience(Array.from(e.target.selectedOptions).map(o=>Number(o.value)))}>{staff.filter(p=>p.status==="active").map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</AppSelect></label>
+      <div className="wide jg-audience-picker"><div><strong>Announcement audience</strong><p className="field-help">{announcementAudience.length?`${announcementAudience.length} selected employee(s)`:"All active employees will receive this announcement."}</p></div>
+  <input type="search" aria-label="Find announcement recipients" placeholder="Search employees…" value={audienceSearch} onChange={e=>setAudienceSearch(e.target.value)}/>
+  <div className="jg-preset-actions"><button type="button" className="employee-cancel" onClick={()=>setAnnouncementAudience(staff.filter(p=>p.status==="active").map(p=>p.id))}>Select all employees</button><button type="button" className="employee-cancel" onClick={()=>setAnnouncementAudience([])}>Everyone (no restriction)</button></div>
+  <div className="jg-audience-list" role="group" aria-label="Select announcement recipients">{staff.filter(p=>p.status==="active"&&p.name.toLowerCase().includes(audienceSearch.toLowerCase())).map(p=><label key={p.id}><input type="checkbox" checked={announcementAudience.includes(p.id)} onChange={e=>setAnnouncementAudience(prev=>e.target.checked?[...prev,p.id]:prev.filter(id=>id!==p.id))}/><span>{p.name}</span></label>)}</div>
+ </div>
       <div className="wide ops-announcement-preview"><strong>Preview before publishing</strong><h4>{draft.title||"Announcement title"}</h4>{announcementPreview&&<img src={announcementPreview} alt="Announcement preview" style={{maxWidth:"100%",maxHeight:240,objectFit:"contain",borderRadius:10}}/>}<p>{draft.body||"Announcement body will appear here."}</p><small>{announcementAudience.length?announcementAudience.length+" selected employees":"All active employees"}</small></div><button className="employee-primary" disabled={busy}>Publish</button></form>}
    </section>
    <section className="employee-surface"><h3>Company feed</h3><div className="ops-table">{notices.map(n=><article className="ops-row" key={n.id}>
