@@ -1425,3 +1425,24 @@ input[type="file"]:focus-visible{outline:3px solid #7a8fe2;outline-offset:2px}
 [data-theme="dark"] .hr-override-form>label{color:#edf2ff}
 @media(max-width:900px){.hr-override-form{grid-template-columns:repeat(2,minmax(0,1fr))}.hr-override-form .employee-primary{justify-self:start}}
 @media(max-width:580px){.hr-override-form{grid-template-columns:minmax(0,1fr)}.hr-override-form .employee-primary{width:100%}.hr-mail-toggle{padding:11px!important}.hr-mail-alert{display:none}.hr-mail-details{padding:10px}.hr-mail-filter{width:100%;justify-content:space-between}}
+
+/* HR attendance: live status and individual punch history. */
+.hr-attendance-refresh{display:flex;align-items:center;gap:8px;font-size:12px;color:#53627c;margin:12px 0 6px}
+.hr-attendance-refresh-dot{width:8px;height:8px;flex:none;border-radius:50%;background:#17896b}
+.hr-attendance-refresh-dot.is-stale{background:#ca7b33}
+.hr-attendance-history-button{min-height:34px;padding:6px 11px;border:1px solid var(--jg-control-border,#cbd6e6);border-radius:8px;background:var(--jg-control-bg,#fff);color:var(--jg-control-ink,#263550);font-size:12px;font-weight:650;white-space:nowrap;cursor:pointer}
+.hr-attendance-history-button:hover,.hr-attendance-history-button:focus-visible{background:var(--jg-menu-hover,#e9efff);color:var(--jg-menu-hover-ink,#17325d)}
+.hr-attendance-history-button:focus-visible{outline:2px solid #8395dd;outline-offset:2px}
+.hr-attendance-history{border:1px solid var(--jg-control-border,#cbd6e6);border-radius:12px;padding:15px;margin:15px 0;background:var(--jg-control-bg,#fff);color:var(--jg-control-ink,#263550)}
+.hr-attendance-history-head{display:flex;justify-content:space-between;align-items:start;gap:12px;margin-bottom:12px}
+.hr-attendance-history-head h3{font-size:14px;font-weight:750;margin:0 0 5px;color:inherit}
+.hr-attendance-history-head p{margin:0}
+.hr-attendance-history-table{border-collapse:collapse;width:100%;min-width:680px}
+.hr-attendance-history-table :is(th,td){text-align:left;padding:11px 14px;font-size:12px;color:var(--jg-control-ink,#263550);border-bottom:1px solid var(--jg-control-border,#d8e1ec)}
+.hr-attendance-history-table th{font-weight:750;background:var(--jg-tabs-bg,#f0f3f9)}
+.hr-attendance-history-table tr:last-child td{border-bottom:0}
+[data-theme="dark"] .hr-attendance-refresh{color:#c9d8ed}
+[data-theme="dark"] .hr-attendance-history{background:#1b2940;color:#f0f4ff;border-color:#4a607c}
+[data-theme="dark"] .hr-attendance-history-table :is(th,td){color:#edf2ff;border-color:#4a607c}
+[data-theme="dark"] .hr-attendance-history-table th{background:#293a57}
+@media(max-width:650px){.hr-attendance-history-head{flex-direction:column}.hr-attendance-history-head button{align-self:flex-end}}
