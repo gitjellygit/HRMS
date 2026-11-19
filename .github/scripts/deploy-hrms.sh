@@ -37,7 +37,7 @@ if [[ -n "$CHANGED" ]]; then
   fi
   echo "Reviewed migration set recognized. Verifying schema in VPS PostgreSQL."
   docker compose exec -T db sh -c 'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
-DO $
+DO $schema_gate$
 DECLARE missing text;
 BEGIN
   SELECT string_agg(required_path, ', ' ORDER BY required_path) INTO missing
@@ -76,7 +76,7 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Legacy leave policy history baseline missing';
   END IF;
-END $;
+END $schema_gate$;
 SQL
   echo "Reviewed migration schema verified; release can continue."
 fi
