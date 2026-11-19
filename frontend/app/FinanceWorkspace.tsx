@@ -1,3 +1,4 @@
+import AppSelect from "./AppSelect";
 "use client";
 import {useEffect,useRef,useState} from "react";
 import {BadgeCheck,ChevronDown,ChevronUp,X} from "lucide-react";
@@ -140,20 +141,20 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
          <div className="finance-form-section"><h4>Invoice amount and schedule</h4>
           <p className="muted">Placement contract: {currency(p.rate,p.currency||"USD")} per {p.rate_unit||"hour"}. The invoice rate below is independent.</p>
           <div className="finance-field-grid">
-           <label>Bill every<select value={billing.billing_frequency} onChange={e=>{update("billing_frequency",e.target.value);setBilling(v=>({...v,billing_frequency:e.target.value,billing_day:e.target.value==="monthly"?"15":"1"}))}}>
+           <label>Bill every<AppSelect value={billing.billing_frequency} onChange={e=>{update("billing_frequency",e.target.value);setBilling(v=>({...v,billing_frequency:e.target.value,billing_day:e.target.value==="monthly"?"15":"1"}))}}>
             <option value="weekly">Weekly</option><option value="biweekly">Every two weeks</option><option value="monthly">Monthly</option>
-           </select></label>
+           </AppSelect></label>
            <label>{billing.billing_frequency==="monthly"?"Billing day of month (1–28)":"Billing weekday"}
             {billing.billing_frequency==="monthly"?<input type="number" min="1" max="28" required
              value={billing.billing_day} onChange={e=>update("billing_day",e.target.value)}/>:
-             <select value={billing.billing_day} onChange={e=>update("billing_day",e.target.value)}>
+             <AppSelect value={billing.billing_day} onChange={e=>update("billing_day",e.target.value)}>
               {["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"].map((day,i)=>
                 <option key={day} value={i+1}>{day}</option>)}
-             </select>}</label>
+             </AppSelect>}</label>
            <label>Invoice currency<input value={p.currency||"USD"} disabled readOnly/></label>
-           <label>Invoice rate basis<select value={billing.rate_unit} onChange={e=>update("rate_unit",e.target.value)}>
+           <label>Invoice rate basis<AppSelect value={billing.rate_unit} onChange={e=>update("rate_unit",e.target.value)}>
             <option value="hour">Per hour</option><option value="day">Per day</option><option value="week">Per week</option>
-            <option value="month">Per month</option><option value="project">Per project</option></select></label>
+            <option value="month">Per month</option><option value="project">Per project</option></AppSelect></label>
            {field("invoice_rate","Invoice rate ("+(p.currency||"USD")+")","number",{required:true,min:"0.01",step:"0.01"})}
            {field("tax_rate_pct","Tax (%)","number",{required:true,min:"0",max:"100",step:"0.01"})}
            {field("payment_terms_days","Net payment terms (days)","number",{required:true,min:"0",max:"180"})}
@@ -183,9 +184,9 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
     quantity:Number(quantity),tax_rate_pct:Number(tax),issue_date:today(),
     replaces_invoice_id:replacementInvoiceId});setReplacementInvoiceId(null);return row},
     replacementInvoiceId?"Replacement invoice created with an audit link to the voided invoice.":"Invoice draft created successfully.")}}>
-    <label>Project<select value={selected} onChange={e=>{setSelected(e.target.value);setReplacementInvoiceId(null);const p=projects.find(x=>String(x.id)===e.target.value);
+    <label>Project<AppSelect value={selected} onChange={e=>{setSelected(e.target.value);setReplacementInvoiceId(null);const p=projects.find(x=>String(x.id)===e.target.value);
       setPeriodStart(p?.start_date||today());setPeriodEnd(today());setTax(String(p?.charges?.find((c:Row)=>c.recipient_type===(p.billing?.recipient_type||"client"))?.tax_rate_pct??0))}} required>
-     <option value="">Select project</option>{projects.map(p=><option key={p.id} value={p.id}>{p.project_number} · {p.name} ({p.status})</option>)}</select></label>
+     <option value="">Select project</option>{projects.map(p=><option key={p.id} value={p.id}>{p.project_number} · {p.name} ({p.status})</option>)}</AppSelect></label>
     {replacementInvoiceId&&<p className="field-help">Replacing voided invoice #{replacementInvoiceId}. The replacement keeps the same project and service period. Verify the quantity and tax before creating it.</p>}
     <label>Billing period starts<input type="date" required value={periodStart} onChange={e=>{setPeriodStart(e.target.value);setApprovedHours(null)}}/></label>
     <label>Billing period ends<input type="date" required min={periodStart} aria-invalid={periodEnd<periodStart} value={periodEnd} onChange={e=>{setPeriodEnd(e.target.value);setApprovedHours(null)}}/></label>
@@ -245,8 +246,8 @@ export default function FinanceWorkspace({api,user}:{api:string;user:User}){
    <form className="form" onSubmit={e=>{e.preventDefault();void save(
     ()=>call("/schedules/run","POST",{as_of:scheduleDate,project_id:scheduleProject?Number(scheduleProject):null}),
     "Schedule checked. Review generated billing tasks; no invoices were sent.")}}>
-    <label>Projects<select value={scheduleProject} onChange={e=>setScheduleProject(e.target.value)}>
-      <option value="">All active projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.project_number} · {p.name}</option>)}</select></label>
+    <label>Projects<AppSelect value={scheduleProject} onChange={e=>setScheduleProject(e.target.value)}>
+      <option value="">All active projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.project_number} · {p.name}</option>)}</AppSelect></label>
     <label>Schedule date<input type="date" required value={scheduleDate} onChange={e=>setScheduleDate(e.target.value)}/></label>
     <div className="finance-actions"><button disabled={busy} className="primary">Check due billing tasks</button></div>
    </form>
