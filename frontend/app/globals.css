@@ -1369,3 +1369,78 @@ input[type="file"]:focus-visible{outline:3px solid #7a8fe2;outline-offset:2px}
 [data-theme="dark"] .payroll-config .payroll-net-preview small{
  color:#c0d0e8!important;
 }
+
+
+/* Theme parity: Overview punch, daily attendance, hover and expanded session
+   tables. Explicit foreground/background pairs avoid washed-out light cards
+   inheriting the global dark-mode strong/small/th color rules. */
+.punch-control{background:#f7f9ff;color:#273751;border-color:#cbd5e5}
+.punch-status,.punch-status svg{color:#514c86}
+.punch-status strong{color:#243452!important}
+.punch-status small{color:#465876!important}
+.attendance-day{background:#fff;border-color:#c9d3e3}
+.attendance-day-toggle{background:#f4f6fb!important;color:#273751!important}
+.attendance-day-toggle strong{color:#253651!important}
+.attendance-day-toggle span{color:#475874!important}
+.attendance-day-toggle:hover,.attendance-day-toggle:focus-visible{
+ background:#e4eafa!important;color:#172e52!important;
+}
+.attendance-day-toggle:is(:hover,:focus-visible) :is(strong,span,svg){
+ color:#172e52!important;
+}
+.attendance-session-table{background:#fff;color:#263651}
+.attendance-session-table thead{background:#e9eef7}
+.attendance-session-table :is(th,td){background:transparent;color:#31425d!important}
+.attendance-session-table strong{color:#243a55!important}
+.overview-recent-attendance,.overview-attendance-collapse{background:#fff;color:#243652}
+.overview-recent-attendance :is(th,td),.overview-attendance-collapse>summary{color:#30415e}
+[data-theme="dark"] .punch-control{
+ background:#22314a!important;border-color:#566780!important;color:#f0f5ff!important
+}
+[data-theme="dark"] .punch-status,[data-theme="dark"] .punch-status svg{color:#c9bcff!important}
+[data-theme="dark"] .punch-status strong{color:#fff!important}
+[data-theme="dark"] .punch-status small{color:#cedbf0!important}
+[data-theme="dark"] .attendance-day{background:#1e2d46!important;border-color:#4e617d!important}
+[data-theme="dark"] .attendance-day-toggle{
+ background:#263750!important;color:#f0f5ff!important;
+}
+[data-theme="dark"] .attendance-day-toggle strong{color:#f6f8ff!important}
+[data-theme="dark"] .attendance-day-toggle span{color:#d4e0f2!important}
+[data-theme="dark"] .attendance-day-toggle svg{color:#dce8fd!important}
+[data-theme="dark"] .attendance-day-toggle:is(:hover,:focus-visible){
+ background:#364c6d!important;color:#fff!important
+}
+[data-theme="dark"] .attendance-day-toggle:is(:hover,:focus-visible) :is(strong,span,svg){
+ color:#fff!important
+}
+[data-theme="dark"] .attendance-day .table-wrap{background:#1c2940!important}
+[data-theme="dark"] .attendance-session-table{background:#1c2940!important;color:#e8f0fd!important}
+[data-theme="dark"] .attendance-session-table thead{background:#30415e!important}
+[data-theme="dark"] .attendance-session-table :is(th,td){
+ background:transparent!important;color:#e4eafb!important;border-color:#4c5d78!important
+}
+[data-theme="dark"] .attendance-session-table strong{color:#f4f7ff!important}
+[data-theme="dark"] .overview-recent-attendance,[data-theme="dark"] .overview-attendance-collapse{
+ background:#1c2940!important;color:#ebf2ff!important;border-color:#4c5d78!important
+}
+[data-theme="dark"] .overview-recent-attendance :is(td,th),
+[data-theme="dark"] .overview-attendance-collapse :is(td,th,summary){
+ color:#e3ecfb!important;border-color:#4c5d78!important
+}
+/* Other reusable status surfaces across the application require themed
+   text even when they are nested inside a generic light-only background. */
+[data-theme="dark"] :is(.payroll-helper,.payroll-submit-row span,.payroll-panel-heading p,
+ .payroll-component-row small,.payroll-reason-label small,.time-audit-filters label,
+ .overview-attendance-collapse>summary span,.project-bonus small,
+ .overview-recent-attendance .muted){color:#c5d4ec!important}
+[data-theme="dark"] :is(.payroll-section-switch,.payroll-component-row,.payroll-run-review,
+ .overview-attendance-collapse>summary,.overview-recent-attendance thead){
+ background:#273750!important;border-color:#4e607c!important;color:#edf3ff!important
+}
+[data-theme="dark"] .payroll-section-switch button{color:#dbe5f8!important}
+[data-theme="dark"] .payroll-section-switch button:is(:hover,:focus-visible){
+ background:#384d70!important;color:#fff!important
+}
+[data-theme="dark"] .payroll-section-switch button.active{
+ background:#465b85!important;color:#fff!important
+}
