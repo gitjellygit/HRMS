@@ -19,7 +19,7 @@ BASELINE_LAST = "20261117_activity_agent_app_usage.sql"
 SQL_NAME = re.compile(r"^[0-9]{8}_[a-z0-9_]+\.sql$")
 SHA = re.compile(r"^[0-9a-f]{40}$")
 PSQL = ["docker", "compose", "exec", "-T", "db", "sh", "-c",
-        'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+        'psql -X -At -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
 LOCK = "SELECT pg_advisory_xact_lock(72517, 20261119);"
 LEDGER = """
 CREATE TABLE IF NOT EXISTS public.hrms_schema_migrations (
@@ -120,12 +120,9 @@ def ledger_entries():
     )
     entries = {}
     for row in output.splitlines():
-        if "\\t" in row:  # defensive: psql output format may vary
-            k, v = row.split("\\t", 1)
-        elif "\t" in row:
-            k, v = row.split("\t", 1)
-        else:
-            continue
+        if "\t" not in row:
+            raise RuntimeError("Malformed migration ledger row")
+        k, v = row.split("\t", 1)
         if not SQL_NAME.fullmatch(k) or not re.fullmatch("[a-f0-9]{64}", v):
             raise RuntimeError("Invalid migration ledger row")
         entries[k] = v
