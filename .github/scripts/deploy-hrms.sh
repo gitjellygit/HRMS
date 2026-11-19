@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 TARGET_SHA="${1:?Pass verified SHA}"
-SCHEMA_APPROVAL="${2:-}"
 [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid SHA"; exit 1; }
 cd /opt/jellygit/hrms
 test -f .env
@@ -10,76 +9,25 @@ git fetch --no-tags origin main
 git cat-file -e "$TARGET_SHA^{commit}"
 PREVIOUS_SHA="$(git rev-parse HEAD)"
 if [[ "$PREVIOUS_SHA" == "$TARGET_SHA" ]]; then echo "Already deployed"; exit 0; fi
-# Schema-bearing releases need an explicit approval AND verification of the target
-# schema already installed on the VPS. This approval covers only the ten known
-# additive migrations from 2026-11-17, never arbitrary future SQL/Compose changes.
-CHANGED="$(git diff --name-only "$PREVIOUS_SHA" "$TARGET_SHA" -- backend/migrations/ docker-compose.yml)"
-if [[ -n "$CHANGED" ]]; then
-  if [[ "$SCHEMA_APPROVAL" != "APPROVE-20261117-MIGRATIONS" ]]; then
-    echo "Schema changes detected; select reviewed migration approval in manual workflow."; exit 1
-  fi
-  EXPECTED="$(printf '%s\n' \
-    backend/migrations/20261117_activity_agent_app_usage.sql \
-    backend/migrations/20261117_activity_agent_devices.sql \
-    backend/migrations/20261117_announcement_media_audience.sql \
-    backend/migrations/20261117_company_letterhead.sql \
-    backend/migrations/20261117_custom_monthly_leave_schedule.sql \
-    backend/migrations/20261117_leave_policy_year_and_versions.sql \
-    backend/migrations/20261117_manual_payslips.sql \
-    backend/migrations/20261117_offer_logo_snapshot.sql \
-    backend/migrations/20261117_onboarding_categories.sql \
-    backend/migrations/20261117_tiered_leave_accrual.sql)"
-  # Only this precise reviewed migration set, and no Docker Compose change.
-  if [[ "$CHANGED" != "$EXPECTED" ]]; then
-    echo "Unexpected migration/Compose diff. Refusing approval. Changed paths:"
-    printf '%s\n' "$CHANGED"
-    exit 1
-  fi
-  echo "Reviewed migration set recognized. Verifying schema in VPS PostgreSQL."
-  docker compose exec -T db sh -c 'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
-DO $schema_gate$
-DECLARE missing text;
-BEGIN
-  SELECT string_agg(required_path, ', ' ORDER BY required_path) INTO missing
-  FROM (
-    SELECT table_name || '.' || column_name AS required_path
-    FROM (VALUES
-      ('leave_policies','late_year_monthly_accrual'),
-      ('leave_policies','monthly_schedule'),
-      ('leave_policies','year_type'),
-      ('leave_policy_versions','leave_type'),
-      ('leave_policy_versions','snapshot_json'),
-      ('people_company_letterhead','logo_key'),
-      ('people_offers','letterhead_logo_key'),
-      ('people_onboarding_categories','slug'),
-      ('people_announcements','media_key'),
-      ('people_announcements','audience_ids'),
-      ('activity_agent_devices','employee_id'),
-      ('activity_agent_devices','app_usage_json'),
-      ('pay_manual_payslips','storage_key')
-    ) AS required(table_name,column_name)
-    WHERE NOT EXISTS (
-      SELECT 1 FROM information_schema.columns c
-      WHERE c.table_schema='public'
-        AND c.table_name=required.table_name
-        AND c.column_name=required.column_name
-    )
-  ) gaps;
-  IF missing IS NOT NULL THEN
-    RAISE EXCEPTION 'Unapplied reviewed schema migrations: %', missing;
-  END IF;
-  IF EXISTS (
-    SELECT 1 FROM leave_policies p WHERE NOT EXISTS (
-      SELECT 1 FROM leave_policy_versions v
-      WHERE v.leave_type=p.leave_type AND v.effective_from=DATE '2000-01-01'
-    )
-  ) THEN
-    RAISE EXCEPTION 'Legacy leave policy history baseline missing';
-  END IF;
-END $schema_gate$;
-SQL
-  echo "Reviewed migration schema verified; release can continue."
+# Compose topology/volume changes still require separate review. SQL migrations
+# are tracked and applied automatically via the versioned ledger below.
+if git diff --name-only "$PREVIOUS_SHA" "$TARGET_SHA" -- docker-compose.yml |
+    grep -q .; then
+  echo "Docker Compose changed; infrastructure review required"; exit 1
 fi
+
+# Load migration runner from the exact verified release commit without checking
+# out or starting the new application first.
+RUNNER="$(mktemp)"
+trap 'rm -f "$RUNNER"' EXIT
+git show "$TARGET_SHA:.github/scripts/migrate-hrms.py" > "$RUNNER"
+python3 "$RUNNER" "$TARGET_SHA" --check
+# The GitHub workflow has already verified main CI and backed up the database
+# and persistent uploads volume. Each SQL migration + ledger row is atomic.
+python3 "$RUNNER" "$TARGET_SHA"
+rm -f "$RUNNER"
+trap - EXIT
+
 rollback() {
  code=$?
  trap - ERR
