@@ -1,4 +1,5 @@
 "use client";
+import UploadInput from "./UploadInput";
 import AppSelect from "./AppSelect";
 import AnnouncementTemplates,{type AnnouncementPreset} from "./AnnouncementTemplates";
 import {useTransientMessage} from "./useTransientMessage";
@@ -145,7 +146,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
   {busy&&<FeedbackMotion type="loading" compact message="Updating HRMS…"/>}
   {tab==="offers"&&<div className="ops-columns">
     <section className="employee-surface"><h3><FileSignature size={17}/> Offer letters</h3>
-     {hr&&<div className="ops-form"><h4>Company letterhead</h4><p className="field-help">Upload a verified PNG or JPEG logo (max 2 MB). It will appear on generated offer PDFs.</p><label>Company logo<input type="file" accept="image/png,image/jpeg" onChange={e=>setCompanyLogo(e.target.files?.[0]||null)}/></label><button type="button" className="employee-primary" disabled={!companyLogo||busy} onClick={()=>void save(async()=>{const form=new FormData();form.append("file",companyLogo!);const res=await fetch(api+"/people/letterhead/logo",{method:"POST",credentials:"include",body:form});if(!res.ok)throw Error("Logo upload failed. Use a valid PNG/JPEG under 2 MB.");setCompanyLogo(null)},"Company logo updated.")}>Upload company logo</button></div>}
+     {hr&&<div className="ops-form"><h4>Company letterhead</h4><p className="field-help">Upload a verified PNG or JPEG logo (max 2 MB). It will appear on generated offer PDFs.</p><label>Company logo<UploadInput accept="image/png,image/jpeg" onChange={e=>setCompanyLogo(e.target.files?.[0]||null)}/></label><button type="button" className="employee-primary" disabled={!companyLogo||busy} onClick={()=>void save(async()=>{const form=new FormData();form.append("file",companyLogo!);const res=await fetch(api+"/people/letterhead/logo",{method:"POST",credentials:"include",body:form});if(!res.ok)throw Error("Logo upload failed. Use a valid PNG/JPEG under 2 MB.");setCompanyLogo(null)},"Company logo updated.")}>Upload company logo</button></div>}
      {hr&&<><form className="ops-form" onSubmit={e=>{e.preventDefault();void save(async()=>{await call(editingOfferTemplate?"/offer-templates/"+editingOfferTemplate:"/offer-templates",editingOfferTemplate?"PUT":"POST",{name:draft.template_name,content:draft.template_content});setEditingOfferTemplate(null)},editingOfferTemplate?"Template updated.":"Template created.")}}>
       <h4>{editingOfferTemplate?"Edit offer template":"Create offer template"}</h4>{input("template_name","Template name",true)}
       <label className="wide">Offer text with placeholders<textarea rows={5} minLength={30} required
@@ -207,7 +208,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
        onChange={e=>setDraft(v=>({...v,body:e.target.value}))}/></label>
       <label className="wide ops-check"><input type="checkbox" checked={!!draft.requires_ack}
        onChange={e=>setDraft(v=>({...v,requires_ack:e.target.checked}))}/>Require employee acknowledgement</label>
-      <label className="wide">Announcement image (optional, PNG/JPEG/WebP; max 3 MB)<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>{const file=e.target.files?.[0]||null;setAnnouncementImage(file);if(file){const reader=new FileReader();reader.onload=()=>setAnnouncementPreview(String(reader.result||""));reader.readAsDataURL(file)}else setAnnouncementPreview("")}}/></label>
+      <label className="wide">Announcement image (optional, PNG/JPEG/WebP; max 3 MB)<UploadInput accept="image/png,image/jpeg,image/webp" onChange={e=>{const file=e.target.files?.[0]||null;setAnnouncementImage(file);if(file){const reader=new FileReader();reader.onload=()=>setAnnouncementPreview(String(reader.result||""));reader.readAsDataURL(file)}else setAnnouncementPreview("")}}/></label>
       <div className="wide jg-audience-picker"><div><strong>Announcement audience</strong><p className="field-help">{announcementAudience.length?`${announcementAudience.length} selected employee(s)`:"All active employees will receive this announcement."}</p></div>
   <input type="search" aria-label="Find announcement recipients" placeholder="Search employees…" value={audienceSearch} onChange={e=>setAudienceSearch(e.target.value)}/>
   <div className="jg-preset-actions"><button type="button" className="employee-cancel" onClick={()=>setAnnouncementAudience(staff.filter(p=>p.status==="active").map(p=>p.id))}>Select all employees</button><button type="button" className="employee-cancel" onClick={()=>setAnnouncementAudience([])}>Everyone (no restriction)</button></div>
