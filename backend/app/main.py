@@ -550,15 +550,24 @@ def attendance(employee_id: int | None = None, user: Employee = Depends(current_
 @app.get("/attendance/team")
 def team_attendance(start_date: date, end_date: date, employee_id: int | None = None,
                     limit: int = 250, offset: int = 0,
+                    start_utc_offset: int = 0, end_utc_offset: int = 0,
                     user: Employee = Depends(require("admin","hr")),
                     db: Session = Depends(db_session)):
-    """Paginated punch logs for authorized HR; no mutation or remote punch action."""
+    """Paginated HR punch logs with caller-local day boundaries, including DST.
+
+    JS getTimezoneOffset() is positive west of UTC. Separate start/end
+    offsets keep month/year ranges correct when daylight saving time changes.
+    """
     if end_date < start_date or (end_date-start_date).days > 366:
         raise HTTPException(422, "Select a valid attendance range of up to 366 days.")
     if limit < 1 or limit > 500 or offset < 0:
         raise HTTPException(422, "Use a page size between 1 and 500 and a nonnegative offset.")
-    start = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
-    end = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+    if not (-840 <= start_utc_offset <= 840 and -840 <= end_utc_offset <= 840):
+        raise HTTPException(422, "Invalid local time zone offset.")
+    start = datetime.combine(start_date, datetime.min.time(),
+                             tzinfo=timezone(timedelta(minutes=-start_utc_offset))).astimezone(timezone.utc)
+    end = datetime.combine(end_date + timedelta(days=1), datetime.min.time(),
+                           tzinfo=timezone(timedelta(minutes=-end_utc_offset))).astimezone(timezone.utc)
     query = select(Attendance, Employee.name).join(Employee, Employee.id == Attendance.employee_id).where(
         Attendance.punch_in < end,
         func.coalesce(Attendance.punch_out, datetime.now(timezone.utc)) >= start
