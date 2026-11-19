@@ -7,13 +7,14 @@ on:
         required: true
         type: string
       schema_approval:
-        description: "For reviewed 2026-11-17 migrations only: select approval AFTER VPS schema has been applied and verified"
+        description: "Choose matching reviewed migration approval only AFTER applying/validating the schema on VPS"
         required: true
         type: choice
         default: "NO-SCHEMA-APPROVAL"
         options:
           - "NO-SCHEMA-APPROVAL"
           - "APPROVE-20261117-MIGRATIONS"
+          - "APPROVE-20261119-PROBATION"
 permissions:
   contents: read
   actions: read
