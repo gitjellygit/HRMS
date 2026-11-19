@@ -64,6 +64,6 @@ test('HR employee directory exposes edit details and prefilled employee form',as
  await expect(edit).toBeVisible();
  await edit.click();
  await expect(page.getByRole('heading',{name:'Edit employee details'})).toBeVisible();
- await expect(page.getByRole('button',{name:'Save employee details'})).toBeVisible();
- await expect(page.getByText('Reason for changes (minimum 10 characters)')).toBeVisible();
+ await expect(page.getByRole('button',{name:/Save (profile|employee) changes/})).toBeVisible();
+ await expect(page.getByText('Reason for update (minimum 10 characters)')).toBeVisible();
 });

@@ -1,4 +1,5 @@
 "use client";
+import AppSelect from "./AppSelect";
 import {useTransientMessage} from "./useTransientMessage";
 import {explainError} from "./formErrors";
 import {useCallback,useEffect,useRef,useState} from "react";
@@ -162,9 +163,9 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
   {tab==="today"&&isHR&&<section className="employee-surface time-attendance-audit">
     <h3>HR attendance audit</h3><p className="muted">Select employee, work date and time zone. Breaks are inferred gaps between recorded sessions.</p>
     <div className="time-audit-filters">
-     <label>Employee<select value={auditEmployee} onChange={e=>setAuditEmployee(e.target.value)}><option value="">Select an employee</option>{staff.filter(p=>p.status!=="inactive").map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+     <label>Employee<AppSelect value={auditEmployee} onChange={e=>setAuditEmployee(e.target.value)}><option value="">Select an employee</option>{staff.filter(p=>p.status!=="inactive").map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</AppSelect></label>
      <label>Work date<input type="date" value={auditDate} onChange={e=>setAuditDate(e.target.value)}/></label>
-     <label>Time zone<select value={auditZone} onChange={e=>setAuditZone(e.target.value)}>{TIME_ZONES.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
+     <label>Time zone<AppSelect value={auditZone} onChange={e=>setAuditZone(e.target.value)}>{TIME_ZONES.map(([id,label])=><option key={id} value={id}>{label}</option>)}</AppSelect></label>
      <button type="button" className="employee-primary" disabled={!auditEmployee} onClick={()=>void loadAudit()}>View punch record</button>
     </div>
     {auditError&&<p role="alert" className="error">{auditError}</p>}
@@ -177,12 +178,12 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
    <section className="employee-surface"><h3>Submit a time request</h3>
     {requestForm.kind==="wfh"&&wfhBalance&&<p className="time-request-description">WFH allowance: {wfhBalance.used_or_pending}/{wfhBalance.monthly_limit} days pending/approved this month; {wfhBalance.remaining} remaining. The server checks each requested month.</p>}
     <form className="time-form" onSubmit={submitRequest} noValidate>
-     <label>Request type<select name="kind" value={requestForm.kind} onChange={e=>setRequestForm(v=>({...v,kind:e.target.value}))}>{requestOptions.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
+     <label>Request type<AppSelect name="kind" value={requestForm.kind} onChange={e=>setRequestForm(v=>({...v,kind:e.target.value}))}>{requestOptions.map(([id,label])=><option key={id} value={id}>{label}</option>)}</AppSelect></label>
      <p className="time-request-description wide">{requestForm.kind==="on_duty"?"Use this when your manager sends you to a client site or another approved work location. This is not a normal office punch.":requestForm.kind==="wfh"?"Request approval to work remotely from home.":requestForm.kind==="regularization"?"Correct a missing or incorrect attendance punch; choose the timezone where you worked.":requestForm.kind==="overtime"?"Request approval for extra working hours.":"Request to exchange an assigned shift with a colleague."}</p>
      <label>Work date<input name="work_date" type="date" required value={requestForm.work_date} onChange={e=>setRequestForm(v=>({...v,work_date:e.target.value}))}/></label>
      {["wfh","on_duty"].includes(requestForm.kind)&&<label>End date (optional)<input name="end_date" type="date" min={requestForm.work_date} value={requestForm.end_date} onChange={e=>setRequestForm(v=>({...v,end_date:e.target.value}))}/></label>}
      {requestForm.kind==="overtime"&&<label>Overtime hours <span className="required" aria-hidden="true">*</span><input name="hours" type="number" min=".25" max="24" step=".25" required aria-invalid={errorField==="hours"} aria-describedby={errorField==="hours"?"overtime-hours-error":undefined} value={requestForm.hours} onChange={e=>{setRequestForm(v=>({...v,hours:e.target.value}));if(errorField==="hours"){setErrorField("");setError("")}}}/>{errorField==="hours"&&<small id="overtime-hours-error" className="field-error" role="alert">Enter overtime hours between 0.25 and 24.</small>}</label>}
-     {requestForm.kind==="regularization"&&<><label>Time zone (daylight saving automatic)<select name="timezone" value={requestZone} onChange={e=>setRequestZone(e.target.value)}>{TIME_ZONES.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select><small className="time-hint">Choose the work location, not your laptop clock. EST/EDT and CST/CDT change automatically by date.</small></label><label>Corrected punch-in<input name="proposed_in" type="datetime-local" required aria-invalid={errorField==="proposed_in"} value={requestForm.proposed_in} onChange={e=>setRequestForm(v=>({...v,proposed_in:e.target.value}))}/></label><label>Corrected punch-out<input name="proposed_out" type="datetime-local" required aria-invalid={errorField==="proposed_out"} value={requestForm.proposed_out} onChange={e=>setRequestForm(v=>({...v,proposed_out:e.target.value}))}/></label></>}
+     {requestForm.kind==="regularization"&&<><label>Time zone (daylight saving automatic)<AppSelect name="timezone" value={requestZone} onChange={e=>setRequestZone(e.target.value)}>{TIME_ZONES.map(([id,label])=><option key={id} value={id}>{label}</option>)}</AppSelect><small className="time-hint">Choose the work location, not your laptop clock. EST/EDT and CST/CDT change automatically by date.</small></label><label>Corrected punch-in<input name="proposed_in" type="datetime-local" required aria-invalid={errorField==="proposed_in"} value={requestForm.proposed_in} onChange={e=>setRequestForm(v=>({...v,proposed_in:e.target.value}))}/></label><label>Corrected punch-out<input name="proposed_out" type="datetime-local" required aria-invalid={errorField==="proposed_out"} value={requestForm.proposed_out} onChange={e=>setRequestForm(v=>({...v,proposed_out:e.target.value}))}/></label></>}
      {requestForm.kind==="shift_swap"&&<label>Colleague's employee ID<input name="target_employee_id" type="number" min="1" required value={requestForm.target_employee_id} onChange={e=>setRequestForm(v=>({...v,target_employee_id:e.target.value}))}/></label>}
      <label className="wide"><span className="field-label-line">Reason <span className="required" aria-hidden="true">*</span></span><textarea name="reason" required minLength={10} maxLength={1000} rows={3} aria-invalid={errorField==="reason"} value={requestForm.reason} onChange={e=>setRequestForm(v=>({...v,reason:e.target.value}))} placeholder="Why is this request needed?"/></label>
      <button className="employee-primary" disabled={busy}>Send for manager approval</button>
@@ -201,15 +202,15 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
      <label>Start<input name="start_time" type="time" required value={shiftForm.start_time} onChange={e=>setShiftForm(v=>({...v,start_time:e.target.value}))}/></label>
      <label>End<input name="end_time" type="time" required value={shiftForm.end_time} onChange={e=>setShiftForm(v=>({...v,end_time:e.target.value}))}/></label>
      <label>Break minutes<input name="break_minutes" type="number" min="0" max="240" value={shiftForm.break_minutes} onChange={e=>setShiftForm(v=>({...v,break_minutes:e.target.value}))}/></label>
-     <label>Shift time zone<select name="timezone" value={shiftForm.timezone} onChange={e=>setShiftForm(v=>({...v,timezone:e.target.value}))}>{TIME_ZONES.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select><small className="time-hint">Shift hours are local to this zone; daylight saving is automatic.</small></label>
+     <label>Shift time zone<AppSelect name="timezone" value={shiftForm.timezone} onChange={e=>setShiftForm(v=>({...v,timezone:e.target.value}))}>{TIME_ZONES.map(([id,label])=><option key={id} value={id}>{label}</option>)}</AppSelect><small className="time-hint">Shift hours are local to this zone; daylight saving is automatic.</small></label>
      <button className="employee-primary" disabled={busy}>Create shift</button>
     </form>}
     <div className="time-list">{shifts.length?shifts.map(s=><div key={s.id}><strong>{s.name}</strong><span>{s.start_time}–{s.end_time} · {s.break_minutes} min break · {TIME_ZONES.find(([id])=>id===s.timezone)?.[1]||s.timezone||"India (IST)"}</span></div>):<p>No shifts configured.</p>}</div>
    </section>
    <section className="employee-surface"><h3>{isHR?"Assign a roster":"My roster"}</h3>
     {isHR&&<form className="time-form" onSubmit={e=>{e.preventDefault();void execute(()=>call("/roster","PUT",{employee_id:Number(rosterForm.employee_id),shift_id:Number(rosterForm.shift_id),work_date:rosterForm.work_date}),"Roster saved.")}}>
-     <label>Employee<select name="employee_id" required value={rosterForm.employee_id} onChange={e=>setRosterForm(v=>({...v,employee_id:e.target.value}))}><option value="">Select an employee</option>{staff.filter(e=>e.status==="active").map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></label>
-     <label>Shift<select name="shift_id" required value={rosterForm.shift_id} onChange={e=>setRosterForm(v=>({...v,shift_id:e.target.value}))}><option value="">Select a shift</option>{shifts.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+     <label>Employee<AppSelect name="employee_id" required value={rosterForm.employee_id} onChange={e=>setRosterForm(v=>({...v,employee_id:e.target.value}))}><option value="">Select an employee</option>{staff.filter(e=>e.status==="active").map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</AppSelect></label>
+     <label>Shift<AppSelect name="shift_id" required value={rosterForm.shift_id} onChange={e=>setRosterForm(v=>({...v,shift_id:e.target.value}))}><option value="">Select a shift</option>{shifts.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</AppSelect></label>
      <label>Work date<input name="work_date" type="date" value={rosterForm.work_date} onChange={e=>setRosterForm(v=>({...v,work_date:e.target.value}))}/></label>
      <button className="employee-primary" disabled={busy}>Assign shift</button>
     </form>}
@@ -224,9 +225,9 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
      setEditingTimesheetId(null);setTimeForm({work_date:today(),task:"",hours:"",project_id:"",note:""});
     },editingTimesheetId?"Timesheet draft updated. Submit it when ready.":"Timesheet entry saved.")}}>
     <label>Work date<input type="date" name="work_date" value={timeForm.work_date} onChange={e=>setTimeForm(v=>({...v,work_date:e.target.value}))}/></label>
-    <label>Project (optional)<select name="project_id" value={timeForm.project_id} onChange={e=>setTimeForm(v=>({...v,project_id:e.target.value}))}><option value="">Internal / unassigned task</option>{projectOptions.filter(p=>isHR||p.sourced_by_id===user.id||
+    <label>Project (optional)<AppSelect name="project_id" value={timeForm.project_id} onChange={e=>setTimeForm(v=>({...v,project_id:e.target.value}))}><option value="">Internal / unassigned task</option>{projectOptions.filter(p=>isHR||p.sourced_by_id===user.id||
       projectAssignments.some(a=>a.project_id===p.id&&a.employee_id===user.id&&a.active))
-      .map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label>
+      .map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</AppSelect></label>
     <label><span className="field-label-line">Task <span className="required" aria-hidden="true">*</span></span><input name="task" required minLength={3} aria-invalid={errorField==="task"} value={timeForm.task} onChange={e=>setTimeForm(v=>({...v,task:e.target.value}))} placeholder="e.g. QA review / Sprint planning"/></label>
     <label><span className="field-label-line">Hours <span className="required" aria-hidden="true">*</span></span><input name="hours" required min=".25" max="24" step=".25" type="number" aria-invalid={errorField==="hours"} value={timeForm.hours} onChange={e=>setTimeForm(v=>({...v,hours:e.target.value}))}/></label>
     <label className="wide">Notes <span className="field-optional">(optional)</span><textarea rows={3} maxLength={1000} value={timeForm.note} onChange={e=>setTimeForm(v=>({...v,note:e.target.value}))}/></label>
@@ -265,12 +266,12 @@ export default function TimeWorkspace({api,user}:{api:string;user:{id:number;rol
     <form className="time-form" onSubmit={e=>{e.preventDefault();void execute(()=>call("/project-assignments","PUT",
       {employee_id:Number(assignmentEmployee),project_id:Number(assignmentProject),active:true}),
       "Employee assigned to project.")}}>
-     <label>Employee<select required value={assignmentEmployee} onChange={e=>setAssignmentEmployee(e.target.value)}>
+     <label>Employee<AppSelect required value={assignmentEmployee} onChange={e=>setAssignmentEmployee(e.target.value)}>
       <option value="">Select employee</option>{staff.map(x=><option value={x.id} key={x.id}>{x.name}</option>)}
-     </select></label>
-     <label>Project<select required value={assignmentProject} onChange={e=>setAssignmentProject(e.target.value)}>
+     </AppSelect></label>
+     <label>Project<AppSelect required value={assignmentProject} onChange={e=>setAssignmentProject(e.target.value)}>
       <option value="">Select project</option>{projectOptions.map(x=><option value={x.id} key={x.id}>{x.name}</option>)}
-     </select></label>
+     </AppSelect></label>
      <button className="employee-primary" disabled={busy||!assignmentEmployee||!assignmentProject}>Assign employee</button>
     </form>
     {projectAssignments.map(a=><div key={a.employee_id+"-"+a.project_id} className="ops-row">

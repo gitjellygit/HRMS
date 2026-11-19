@@ -1217,3 +1217,106 @@ select{background-clip:padding-box}
 :root .hrms-profile-menu :is(button,.hrms-photo-change):is(:hover,:focus-visible){background-color:#eef0fa!important;color:#241e49!important}
 [data-theme="dark"] .hrms-profile-menu :is(button,.hrms-photo-change):is(:hover,:focus-visible){background-color:#34476c!important;color:#ffffff!important}
 @media(prefers-reduced-motion:reduce){.hrms-profile-menu :is(button,.hrms-photo-change){transition:none!important}}
+
+
+/* === UI consistency system · November 2026 ===
+   One shared tab style, genuine app-owned select menu, polished uploads,
+   readable dark-mode surfaces, and compact employee profile forms. */
+:root{
+ --jg-control-bg:#fff;--jg-control-ink:#23334e;--jg-control-border:#cbd6e6;
+ --jg-menu-bg:#fff;--jg-menu-hover:#eaf0ff;--jg-menu-hover-ink:#182d55;
+ --jg-tabs-bg:#f1f4f9;--jg-tabs-active:#fff;--jg-tabs-ink:#4f607a;
+}
+[data-theme="dark"]{
+ --jg-control-bg:#1b2840;--jg-control-ink:#f0f4ff;--jg-control-border:#54637e;
+ --jg-menu-bg:#202d47;--jg-menu-hover:#3d5279;--jg-menu-hover-ink:#fff;
+ --jg-tabs-bg:#1e2b44;--jg-tabs-active:#39496b;--jg-tabs-ink:#d1dcf0;
+}
+.jg-select{width:100%;min-width:0;position:relative;display:inline-block;text-align:left;color:var(--jg-control-ink);font-weight:500}
+.jg-native-select{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important;overflow:hidden!important;clip-path:inset(50%)!important;padding:0!important;border:0!important}
+.jg-select-trigger{width:100%;min-height:40px;display:flex;align-items:center;justify-content:space-between;gap:11px;text-align:left;border:1px solid var(--jg-control-border)!important;background:var(--jg-control-bg)!important;color:var(--jg-control-ink)!important;border-radius:9px!important;padding:9px 12px!important;font:inherit;font-size:13px!important;font-weight:550!important;box-shadow:none!important;cursor:pointer}
+.jg-select-trigger span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.jg-select-trigger svg{flex:none;color:inherit;opacity:.76;transition:transform .18s ease}
+.jg-select-open .jg-select-trigger svg{transform:rotate(180deg)}
+.jg-select-trigger:hover:not(:disabled){border-color:#8375b9!important}
+.jg-select-trigger:focus-visible{outline:3px solid #7a8fe2!important;outline-offset:2px}
+.jg-select-disabled .jg-select-trigger{opacity:.56;cursor:not-allowed}
+.jg-select-popover{position:absolute;top:calc(100% + 6px);left:0;min-width:100%;width:max-content;max-width:min(420px,90vw);background:var(--jg-menu-bg)!important;color:var(--jg-control-ink)!important;z-index:400;border:1px solid var(--jg-control-border);border-radius:12px;box-shadow:0 15px 40px #101b3633;padding:5px;overflow:hidden}
+.jg-select-options{max-height:245px;overflow-y:auto;overscroll-behavior:contain}
+.jg-select-option{width:100%;padding:10px 12px!important;min-height:37px;border:0!important;border-radius:7px!important;display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;font-size:13px!important;font-weight:550!important;background:transparent!important;color:var(--jg-control-ink)!important;cursor:pointer;white-space:normal}
+.jg-select-option:is(:hover,:focus-visible),.jg-select-option.is-selected{background:var(--jg-menu-hover)!important;color:var(--jg-menu-hover-ink)!important}
+.jg-select-option:focus-visible{outline:2px solid #7a8fe2;outline-offset:-2px}
+.jg-select-search{display:flex;gap:8px;align-items:center;padding:5px 8px;border-bottom:1px solid var(--jg-control-border)}
+.jg-select-search input{width:100%;border:0!important;outline:0!important;min-height:31px;background:transparent!important;color:var(--jg-control-ink)!important;font-size:12px}
+.jg-select-empty{margin:7px;padding:9px;color:var(--jg-tabs-ink)}
+/* Navigation: shared pill pattern across PeopleOps, Leave, Payroll, Time, Growth, Finance. */
+:is(.time-tabs,.leave-tabs,.growth-tabs,.finance-workspace .time-tabs){
+ display:flex!important;flex-wrap:nowrap!important;align-items:center!important;width:100%!important;max-width:100%!important;min-width:0;
+ padding:6px!important;gap:5px!important;margin:0!important;
+ border:1px solid var(--jg-control-border)!important;background:var(--jg-tabs-bg)!important;
+ border-radius:12px!important;overflow-x:auto!important;overflow-y:hidden!important;scrollbar-width:thin;
+}
+:is(.time-tabs,.leave-tabs,.growth-tabs) > button{
+ display:inline-flex!important;flex:none!important;align-items:center!important;justify-content:center!important;
+ min-height:38px!important;padding:9px 14px!important;border:1px solid transparent!important;
+ border-radius:8px!important;background:transparent!important;color:var(--jg-tabs-ink)!important;
+ font-size:12px!important;font-weight:650!important;white-space:nowrap!important;box-shadow:none!important;cursor:pointer;
+}
+:is(.time-tabs,.leave-tabs,.growth-tabs) > button:is(.active,.selected,[aria-selected="true"]){
+ background:var(--jg-tabs-active)!important;color:var(--jg-control-ink)!important;
+ border-color:var(--jg-control-border)!important;box-shadow:0 1px 4px #12213c16!important;
+}
+:is(.time-tabs,.leave-tabs,.growth-tabs) > button:not(.active):not(.selected):hover{
+ background:var(--jg-menu-hover)!important;color:var(--jg-menu-hover-ink)!important;
+}
+:is(.time-tabs,.leave-tabs,.growth-tabs) > button:focus-visible{outline:2px solid #8d9df0!important;outline-offset:-2px}
+/* File picker styling applies globally, even for uploads not yet using a FilePicker component. */
+input[type="file"]{max-width:100%;width:100%;min-height:43px;padding:7px 9px!important;border:1px dashed var(--jg-control-border)!important;border-radius:10px!important;background:var(--jg-control-bg)!important;color:var(--jg-control-ink)!important;font-size:12px!important;cursor:pointer}
+input[type="file"]::file-selector-button{border:1px solid var(--jg-control-border);background:var(--jg-tabs-bg);color:var(--jg-control-ink);border-radius:8px;padding:8px 13px;margin-right:12px;font:inherit;font-weight:650;cursor:pointer}
+input[type="file"]::file-selector-button:hover{background:var(--jg-menu-hover);color:var(--jg-menu-hover-ink)}
+input[type="file"]:focus-visible{outline:3px solid #7a8fe2;outline-offset:2px}
+.employee-account-edit{max-width:920px}
+.employee-account-edit>.core-label{max-width:560px}
+.employee-account-edit textarea{min-height:70px!important;max-height:132px!important;resize:vertical}
+.employee-account-edit .core-form-actions{justify-content:flex-end}
+.employee-account-edit .core-form-actions>button{min-width:145px;width:auto}
+/* Ensure payroll configuration banner, card headings and metadata remain visible in dark mode. */
+[data-theme="dark"] :is(.payroll-config-banner,.growth-target-label,.growth-action-card,.ops-announcement-preview,.jellygit-template-download,.jg-announcement-presets,.jg-audience-picker){
+ background:#22314d!important;border-color:#4b5d7a!important;color:#f0f4ff!important;
+}
+[data-theme="dark"] :is(.payroll-config-banner,.payroll-config-banner h3,.payroll-config-banner p,.payroll-config-banner strong,.payroll-config-banner span,.growth-action-card h3,.growth-target-label,.growth-area-content h3,.ops-announcement-preview h4,.jg-announcement-presets h4,.jg-audience-picker strong){color:#f0f4ff!important}
+[data-theme="dark"] :is(.payroll-config,.payroll-config h2,.payroll-config h3,.payroll-config label,.payroll-config .payroll-field,.ops-area h2,.ops-area h3,.ops-area h4,.growth-workspace h2,.growth-workspace h3,.employee-surface h2,.employee-surface h3,.core-label){color:#eaf0fb}
+[data-theme="dark"] :is(.payroll-config .muted,.payroll-config small,.payroll-config-banner small,.growth-workspace .muted,.growth-target-label small,.ops-area .field-help,.employee-surface .field-help){color:#b7c7de!important}
+[data-theme="dark"] :is(.payroll-config input,.payroll-config textarea,.employee-account-edit input,.employee-account-edit textarea){background:#1b2840!important;color:#f0f4ff!important;border-color:#54637e!important}
+[data-theme="dark"] input::placeholder,[data-theme="dark"] textarea::placeholder{color:#9cadc6!important}
+/* Announcement preset and audience controls */
+.jg-announcement-presets{padding:14px;border:1px solid var(--jg-control-border);border-radius:12px;background:#f7f9fd;display:grid;gap:10px}
+.jg-announcement-presets p{font-size:12px;margin:0;color:var(--jg-tabs-ink)}
+.jg-preset-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:9px}
+.jg-preset-card{background:var(--jg-control-bg)!important;color:var(--jg-control-ink)!important;text-align:left;border:1px solid var(--jg-control-border)!important;border-radius:10px;padding:11px;display:grid;gap:4px;min-width:0;cursor:pointer}
+.jg-preset-card strong{font-size:12px}.jg-preset-card small{font-size:11px;color:var(--jg-tabs-ink)}
+.jg-preset-card[aria-pressed="true"]{border-color:#7866c3!important;box-shadow:0 0 0 2px #7866c344}
+.jg-preset-actions{display:flex;flex-wrap:wrap;gap:8px}
+.jg-audience-picker{padding:12px;border:1px solid var(--jg-control-border);background:#f7f9fd;border-radius:11px;display:grid;gap:10px}
+.jg-audience-list{max-height:190px;overflow:auto;display:grid;gap:5px}
+.jg-audience-list label{display:flex;align-items:center;gap:9px!important;padding:7px 9px;border-radius:7px;color:var(--jg-control-ink)!important;font-weight:500!important;cursor:pointer}
+.jg-audience-list label:hover{background:var(--jg-menu-hover)}
+.jg-audience-list input[type="checkbox"]{height:16px;width:16px;flex:none}
+@media(max-width:720px){.jg-preset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.jg-select-popover{max-width:85vw}}
+
+/* Performance navigation sits at the same hierarchy as other workspace tabs:
+   remove the extra outer card while keeping the inner action cards intact. */
+.panel.growth-workspace{background:transparent!important;border:0!important;box-shadow:none!important;padding:0!important}
+.growth-workspace>.growth-area-content{background:transparent!important;border:0!important;box-shadow:none!important}
+[data-theme="dark"] .growth-workspace>.muted{color:#c1cee5!important}
+@media(max-width:750px){.employee-account-edit>.core-label{max-width:100%}}
+
+/* Fully custom Browse control with a genuine accessible native input overlay. */
+.jg-upload-picker{display:flex;align-items:center;gap:12px;position:relative;min-height:47px;width:100%;min-width:0;padding:6px 10px;border:1px dashed var(--jg-control-border);border-radius:10px;background:var(--jg-control-bg);color:var(--jg-control-ink);cursor:pointer}
+.jg-upload-picker:hover{border-color:#8c81c7;background:var(--jg-tabs-bg)}
+.jg-upload-picker:focus-within{outline:3px solid #8298ec;outline-offset:2px}
+.jg-upload-picker input[type="file"]{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;opacity:0!important;z-index:2;cursor:pointer!important;padding:0!important;display:block}
+.jg-upload-action{flex:none;display:inline-flex;align-items:center;gap:7px;border-radius:7px;background:var(--jg-tabs-bg);border:1px solid var(--jg-control-border);padding:8px 11px;font-size:12px;font-weight:700;color:var(--jg-control-ink)}
+.jg-upload-filename{font-size:12px;color:var(--jg-tabs-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.jg-upload-picker:has(input:disabled){opacity:.5;cursor:not-allowed}
+[data-theme="dark"] .jg-upload-picker:hover{background:#263651}

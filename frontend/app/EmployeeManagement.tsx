@@ -1,4 +1,6 @@
 "use client";
+import UploadInput from "./UploadInput";
+import AppSelect from "./AppSelect";
 import {useTransientMessage} from "./useTransientMessage";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import FeedbackMotion from "./FeedbackMotion";
@@ -212,9 +214,9 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
   const invalid=Boolean(errors[key]);
   return <div key={key} className={"employee-field "+(options?.wide?"full":"")}>
    <label htmlFor={id}>{label}{options?.required&&<span className="required"> *</span>}</label>
-   {options?.choices?<select id={id} value={draft[key]} onChange={e=>edit(key,e.target.value)} aria-invalid={invalid} aria-describedby={invalid?id+"-error":undefined}>
+   {options?.choices?<AppSelect id={id} value={draft[key]} onChange={e=>edit(key,e.target.value)} aria-invalid={invalid} aria-describedby={invalid?id+"-error":undefined}>
     {options.choices.map(choice=><option key={choice} value={choice}>{choice==="employee"?"Employee":choice==="hr"?"HR Admin":choice==="accountant"?"Accountant":choice==="admin"?"Admin":choice}</option>)}
-   </select>:<input id={id} value={draft[key]} type={options?.type||"text"} maxLength={key==="password"?128:key==="phone"?20:undefined}
+   </AppSelect>:<input id={id} value={draft[key]} type={options?.type||"text"} maxLength={key==="password"?128:key==="phone"?20:undefined}
     placeholder={options?.placeholder} onChange={e=>edit(key,e.target.value)} aria-invalid={invalid} aria-describedby={invalid?id+"-error":undefined} autoComplete={key==="password"?"new-password":"off"}/>}
    {invalid?<span id={id+"-error"} className="field-error">{errors[key]}</span>:options?.hint?<span className="field-help">{options.hint}</span>:null}
   </div>;
@@ -229,7 +231,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
   </div>
   <section className="employee-surface">
    <div className="employee-title-row"><div><h2>Employee directory</h2><p>All employee records, in one organized place.</p></div>{canCreate&&<button className="employee-primary" onClick={openForm}><Plus size={17}/> Add employee</button>}</div>
-   <div className="employee-filters"><div className="employee-search"><Search size={17}/><input aria-label="Search employees" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by name, ID, email or role…"/></div><select aria-label="Filter by department" value={department} onChange={e=>setDepartment(e.target.value)}><option value="all">All departments</option>{departments.map(d=><option key={d}>{d}</option>)}</select><button className="employee-icon-button" onClick={load} title="Refresh employees" aria-label="Refresh"><RefreshCw size={17}/></button></div>
+   <div className="employee-filters"><div className="employee-search"><Search size={17}/><input aria-label="Search employees" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by name, ID, email or role…"/></div><AppSelect aria-label="Filter by department" value={department} onChange={e=>setDepartment(e.target.value)}><option value="all">All departments</option>{departments.map(d=><option key={d}>{d}</option>)}</AppSelect><button className="employee-icon-button" onClick={load} title="Refresh employees" aria-label="Refresh"><RefreshCw size={17}/></button></div>
    <div className="table-wrap"><table className="employee-table"><thead><tr><th>Employee</th><th>Employee ID</th><th>Designation / Department</th><th>Access</th><th>Joined</th><th>Status</th>{canCreate&&<><th>Documents</th><th>HR actions</th></>}</tr></thead><tbody>
     {shown.map(e=><tr key={e.id}><td><div className="employee-person"><div className="employee-avatar">{initials(e.name)}</div><div><button type="button" className="employee-name-link" onClick={()=>onOpenEmployee?.(e.id)}>{e.name}</button><small>{e.email}</small></div></div></td><td><span className="employee-id">{e.employee_code||"Legacy"}</span></td><td><strong className="employee-detail">{e.designation||"—"}</strong><small className="employee-secondary">{e.department||"—"}</small></td><td><span className="employee-role">{e.role==="hr"?"HR Admin":e.role}</span></td><td>{e.joining_date||"—"}</td><td><span className={"pill "+e.status}>{e.status}</span></td>{canCreate&&<><td><button className="employee-link" onClick={()=>viewDocuments(e)}>View files</button></td><td><div className="employee-row-actions">{onOpenEmployee&&<button type="button" className="employee-link" aria-label={"Edit details for "+e.name} onClick={()=>onOpenEmployee(e.id)}>Edit details</button>}{e.status==="active"?(currentRole==="hr"&&["admin","super_admin"].includes(e.role)?
      <span className="employee-action-note" title="Only another authorized administrator can deactivate this account">Admin account · restricted</span>:
@@ -259,7 +261,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
       <div className="employee-field employee-department-picker">
         <label htmlFor="emp-department">Department <span className="required">*</span></label>
         <div className="employee-department-row">
-         <select id="emp-department" required value={master.department_id||""} aria-invalid={!!errors.department}
+         <AppSelect id="emp-department" required value={master.department_id||""} aria-invalid={!!errors.department}
           onChange={e=>{
            const selected=units.find(u=>u.kind==="department"&&String(u.id)===e.target.value);
            setMaster(previous=>({...previous,department_id:e.target.value}));
@@ -267,7 +269,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
           }}>
           <option value="">Select department</option>
           {units.filter(u=>u.kind==="department").map(u=><option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}
-         </select>
+         </AppSelect>
          <button type="button" className="employee-cancel" onClick={()=>{setAddingDept(v=>!v);setDeptError("")}}>
           <Plus size={15}/> {addingDept?"Close":"Add department"}
          </button>
@@ -290,9 +292,9 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
       {field("employment_type","Employment type",{choices:["Full time","Part time","Contract","Intern"]})}
       {field("role","System access",{choices:currentRole==="admin"||currentRole==="super_admin"?["employee","manager","hr","accountant","super_admin"]:["employee","manager","hr","accountant"]})}
       {field("work_location","Work location",{placeholder:"e.g. Noida · Hybrid"})}
-      <div className="employee-field"><label htmlFor="core-manager">Reporting manager <span className="required">*</span></label><select id="core-manager" aria-invalid={Boolean((errors as Record<string,string>).manager_id)} required={!["admin","super_admin"].includes(draft.role)} value={master.manager_id||""} onChange={e=>setMaster(v=>({...v,manager_id:e.target.value}))}><option value="">Select a reporting manager</option>{employees.filter(e=>e.status==="active"&&["admin","super_admin","hr","manager"].includes(e.role)).map(e=><option key={e.id} value={e.id}>{e.name} · {e.employee_code||e.id}</option>)}</select>{(errors as Record<string,string>).manager_id?<span className="field-error">{(errors as Record<string,string>).manager_id}</span>:<span className="field-help">Required for leave approvals and reporting hierarchy.</span>}</div>
-      <div className="employee-field"><label htmlFor="core-hod">Second-level manager / HOD</label><select id="core-hod" value={master.hod_id||""} onChange={e=>setMaster(v=>({...v,hod_id:e.target.value}))}><option value="">Optional HOD</option>{employees.filter(e=>e.status==="active").map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
-      {(["designation","grade","branch","cost_center"] as const).map(kind=><div key={kind} className="employee-field"><label htmlFor={"org-"+kind}>{kind.replace("_"," ").replace(/^./,c=>c.toUpperCase())} unit</label><select id={"org-"+kind} value={master[kind+"_id"]||""} onChange={e=>{const selected=units.find(u=>String(u.id)===e.target.value);setMaster(v=>({...v,[kind+"_id"]:e.target.value}));if(selected&&kind==="designation")edit("designation",selected.name)}}><option value="">Not assigned</option>{units.filter(u=>u.kind===kind).map(u=><option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}</select></div>)}
+      <div className="employee-field"><label htmlFor="core-manager">Reporting manager <span className="required">*</span></label><AppSelect id="core-manager" aria-invalid={Boolean((errors as Record<string,string>).manager_id)} required={!["admin","super_admin"].includes(draft.role)} value={master.manager_id||""} onChange={e=>setMaster(v=>({...v,manager_id:e.target.value}))}><option value="">Select a reporting manager</option>{employees.filter(e=>e.status==="active"&&["admin","super_admin","hr","manager"].includes(e.role)).map(e=><option key={e.id} value={e.id}>{e.name} · {e.employee_code||e.id}</option>)}</AppSelect>{(errors as Record<string,string>).manager_id?<span className="field-error">{(errors as Record<string,string>).manager_id}</span>:<span className="field-help">Required for leave approvals and reporting hierarchy.</span>}</div>
+      <div className="employee-field"><label htmlFor="core-hod">Second-level manager / HOD</label><AppSelect id="core-hod" value={master.hod_id||""} onChange={e=>setMaster(v=>({...v,hod_id:e.target.value}))}><option value="">Optional HOD</option>{employees.filter(e=>e.status==="active").map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</AppSelect></div>
+      {(["designation","grade","branch","cost_center"] as const).map(kind=><div key={kind} className="employee-field"><label htmlFor={"org-"+kind}>{kind.replace("_"," ").replace(/^./,c=>c.toUpperCase())} unit</label><AppSelect id={"org-"+kind} value={master[kind+"_id"]||""} onChange={e=>{const selected=units.find(u=>String(u.id)===e.target.value);setMaster(v=>({...v,[kind+"_id"]:e.target.value}));if(selected&&kind==="designation")edit("designation",selected.name)}}><option value="">Not assigned</option>{units.filter(u=>u.kind===kind).map(u=><option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}</AppSelect></div>)}
      </div>
     </div>
     <div className="employee-group"><div className="employee-group-head"><BriefcaseBusiness size={18}/><div><h3>Project incentive policy</h3><p>Leave blank to inherit the company default on every sourced project</p></div></div><div className="employee-form-grid"><div className="employee-field"><label htmlFor="emp-project-bonus">Bonus per sourced project (INR)</label><input id="emp-project-bonus" type="number" min="0" max="100000000" step="0.01" value={master.project_bonus_inr||""} onChange={e=>setMaster(m=>({...m,project_bonus_inr:e.target.value}))} placeholder="Company policy default (₹10,000)"/><span className="field-help">HR-managed, per-project milestone bonus. Optional employee-specific amount; blank inherits Policies.</span></div></div></div>
@@ -303,7 +305,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
      </div>
     </div>
     <div className="employee-group"><div className="employee-group-head"><FileUp size={18}/><div><h3>Employee documents</h3><p>Optional initial document for this account</p></div></div>
-     <div className="employee-field employee-upload"><label htmlFor="employee-document">Upload a document (PDF, PNG, JPG · max 5 MB)</label><input id="employee-document" type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={e=>setDocument(e.target.files?.[0]||null)}/>{document&&<span className="field-help">{document.name}</span>}</div>
+     <div className="employee-field employee-upload"><label htmlFor="employee-document">Upload a document (PDF, PNG, JPG · max 5 MB)</label><UploadInput id="employee-document" accept=".pdf,.png,.jpg,.jpeg" onChange={e=>setDocument(e.target.files?.[0]||null)}/>{document&&<span className="field-help">{document.name}</span>}</div>
     </div>
     <div className="employee-form-footer"><button type="button" className="employee-cancel" onClick={()=>{setOpen(false);setFailure("")}}>Cancel</button><button className="employee-primary" disabled={saving}>{saving?"Creating employee…":"Save employee"}</button></div>
    </form>

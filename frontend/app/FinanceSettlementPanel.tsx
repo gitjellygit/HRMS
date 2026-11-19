@@ -1,4 +1,5 @@
 "use client";
+import AppSelect from "./AppSelect";
 import {useEffect,useState} from "react";
 import {explainError} from "./formErrors";
 
@@ -54,11 +55,11 @@ export default function FinanceSettlementPanel({api,invoices,refresh}:{api:strin
    <p className="field-help">Record received payments and adjustments against an invoice. Entries are audited and cannot exceed the outstanding balance. Credit adjustments are internal records, not statutory GST credit notes.</p>
    {error&&<p role="alert" className="time-form-error">{error}</p>}
    {success&&<p role="status">{success}</p>}
-   <label className="ops-label">Invoice<select value={invoiceId} onChange={e=>{setInvoiceId(e.target.value);setError("");setSuccess("")}}>
+   <label className="ops-label">Invoice<AppSelect value={invoiceId} onChange={e=>{setInvoiceId(e.target.value);setError("");setSuccess("")}}>
      <option value="">Select an invoice</option>
      {invoices.filter(x=>x.stored_status!=="draft"&&x.stored_status!=="void").map(x=>
        <option key={x.id} value={x.id}>#{x.id} · {x.recipient_name} · {x.status} · {money(x.total,x.currency)}</option>)}
-    </select></label>
+    </AppSelect></label>
    {selected&&balance&&<div className="ops-breakdown">
     <h3>Invoice #{selected.id} · {selected.currency}</h3>
     <p>Invoice total: <strong>{money(balance.total,selected.currency)}</strong></p>

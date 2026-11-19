@@ -1,4 +1,7 @@
 "use client";
+import UploadInput from "./UploadInput";
+import AppSelect from "./AppSelect";
+import AnnouncementTemplates,{type AnnouncementPreset} from "./AnnouncementTemplates";
 import {useTransientMessage} from "./useTransientMessage";
 import {useEffect,useState} from "react";
 import {ClipboardCheck,Send,LifeBuoy,UserRoundX,BarChart3,Bell,ShieldCheck,FileSignature} from "lucide-react";
@@ -21,6 +24,8 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
  const [announcementImage,setAnnouncementImage]=useState<File|null>(null);
  const [announcementPreview,setAnnouncementPreview]=useState("");
  const [announcementAudience,setAnnouncementAudience]=useState<number[]>([]);
+ const [announcementPreset,setAnnouncementPreset]=useState("");
+ const [audienceSearch,setAudienceSearch]=useState("");
  const [offers,setOffers]=useState<Row[]>([]);
  const [tasks,setTasks]=useState<Row[]>([]);
  const [onboardingEmployee,setOnboardingEmployee]=useState("");
@@ -88,8 +93,8 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
  }
  const input=(key:string,label:string,required=false,type="text")=><label key={key}>{label}<input type={type} required={required}
   value={draft[key]??""} onChange={e=>setDraft(v=>({...v,[key]:e.target.value}))}/></label>;
- const emp=(key="employee_id")=><label>Employee<select required value={draft[key]??""} onChange={e=>setDraft(v=>({...v,[key]:e.target.value}))}>
-  <option value="">Select employee</option>{staff.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>;
+ const emp=(key="employee_id")=><label>Employee<AppSelect required value={draft[key]??""} onChange={e=>setDraft(v=>({...v,[key]:e.target.value}))}>
+  <option value="">Select employee</option>{staff.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</AppSelect></label>;
  async function exitCall(path:string,method="GET",body?:unknown){
   const response=await fetch(api+"/exit-workflow"+path,{method,credentials:"include",
    headers:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});
@@ -141,7 +146,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
   {busy&&<FeedbackMotion type="loading" compact message="Updating HRMS…"/>}
   {tab==="offers"&&<div className="ops-columns">
     <section className="employee-surface"><h3><FileSignature size={17}/> Offer letters</h3>
-     {hr&&<div className="ops-form"><h4>Company letterhead</h4><p className="field-help">Upload a verified PNG or JPEG logo (max 2 MB). It will appear on generated offer PDFs.</p><label>Company logo<input type="file" accept="image/png,image/jpeg" onChange={e=>setCompanyLogo(e.target.files?.[0]||null)}/></label><button type="button" className="employee-primary" disabled={!companyLogo||busy} onClick={()=>void save(async()=>{const form=new FormData();form.append("file",companyLogo!);const res=await fetch(api+"/people/letterhead/logo",{method:"POST",credentials:"include",body:form});if(!res.ok)throw Error("Logo upload failed. Use a valid PNG/JPEG under 2 MB.");setCompanyLogo(null)},"Company logo updated.")}>Upload company logo</button></div>}
+     {hr&&<div className="ops-form"><h4>Company letterhead</h4><p className="field-help">Upload a verified PNG or JPEG logo (max 2 MB). It will appear on generated offer PDFs.</p><label>Company logo<UploadInput accept="image/png,image/jpeg" onChange={e=>setCompanyLogo(e.target.files?.[0]||null)}/></label><button type="button" className="employee-primary" disabled={!companyLogo||busy} onClick={()=>void save(async()=>{const form=new FormData();form.append("file",companyLogo!);const res=await fetch(api+"/people/letterhead/logo",{method:"POST",credentials:"include",body:form});if(!res.ok)throw Error("Logo upload failed. Use a valid PNG/JPEG under 2 MB.");setCompanyLogo(null)},"Company logo updated.")}>Upload company logo</button></div>}
      {hr&&<><form className="ops-form" onSubmit={e=>{e.preventDefault();void save(async()=>{await call(editingOfferTemplate?"/offer-templates/"+editingOfferTemplate:"/offer-templates",editingOfferTemplate?"PUT":"POST",{name:draft.template_name,content:draft.template_content});setEditingOfferTemplate(null)},editingOfferTemplate?"Template updated.":"Template created.")}}>
       <h4>{editingOfferTemplate?"Edit offer template":"Create offer template"}</h4>{input("template_name","Template name",true)}
       <label className="wide">Offer text with placeholders<textarea rows={5} minLength={30} required
@@ -153,8 +158,8 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
        annual_ctc:Number(draft.annual_ctc),joining_date:draft.joining_date||today()
       },"Offer generated.")}}>
       <h4>Generate offer</h4>{emp()}
-      <label>Template<select required value={draft.template_id||""} onChange={e=>setDraft(v=>({...v,template_id:e.target.value}))}>
-       <option value="">Choose template</option>{templates.filter(t=>t.active).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+      <label>Template<AppSelect required value={draft.template_id||""} onChange={e=>setDraft(v=>({...v,template_id:e.target.value}))}>
+       <option value="">Choose template</option>{templates.filter(t=>t.active).map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</AppSelect></label>
       {input("title","Job title",true)}{input("annual_ctc","Annual CTC (INR)",true,"number")}
       <label>Joining date<input type="date" required value={draft.joining_date||today()} onChange={e=>setDraft(v=>({...v,joining_date:e.target.value}))}/></label>
       <button className="employee-primary" disabled={busy}>Generate offer</button></form></>}
@@ -174,18 +179,18 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
       employee_id:Number(draft.employee_id),category:draft.category||"document",
       title:draft.title,due_date:draft.due_date||null,assigned_to:draft.assigned_to?Number(draft.assigned_to):null,
       asset_code:draft.asset_code||""},"Onboarding task created.")}}>
-     {emp()}<label>Category<select value={draft.category||"document"} onChange={e=>setDraft(v=>({...v,category:e.target.value}))}>
-      {onboardingCategories.filter(c=>c.active).map(c=><option key={c.id} value={c.slug}>{c.display_name}</option>)}</select></label>
+     {emp()}<label>Category<AppSelect value={draft.category||"document"} onChange={e=>setDraft(v=>({...v,category:e.target.value}))}>
+      {onboardingCategories.filter(c=>c.active).map(c=><option key={c.id} value={c.slug}>{c.display_name}</option>)}</AppSelect></label>
      {input("title","Task title",true)}{input("asset_code","Asset code (optional)")}
      {input("due_date","Due date",false,"date")}
-     <label>Responsible person<select required value={draft.assigned_to||""} onChange={e=>setDraft(v=>({...v,assigned_to:e.target.value}))}>
-      <option value="">Choose a responsible employee</option>{staff.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></label>
+     <label>Responsible person<AppSelect required value={draft.assigned_to||""} onChange={e=>setDraft(v=>({...v,assigned_to:e.target.value}))}>
+      <option value="">Choose a responsible employee</option>{staff.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</AppSelect></label>
      <button className="employee-primary">Assign task</button>
      <button type="button" className="employee-cancel" disabled={!draft.employee_id} onClick={()=>void save(()=>call("/onboarding/orientation/"+draft.employee_id,"POST"),"Seven-step welcome orientation initialized.")}>Start welcome orientation (7 steps)</button></form>}
    {hr&&<details className="ops-category-manager"><summary>Manage onboarding categories</summary><div className="ops-form"><label>New category name<input minLength={2} maxLength={80} value={categoryName} onChange={e=>{setCategoryName(e.target.value);setCategorySlug(e.target.value.trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,""))}}/></label><label>Category code<input pattern="[a-z][a-z0-9_]*" minLength={2} maxLength={30} value={categorySlug} onChange={e=>setCategorySlug(e.target.value)}/></label><button type="button" className="employee-primary" disabled={busy||categoryName.trim().length<2||categorySlug.length<2} onClick={()=>void save(async()=>{await call("/onboarding/categories","POST",{display_name:categoryName.trim(),slug:categorySlug});setCategoryName("");setCategorySlug("")},"Onboarding category created.")}>Add category</button></div><div className="ops-table">{onboardingCategories.map(category=><div className="ops-row" key={category.id}><strong>{category.display_name}</strong><small>{category.slug} · {category.active?"Active":"Archived"}</small><div className="actions">{editingCategory===category.id?<><label>Category name<input type="text" minLength={2} maxLength={80} value={editingCategoryName} onChange={e=>setEditingCategoryName(e.target.value)}/></label><button type="button" className="employee-primary" disabled={busy||editingCategoryName.trim().length<2} onClick={()=>void save(async()=>{await call("/onboarding/categories/"+category.id,"PUT",{display_name:editingCategoryName.trim(),active:category.active});setEditingCategory(null)},"Category updated.")}>Save name</button><button type="button" className="employee-cancel" onClick={()=>setEditingCategory(null)}>Cancel</button></>:<button type="button" className="employee-cancel" onClick={()=>{setEditingCategory(category.id);setEditingCategoryName(category.display_name)}}>Rename</button>}{category.active&&<button type="button" className="employee-cancel" onClick={()=>{if(window.confirm("Archive this category? Existing task history will remain."))void save(()=>call("/onboarding/categories/"+category.id,"DELETE"),"Category archived.")}}>Archive</button>}</div></div>)}</div></details>}
    </section>
    <section className="employee-surface"><h3>Employee onboarding progress</h3>
-    {hr&&<label>Employee<select value={onboardingEmployee} onChange={e=>setOnboardingEmployee(e.target.value)}><option value="">Select employee to review</option>{staff.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+    {hr&&<label>Employee<AppSelect value={onboardingEmployee} onChange={e=>setOnboardingEmployee(e.target.value)}><option value="">Select employee to review</option>{staff.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</AppSelect></label>}
     <p className="muted">Welcome journey: {tasks.filter(t=>(!hr||t.employee_id===Number(onboardingEmployee))&&t.status==="completed").length} of {tasks.filter(t=>!hr||t.employee_id===Number(onboardingEmployee)).length} tasks completed</p>
     <progress max={Math.max(1,tasks.filter(t=>!hr||t.employee_id===Number(onboardingEmployee)).length)} value={tasks.filter(t=>(!hr||t.employee_id===Number(onboardingEmployee))&&t.status==="completed").length} style={{width:"100%"}} aria-label="Onboarding progress"/>
     <div className="ops-table">{tasks.filter(t=>!hr||t.employee_id===Number(onboardingEmployee)).map(t=><div className="ops-row" key={t.id}>
@@ -196,15 +201,19 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
   </div>}
   {tab==="announcements"&&<div className="ops-columns">
    <section className="employee-surface"><h3><Send size={17}/> Announcements and policies</h3>
-    {hr&&<div className="jellygit-template-download"><BrandIllustration asset="welcome-card-template" alt="Welcome to the Team card design" className="jellygit-template-art"/><div><strong>New-joiner announcement design</strong><p className="muted">This exported card is a visual reference. Edit the original Canva design to replace the sample text before publishing.</p><a href="/assets/welcome-card-template.webp" download="jellygit-welcome-template.webp">Download card template</a></div></div>}
-    {hr&&<form className="ops-form" onSubmit={e=>{e.preventDefault();void save(async()=>{const form=new FormData();form.append("title",String(draft.title));form.append("body",String(draft.body));form.append("requires_ack",String(Boolean(draft.requires_ack)));form.append("audience_json",JSON.stringify(announcementAudience));if(announcementImage)form.append("image",announcementImage);const response=await fetch(api+"/people/announcements/with-media",{method:"POST",credentials:"include",body:form});if(!response.ok){const data=await response.json().catch(()=>({}));throw Error(explainError(data,response.status))}setAnnouncementImage(null);setAnnouncementPreview("");setAnnouncementAudience([])},"Announcement published.")}}>
+    {hr&&<AnnouncementTemplates selected={announcementPreset} onPick={(p:AnnouncementPreset)=>{setAnnouncementPreset(p.key);setDraft(v=>({...v,title:p.headline,body:p.message}))}}/>}
+    {hr&&<form className="ops-form" onSubmit={e=>{e.preventDefault();void save(async()=>{const form=new FormData();form.append("title",String(draft.title));form.append("body",String(draft.body));form.append("requires_ack",String(Boolean(draft.requires_ack)));form.append("audience_json",JSON.stringify(announcementAudience));if(announcementImage)form.append("image",announcementImage);const response=await fetch(api+"/people/announcements/with-media",{method:"POST",credentials:"include",body:form});if(!response.ok){const data=await response.json().catch(()=>({}));throw Error(explainError(data,response.status))}setAnnouncementImage(null);setAnnouncementPreview("");setAnnouncementAudience([]);setAnnouncementPreset("");setAudienceSearch("")},"Announcement published.")}}>
       {input("title","Title",true)}
       <label className="wide">Announcement<textarea minLength={12} required rows={4} value={draft.body||""}
        onChange={e=>setDraft(v=>({...v,body:e.target.value}))}/></label>
       <label className="wide ops-check"><input type="checkbox" checked={!!draft.requires_ack}
        onChange={e=>setDraft(v=>({...v,requires_ack:e.target.checked}))}/>Require employee acknowledgement</label>
-      <label className="wide">Announcement image (optional, PNG/JPEG/WebP; max 3 MB)<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>{const file=e.target.files?.[0]||null;setAnnouncementImage(file);if(file){const reader=new FileReader();reader.onload=()=>setAnnouncementPreview(String(reader.result||""));reader.readAsDataURL(file)}else setAnnouncementPreview("")}}/></label>
-      <label className="wide">Send to employees (leave unselected for everyone)<select multiple size={Math.min(6,Math.max(3,staff.length))} value={announcementAudience.map(String)} onChange={e=>setAnnouncementAudience(Array.from(e.target.selectedOptions).map(o=>Number(o.value)))}>{staff.filter(p=>p.status==="active").map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+      <label className="wide">Announcement image (optional, PNG/JPEG/WebP; max 3 MB)<UploadInput accept="image/png,image/jpeg,image/webp" onChange={e=>{const file=e.target.files?.[0]||null;setAnnouncementImage(file);if(file){const reader=new FileReader();reader.onload=()=>setAnnouncementPreview(String(reader.result||""));reader.readAsDataURL(file)}else setAnnouncementPreview("")}}/></label>
+      <div className="wide jg-audience-picker"><div><strong>Announcement audience</strong><p className="field-help">{announcementAudience.length?`${announcementAudience.length} selected employee(s)`:"All active employees will receive this announcement."}</p></div>
+  <input type="search" aria-label="Find announcement recipients" placeholder="Search employees…" value={audienceSearch} onChange={e=>setAudienceSearch(e.target.value)}/>
+  <div className="jg-preset-actions"><button type="button" className="employee-cancel" onClick={()=>setAnnouncementAudience(staff.filter(p=>p.status==="active").map(p=>p.id))}>Select all employees</button><button type="button" className="employee-cancel" onClick={()=>setAnnouncementAudience([])}>Everyone (no restriction)</button></div>
+  <div className="jg-audience-list" role="group" aria-label="Select announcement recipients">{staff.filter(p=>p.status==="active"&&p.name.toLowerCase().includes(audienceSearch.toLowerCase())).map(p=><label key={p.id}><input type="checkbox" checked={announcementAudience.includes(p.id)} onChange={e=>setAnnouncementAudience(prev=>e.target.checked?[...prev,p.id]:prev.filter(id=>id!==p.id))}/><span>{p.name}</span></label>)}</div>
+ </div>
       <div className="wide ops-announcement-preview"><strong>Preview before publishing</strong><h4>{draft.title||"Announcement title"}</h4>{announcementPreview&&<img src={announcementPreview} alt="Announcement preview" style={{maxWidth:"100%",maxHeight:240,objectFit:"contain",borderRadius:10}}/>}<p>{draft.body||"Announcement body will appear here."}</p><small>{announcementAudience.length?announcementAudience.length+" selected employees":"All active employees"}</small></div><button className="employee-primary" disabled={busy}>Publish</button></form>}
    </section>
    <section className="employee-surface"><h3>Company feed</h3><div className="ops-table">{notices.map(n=><article className="ops-row" key={n.id}>
@@ -217,8 +226,8 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
    <section className="employee-surface"><h3><LifeBuoy size={17}/> HR helpdesk</h3>
     <form className="ops-form" onSubmit={e=>{e.preventDefault();void submit("/tickets",{
      category:draft.category||"other",subject:draft.subject,description:draft.description},"Helpdesk ticket opened.")}}>
-     <label>Category<select value={draft.category||"other"} onChange={e=>setDraft(v=>({...v,category:e.target.value}))}>
-     {["payroll","leave","attendance","benefits","it","other"].map(c=><option key={c}>{c}</option>)}</select></label>
+     <label>Category<AppSelect value={draft.category||"other"} onChange={e=>setDraft(v=>({...v,category:e.target.value}))}>
+     {["payroll","leave","attendance","benefits","it","other"].map(c=><option key={c}>{c}</option>)}</AppSelect></label>
      {input("subject","Subject",true)}
      <label className="wide">Question or concern<textarea minLength={12} required rows={4} value={draft.description||""}
       onChange={e=>setDraft(v=>({...v,description:e.target.value}))}/></label>
@@ -245,9 +254,9 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
       <p className="field-help">HR determines the applicable notice period and reviews your final working day.</p><button className="employee-primary">Request resignation</button></form>}
     {hr&&<><p className="muted">Select an employee to begin their exit, then assign the configured employee and HR checklist tasks.</p>
      <form className="ops-form ops-compact-form" onSubmit={initiateExit}>
-      <label>Employee<select required value={exitEmployee} onChange={e=>setExitEmployee(e.target.value)}>
+      <label>Employee<AppSelect required value={exitEmployee} onChange={e=>setExitEmployee(e.target.value)}>
        <option value="">Select an active employee</option>{staff.filter(p=>p.status==="active").map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-      </select></label>
+      </AppSelect></label>
       <label>Notice period (days)<input type="number" required min="0" max="365" value={exitNotice} onChange={e=>setExitNotice(e.target.value)}/></label>
       <label className="wide">Reason for exit<textarea required minLength={10} rows={3} value={exitReason} onChange={e=>setExitReason(e.target.value)} placeholder="Enter at least ten characters explaining the exit…"/></label>
       <div className="ops-form-actions"><button className="employee-primary" disabled={busy||!exitEmployee||exitReason.trim().length<10}>Start employee exit</button></div>
@@ -258,9 +267,9 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
         {editingExitTemplate===x.id&&x.id!=null?<div className="ops-form">
          <label>Task name<input required minLength={5} maxLength={180} value={editExitTitle}
            onChange={e=>setEditExitTitle(e.target.value)}/></label>
-         <label>Assigned to<select value={editExitRole} onChange={e=>setEditExitRole(e.target.value)}>
+         <label>Assigned to<AppSelect value={editExitRole} onChange={e=>setEditExitRole(e.target.value)}>
           <option value="hr">HR team</option><option value="employee">Exiting employee</option>
-         </select></label>
+         </AppSelect></label>
          <button type="button" className="employee-primary" disabled={busy||editExitTitle.trim().length<5}
            onClick={()=>void saveExitTemplate(x.id,x.active,editExitTitle.trim(),editExitRole)}>Save template</button>
          <button type="button" className="employee-cancel" onClick={()=>setEditingExitTemplate(null)}>Cancel</button>
@@ -276,7 +285,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
        </div>)}</div>
       <form className="ops-form ops-compact-form" onSubmit={addExitTemplate}>
        <label>New task name<input required minLength={5} maxLength={180} value={templateTitle} onChange={e=>setTemplateTitle(e.target.value)} placeholder="e.g. Confirm returned access badge"/></label>
-       <label>Assigned to<select value={templateRole} onChange={e=>setTemplateRole(e.target.value)}><option value="hr">HR team</option><option value="employee">Exiting employee</option></select></label>
+       <label>Assigned to<AppSelect value={templateRole} onChange={e=>setTemplateRole(e.target.value)}><option value="hr">HR team</option><option value="employee">Exiting employee</option></AppSelect></label>
        <div className="ops-form-actions"><button className="employee-primary" disabled={busy||templateTitle.trim().length<5}>Add checklist task</button></div>
       </form>
      </details>
@@ -314,7 +323,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
     <div className="ops-columns"><div><h4>Department distribution</h4>{metrics.departments?.map((d:Row)=><div className="department-distribution-row" key={d.department}><span>{d.department}</span><div className="department-distribution-track"><div style={{width:Math.min(100,100*Number(d.employees)/Math.max(1,Number(metrics.active_headcount)))+"%"}}/></div><strong>{d.employees} {Number(d.employees)===1?"employee":"employees"}</strong></div>)}</div>
     <div><h4>Published payroll cost</h4>{metrics.published_monthly_net?.map((p:Row)=><div className="ops-row" key={p.period}>{p.period} · ₹{Number(p.net).toLocaleString("en-IN")}</div>)}</div></div></>}
     <hr/><h3>Employee device monitoring</h3><p className="field-help">Visible employee-initiated Windows tray agent. Status becomes Offline when heartbeats stop. Active time is not proof of productivity.</p>
-    <div className="ops-form"><label>Enroll employee device<select value={activityEmployee} onChange={e=>setActivityEmployee(e.target.value)}><option value="">Select active employee</option>{staff.filter(p=>p.status==="active").map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><button type="button" className="employee-primary" disabled={!activityEmployee||busy} onClick={()=>void save(async()=>{const response=await fetch(api+"/activity-agent/devices",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({employee_id:Number(activityEmployee),device_label:"Windows workstation"})});if(!response.ok)throw Error("Unable to enroll employee device.");setEnrollment(await response.json())},"Device enrolled. Copy the one-time token securely.")}>Enroll device</button></div>
+    <div className="ops-form"><label>Enroll employee device<AppSelect value={activityEmployee} onChange={e=>setActivityEmployee(e.target.value)}><option value="">Select active employee</option>{staff.filter(p=>p.status==="active").map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</AppSelect></label><button type="button" className="employee-primary" disabled={!activityEmployee||busy} onClick={()=>void save(async()=>{const response=await fetch(api+"/activity-agent/devices",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({employee_id:Number(activityEmployee),device_label:"Windows workstation"})});if(!response.ok)throw Error("Unable to enroll employee device.");setEnrollment(await response.json())},"Device enrolled. Copy the one-time token securely.")}>Enroll device</button></div>
     {enrollment&&<div className="ops-row"><strong>Enrollment token — shown once</strong><small>Employee #{enrollment.employee_id} · Device #{enrollment.device_id}. Install only on the assigned workstation.</small><code>{enrollment.token}</code><button type="button" className="employee-cancel" onClick={()=>{void navigator.clipboard.writeText(String(enrollment.token))}}>Copy token</button><button type="button" className="employee-cancel" onClick={()=>setEnrollment(null)}>Dismiss</button></div>}
     <div className="ops-table">{activityDevices.map(d=><div className="ops-row" key={d.id}><strong>{d.employee_name} — {d.device_label}</strong><span>{d.status==="monitoring"?"Monitoring":d.status==="stopped"?"Stopped":"Offline"} · Last heartbeat: {d.last_seen?new Date(d.last_seen).toLocaleString():"Never"}</span><small>Active {Math.round(d.active_seconds/60)}m · Idle {Math.round(d.idle_seconds/60)}m</small><small>Top applications: {Object.entries(d.apps||{}).sort((a,b)=>Number(b[1])-Number(a[1])).slice(0,5).map(([name,seconds])=>name+" "+Math.round(Number(seconds)/60)+"m").join(", ")||"No activity reported"}</small>{d.exit_reason&&<small>Exit reason: {d.exit_reason}</small>}{!d.revoked&&<button type="button" className="employee-cancel" onClick={()=>void save(async()=>{const response=await fetch(api+"/activity-agent/devices/"+d.id+"/revoke",{method:"POST",credentials:"include"});if(!response.ok)throw Error("Unable to revoke device.")},"Device access revoked.")}>Revoke device</button>}</div>)}{!activityDevices.length&&<p className="muted">No employee devices enrolled.</p>}</div>
    </section>}
