@@ -1369,3 +1369,59 @@ input[type="file"]:focus-visible{outline:3px solid #7a8fe2;outline-offset:2px}
 [data-theme="dark"] .payroll-config .payroll-net-preview small{
  color:#c0d0e8!important;
 }
+
+
+/* HR Overview – compact mail delivery disclosure and entitlement override */
+.hr-mail-section{max-width:100%;min-width:0}
+.hr-mail-toggle{display:flex!important;align-items:center;gap:12px;width:100%;min-height:68px;text-align:left;
+ background:var(--jg-control-bg,#fff)!important;color:var(--jg-control-ink,#293751)!important;
+ border:1px solid var(--jg-control-border,#d5deec)!important;border-radius:12px;padding:12px 15px!important;cursor:pointer}
+.hr-mail-toggle:hover,.hr-mail-toggle:focus-visible{background:var(--jg-menu-hover,#edf2fc)!important;color:var(--jg-menu-hover-ink,#1b2c48)!important}
+.hr-mail-toggle:focus-visible{outline:3px solid #7a8fe2;outline-offset:2px}
+.hr-mail-toggle-icon{width:36px;height:36px;display:grid;place-items:center;flex:none;border-radius:9px;background:var(--jg-tabs-bg,#f0f2f9);color:var(--jg-control-ink,#33405d)}
+.hr-mail-toggle-copy{display:grid;gap:4px;flex:1;min-width:0}
+.hr-mail-toggle-copy strong{font-size:14px;color:inherit!important}
+.hr-mail-toggle-copy small{font-size:12px;color:inherit!important;opacity:.85}
+.hr-mail-toggle>svg:last-child{flex:none;transition:transform .15s ease}
+.hr-mail-toggle>svg.is-open{transform:rotate(180deg)}
+.hr-mail-alert{font-size:11px;font-weight:700;color:#9b371c;background:#fff0df;border-radius:50px;padding:5px 9px}
+.hr-mail-details{margin-top:12px;padding:15px;border:1px solid var(--jg-control-border,#d5deec);border-radius:12px;max-width:100%;min-width:0;background:var(--jg-control-bg,#fff)}
+.hr-mail-details>.field-help{font-size:12px;line-height:1.6;margin:0 0 12px}
+.hr-mail-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin:0 0 12px}
+.hr-mail-filter{display:flex;align-items:center;gap:4px;border:1px solid var(--jg-control-border,#d5deec);background:var(--jg-tabs-bg,#f2f4f9);padding:4px;border-radius:9px}
+.hr-mail-filter button{font-size:12px;font-weight:700;background:transparent!important;color:var(--jg-control-ink,#37425b)!important;border:0!important;border-radius:6px;padding:8px 12px;cursor:pointer}
+.hr-mail-filter button[aria-pressed=true]{background:var(--jg-tabs-active,#fff)!important;box-shadow:0 1px 4px #15264a20}
+.hr-mail-refresh{display:inline-flex!important;align-items:center;justify-content:center;gap:7px;white-space:nowrap}
+.hr-mail-scroll{max-width:100%;overflow-x:auto;border:1px solid var(--jg-control-border,#d5deec);border-radius:10px}
+.hr-mail-table{width:100%;border-collapse:collapse;min-width:690px}
+.hr-mail-table th,.hr-mail-table td{padding:12px 14px;text-align:left;vertical-align:middle;font-size:12px;border-bottom:1px solid var(--jg-control-border,#e2e7ef);color:var(--jg-control-ink,#31415d)}
+.hr-mail-table tr:last-child td{border-bottom:0}
+.hr-mail-table th{font-weight:750;background:var(--jg-tabs-bg,#f1f4f9)}
+.hr-mail-table td strong{font-weight:650;color:inherit!important}
+.hr-mail-table .hr-mail-detail{min-width:190px;max-width:370px;overflow-wrap:anywhere}
+.hr-mail-table .hr-mail-action{text-align:right;min-width:115px}
+.hr-mail-table .hr-mail-action button{min-width:76px;height:35px;padding:6px 12px}
+.hr-mail-table .hr-mail-action .muted{font-size:11px}
+.hr-mail-state{display:inline-flex;border-radius:100px;font-size:11px;font-weight:750;padding:5px 9px;white-space:nowrap;background:#edf0f8;color:#415071}
+.hr-mail-state.failed{background:#fff0ed;color:#8f342a}
+.hr-mail-state.retry{background:#fff3db;color:#7a5315}
+.hr-mail-more{margin:12px 0 0}
+.hr-override-section .muted{max-width:690px;line-height:1.6}
+.hr-override-form{display:grid;grid-template-columns:minmax(190px,240px) minmax(170px,220px) minmax(130px,160px) auto;
+ align-items:end;justify-content:start;gap:12px;margin-top:18px;max-width:900px}
+.hr-override-form>label{min-width:0;display:grid;gap:7px;font-size:12px;font-weight:650;color:var(--jg-control-ink,#34415d)}
+.hr-override-form input{min-width:0;width:100%;height:40px;border:1px solid var(--jg-control-border,#d5deec);border-radius:9px;padding:8px 11px;background:var(--jg-control-bg,#fff);color:var(--jg-control-ink,#34415d)}
+.hr-override-form .jg-select{min-width:0}
+.hr-override-form .employee-primary{min-width:120px;height:40px}
+[data-theme="dark"] .hr-mail-details{background:#1c2940;border-color:#4b607e}
+[data-theme="dark"] .hr-mail-toggle{background:#263751!important;color:#eff5ff!important;border-color:#526684!important}
+[data-theme="dark"] .hr-mail-toggle:is(:hover,:focus-visible){background:#354967!important;color:#fff!important}
+[data-theme="dark"] .hr-mail-alert{background:#5b382b;color:#ffe4c9}
+[data-theme="dark"] .hr-mail-table :is(th,td){color:#edf2ff!important;border-color:#4b5e7d}
+[data-theme="dark"] .hr-mail-table th{background:#293a57}
+[data-theme="dark"] .hr-mail-state{background:#394b6a;color:#edf2ff}
+[data-theme="dark"] .hr-mail-state.failed{background:#64372f;color:#ffe0da}
+[data-theme="dark"] .hr-mail-state.retry{background:#57452c;color:#ffe5ae}
+[data-theme="dark"] .hr-override-form>label{color:#edf2ff}
+@media(max-width:900px){.hr-override-form{grid-template-columns:repeat(2,minmax(0,1fr))}.hr-override-form .employee-primary{justify-self:start}}
+@media(max-width:580px){.hr-override-form{grid-template-columns:minmax(0,1fr)}.hr-override-form .employee-primary{width:100%}.hr-mail-toggle{padding:11px!important}.hr-mail-alert{display:none}.hr-mail-details{padding:10px}.hr-mail-filter{width:100%;justify-content:space-between}}
