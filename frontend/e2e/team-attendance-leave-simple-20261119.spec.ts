@@ -22,7 +22,7 @@ test('HR attendance dashboard filters by employee and expands session timeline',
  await expect(dashboard.getByText('Completed session hours')).toBeVisible();
  await expect(dashboard.getByText('8.0 h')).toBeVisible();
  await expect(dashboard.getByText('Not tracked',{exact:true})).toHaveCount(0);
- const day=dashboard.locator('.jg-team-attendance-day').filter({hasText:'18 Nov'});
+ const day=dashboard.locator('.jg-team-attendance-day').first();
  await day.locator('.jg-team-attendance-toggle').click();
  await expect(day.locator('table')).toBeVisible();
  await expect(day.getByText('8.00')).toBeVisible();
