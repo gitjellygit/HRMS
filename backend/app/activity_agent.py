@@ -169,7 +169,7 @@ def list_devices(user:Employee=Depends(current_user),db:Session=Depends(db_sessi
         seen=d.last_seen
         if seen is not None and seen.tzinfo is None:seen=seen.replace(tzinfo=timezone.utc)
         online=bool(d.state=="monitoring" and seen and now-seen<timedelta(seconds=100) and not d.revoked)
-        status="pending" if d.employee_id is None else ("monitoring" if online else ("stopped" if d.state=="stopped" else "offline"))
+        status="revoked" if d.revoked else ("pending" if d.employee_id is None else ("monitoring" if online else ("stopped" if d.state=="stopped" else "offline")))
         result.append({"id":d.id,"employee_id":d.employee_id,"employee_name":employees.get(d.employee_id,"Unassigned device"),"device_label":d.device_label,
                        "status":status,"last_seen":seen,
                        "active_seconds":d.active_seconds,"idle_seconds":d.idle_seconds,"apps":json.loads(d.app_usage_json or "{}"),"exit_reason":d.exit_reason if d.state=="stopped" else "","revoked":d.revoked})
