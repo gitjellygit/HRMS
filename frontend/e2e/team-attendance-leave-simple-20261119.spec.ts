@@ -29,11 +29,11 @@ test('HR attendance dashboard filters by employee and expands session timeline',
  await expect(day.getByText('Not tracked')).toBeVisible();
  const range=dashboard.getByRole('button',{name:'Attendance date range'});
  await range.click();
- await page.getByRole('option',{name:'Last year'}).click();
+ await page.locator('button[role="option"]').filter({hasText:'Last year'}).click();
  await expect.poll(()=>calls).toBeGreaterThan(1);
  const filter=dashboard.getByRole('button',{name:'Filter by employee'});
  await filter.click();
- await page.getByRole('option',{name:hr.name,exact:true}).click();
+ await page.locator('button[role="option"]').filter({hasText:hr.name}).click();
  await expect.poll(()=>calls).toBeGreaterThan(2);
 });
 
