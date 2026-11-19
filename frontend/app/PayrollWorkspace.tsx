@@ -1,4 +1,5 @@
 "use client";
+import UploadInput from "./UploadInput";
 import AppSelect from "./AppSelect";
 import {useTransientMessage} from "./useTransientMessage";
 import {explainError} from "./formErrors";
@@ -330,7 +331,7 @@ export default function PayrollWorkspace({api,user}:{api:string;user:{id:number;
       <label className="wide">Explanation<textarea rows={3} value={claim.note} onChange={e=>setClaim(v=>({...v,note:e.target.value}))}/></label>
       <label className="wide">Receipt (PDF, JPEG or PNG · up to 5 MB)
        <span className="payroll-upload"><UploadCloud size={21}/><span>{receipt?receipt.name:"Choose a receipt or drag a file here"}</span><small>{receipt?"File selected":"PDF, JPG or PNG · max 5 MB"}</small>
-        <input type="file" required accept=".pdf,.jpg,.jpeg,.png" onChange={e=>{const file=e.target.files?.[0]||null;if(file&&file.size>5*1024*1024){setError("The receipt is larger than 5 MB. Choose a smaller file.");setReceipt(null);e.target.value="";return}setReceipt(file)}}/></span></label>
+        <UploadInput required accept=".pdf,.jpg,.jpeg,.png" onChange={e=>{const file=e.target.files?.[0]||null;if(file&&file.size>5*1024*1024){setError("The receipt is larger than 5 MB. Choose a smaller file.");setReceipt(null);e.target.value="";return}setReceipt(file)}}/></span></label>
       <button className="employee-primary" disabled={busy}>Submit expense</button>
     </form></section>
    <section className="employee-surface"><h3>Claims</h3><div className="ops-table">{expenses.map(e=><div className="ops-row" key={e.id}><strong>{e.title}</strong><span>{cash(e.amount)} · {e.status}</span>
