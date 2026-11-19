@@ -1,4 +1,5 @@
 "use client";
+import UploadInput from "./UploadInput";
 import AppSelect from "./AppSelect";
 import {useTransientMessage} from "./useTransientMessage";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -304,7 +305,7 @@ export default function EmployeeManagement({api,canCreate,onOpenEmployee,current
      </div>
     </div>
     <div className="employee-group"><div className="employee-group-head"><FileUp size={18}/><div><h3>Employee documents</h3><p>Optional initial document for this account</p></div></div>
-     <div className="employee-field employee-upload"><label htmlFor="employee-document">Upload a document (PDF, PNG, JPG · max 5 MB)</label><input id="employee-document" type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={e=>setDocument(e.target.files?.[0]||null)}/>{document&&<span className="field-help">{document.name}</span>}</div>
+     <div className="employee-field employee-upload"><label htmlFor="employee-document">Upload a document (PDF, PNG, JPG · max 5 MB)</label><UploadInput id="employee-document" accept=".pdf,.png,.jpg,.jpeg" onChange={e=>setDocument(e.target.files?.[0]||null)}/>{document&&<span className="field-help">{document.name}</span>}</div>
     </div>
     <div className="employee-form-footer"><button type="button" className="employee-cancel" onClick={()=>{setOpen(false);setFailure("")}}>Cancel</button><button className="employee-primary" disabled={saving}>{saving?"Creating employee…":"Save employee"}</button></div>
    </form>
