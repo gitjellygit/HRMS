@@ -4,14 +4,17 @@ import {CalendarDays,ChevronDown,Clock3,RefreshCw,Users} from "lucide-react";
 import AppSelect from "./AppSelect";
 type Session={id:number;employee_id:number;employee_name:string;punch_in:string;punch_out:string|null};
 type Result={items:Session[];has_more:boolean;next_offset:number};
-type Range="last30"|"month"|"previous"|"year"|"custom";
+type Range="last7"|"last30"|"last90"|"month"|"previous"|"year"|"lastyear"|"custom";
 const localDate=(date:Date)=>[date.getFullYear(),String(date.getMonth()+1).padStart(2,"0"),String(date.getDate()).padStart(2,"0")].join("-");
 function dates(which:Range){
  const now=new Date();
  const first=new Date(now.getFullYear(),now.getMonth(),1);
  if(which==="month")return [localDate(first),localDate(now)];
+ if(which==="last7")return [localDate(new Date(now.getFullYear(),now.getMonth(),now.getDate()-6)),localDate(now)];
+ if(which==="last90")return [localDate(new Date(now.getFullYear(),now.getMonth(),now.getDate()-89)),localDate(now)];
  if(which==="previous")return [localDate(new Date(now.getFullYear(),now.getMonth()-1,1)),localDate(new Date(now.getFullYear(),now.getMonth(),0))];
  if(which==="year")return [localDate(new Date(now.getFullYear(),0,1)),localDate(now)];
+ if(which==="lastyear")return [localDate(new Date(now.getFullYear()-1,0,1)),localDate(new Date(now.getFullYear()-1,11,31))];
  return [localDate(new Date(now.getFullYear(),now.getMonth(),now.getDate()-29)),localDate(now)];
 }
 const duration=(entry:Session)=>entry.punch_out?Math.max(0,(new Date(entry.punch_out).getTime()-new Date(entry.punch_in).getTime())/3600000):null;
@@ -75,7 +78,7 @@ export default function TeamAttendanceDashboard({api,staff}:{api:string;staff:{i
   </div>
   <div className="jg-team-attendance-filters">
    <label>Employee<AppSelect aria-label="Filter by employee" value={person} onChange={e=>setPerson(e.target.value)}><option value="">All employees</option>{staff.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</AppSelect></label>
-   <label>Date range<AppSelect aria-label="Attendance date range" value={range} onChange={e=>chooseRange(e.target.value as Range)}><option value="last30">Last 30 days</option><option value="month">This month</option><option value="previous">Previous month</option><option value="year">This year</option><option value="custom">Custom dates</option></AppSelect></label>
+   <label>Date range<AppSelect aria-label="Attendance date range" value={range} onChange={e=>chooseRange(e.target.value as Range)}><option value="last7">Last 7 days</option><option value="last30">Last 30 days</option><option value="last90">Last 90 days</option><option value="month">This month</option><option value="previous">Previous month</option><option value="year">This year</option><option value="lastyear">Last year</option><option value="custom">Custom dates</option></AppSelect></label>
    {range==="custom"&&<><label>From<input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label><label>To<input type="date" value={to} onChange={e=>setTo(e.target.value)}/></label></>}
   </div>
   <p className="field-help">Times are displayed in your browser's local time zone. Gross hours are calculated from completed punches; effective hours are unavailable until break/active-time tracking is configured.</p>
