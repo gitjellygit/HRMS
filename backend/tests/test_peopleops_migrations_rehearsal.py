@@ -17,6 +17,7 @@ SCRIPTS=[
     "20261117_activity_agent_devices.sql",
     "20261117_activity_agent_app_usage.sql",
     "20261117_leave_policy_year_and_versions.sql",
+    "20261119_leave_probation_months.sql",
 ]
 
 def test_peopleops_migrations_apply_twice_and_preserve_legacy_policy():
@@ -51,6 +52,8 @@ def test_peopleops_migrations_apply_twice_and_preserve_legacy_policy():
                         cursor.execute((ROOT/name).read_text())
                 cursor.execute("SELECT year_type FROM leave_policies WHERE leave_type='earned'")
                 assert cursor.fetchone()[0]=="financial"
+                cursor.execute("SELECT probation_months FROM leave_policies WHERE leave_type=\'earned\'")
+                assert cursor.fetchone()[0]==3
                 cursor.execute("SELECT snapshot_json FROM leave_policy_versions WHERE leave_type='earned'")
                 rows=cursor.fetchall()
                 assert len(rows)==1
@@ -61,6 +64,7 @@ def test_peopleops_migrations_apply_twice_and_preserve_legacy_policy():
                 assert cursor.fetchone()[0]==5
                 for table,column in (
                     ("leave_policies","monthly_schedule"),
+                    ("leave_policies","probation_months"),
                     ("people_offers","letterhead_logo_key"),
                     ("people_announcements","audience_ids"),
                     ("activity_agent_devices","app_usage_json")):
