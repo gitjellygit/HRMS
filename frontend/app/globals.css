@@ -1303,3 +1303,10 @@ input[type="file"]:focus-visible{outline:3px solid #7a8fe2;outline-offset:2px}
 .jg-audience-list label:hover{background:var(--jg-menu-hover)}
 .jg-audience-list input[type="checkbox"]{height:16px;width:16px;flex:none}
 @media(max-width:720px){.jg-preset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.jg-select-popover{max-width:85vw}}
+
+/* Performance navigation sits at the same hierarchy as other workspace tabs:
+   remove the extra outer card while keeping the inner action cards intact. */
+.panel.growth-workspace{background:transparent!important;border:0!important;box-shadow:none!important;padding:0!important}
+.growth-workspace>.growth-area-content{background:transparent!important;border:0!important;box-shadow:none!important}
+[data-theme="dark"] .growth-workspace>.muted{color:#c1cee5!important}
+@media(max-width:750px){.employee-account-edit>.core-label{max-width:100%}}
