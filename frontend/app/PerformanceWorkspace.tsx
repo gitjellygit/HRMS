@@ -1,3 +1,4 @@
+import AppSelect from "./AppSelect";
 "use client";
 import {useTransientMessage} from "./useTransientMessage";
 import {explainError} from "./formErrors";
@@ -61,9 +62,9 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
   <div className="time-tabs growth-tabs" role="tablist" aria-label="Performance areas">{([["goals","Goals & KRAs"],["reviews","Appraisal cycles"],["development","Development plans"]] as const).map(([key,label])=>
    <button key={key} type="button" role="tab" aria-selected={area===key} className={area===key?"active":""} onClick={()=>{setArea(key);setTitle("");setDetail("");setError("");setMessage("")}}>{label}</button>)}</div>
   {error&&<p role="alert" className="error">{error}</p>}{message&&<p role="status">{message}</p>}
-  {canAssign&&<label className="growth-target-label">Employee <select value={employee} onChange={e=>setEmployee(e.target.value)}>
+  {canAssign&&<label className="growth-target-label">Employee <AppSelect value={employee} onChange={e=>setEmployee(e.target.value)}>
     <option value={user.id}>Myself</option>{team.filter(e=>e.id!==user.id).map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
-   </select></label>}
+   </AppSelect></label>}
   {area==="goals"&&<div className="growth-area-content">
    <form className="form" onSubmit={e=>{e.preventDefault();void save(
     ()=>call("/goals","POST",{employee_id:Number(editable),title,description:detail,target_date:target}),"Goal added.")}}>
@@ -89,8 +90,8 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
    </form></div>}
    <div className="growth-action-card"><h3>Submit self-assessment</h3><p className="muted">Choose an open cycle, then submit your notes.</p><form className="form" onSubmit={e=>{e.preventDefault();void save(
     ()=>call("/reviews","POST",{cycle_id:Number(cycle),employee_id:user.id,self_notes:detail}),"Self-review submitted.")}}>
-    <label>Review cycle<select value={cycle} required onChange={e=>setCycle(e.target.value)}><option value="">Choose cycle</option>
-    {cycles.filter(c=>c.status==="open").map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+    <label>Review cycle<AppSelect value={cycle} required onChange={e=>setCycle(e.target.value)}><option value="">Choose cycle</option>
+    {cycles.filter(c=>c.status==="open").map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</AppSelect></label>
     <label className="wide">Self assessment<textarea minLength={10} required value={detail} onChange={e=>setDetail(e.target.value)}/></label>
     <button className="primary" disabled={busy}>Submit self-review</button>
    </form></div>
@@ -102,7 +103,7 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
     {canAssign&&r.employee_id!==user.id&&r.status==="self_submitted"&&
      <form className="form" onSubmit={e=>{e.preventDefault();void save(
       ()=>call("/reviews/"+r.id+"/manager","POST",{rating,feedback:detail}),"Manager review completed.")}}>
-      <label>Rating <select value={rating} onChange={e=>setRating(Number(e.target.value))}>{[1,2,3,4,5].map(v=><option key={v} value={v}>{v}/5</option>)}</select></label>
+      <label>Rating <AppSelect value={rating} onChange={e=>setRating(Number(e.target.value))}>{[1,2,3,4,5].map(v=><option key={v} value={v}>{v}/5</option>)}</AppSelect></label>
       <label>Feedback<textarea minLength={10} required value={detail} onChange={e=>setDetail(e.target.value)}/></label>
       <button disabled={busy} className="primary">Complete review</button>
      </form>}
@@ -121,10 +122,10 @@ export default function PerformanceWorkspace({api,user}:{api:string;user:Person}
    </form>
    {plans.map(p=><div className="card" key={p.id}><strong>{p.skill} · {employeeName(p.employee_id)}</strong>
     <p>{p.action}</p><p className="muted">Target: {p.target_date}</p>
-    <label>Status <select value={p.status} onChange={e=>void save(
+    <label>Status <AppSelect value={p.status} onChange={e=>void save(
      ()=>call("/plans/"+p.id,"PATCH",{status:e.target.value}),"Development status updated.")}>
      <option value="planned">Planned</option><option value="in_progress">In progress</option><option value="completed">Completed</option>
-    </select></label></div>)}
+    </AppSelect></label></div>)}
   </div>}
  </section><GrowthExtensions api={api} user={user}/></>;
 }
