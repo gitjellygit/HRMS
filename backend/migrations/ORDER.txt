@@ -23,3 +23,4 @@
 20261117_activity_agent_app_usage.sql
 # The first automatically applied migration on upgraded installations:
 20261119_leave_probation_months.sql
+20261119_pending_activity_devices.sql
