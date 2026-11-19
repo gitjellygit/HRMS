@@ -6,6 +6,7 @@ import {CalendarDays,CheckCircle2,ChevronDown,Clock3,Mail,RefreshCw,Search,Users
 
 type Balance={leave_type:string;allocated:number;carried:number;used:number;remaining:number};
 type Staff={id:number;name:string;department:string;role:string;status:string;joining_date:string;manager_id:number|null;currently_checked_in:boolean;leave_balances:Balance[]};
+type PunchSession={id:number;employee_id:number;punch_in:string;punch_out:string|null};
 type Delivery={id:number;recipient_id:number;request_id:number|null;status:string;attempts:number;error:string;created_at:string};
 type Overview={fy:number;fy_label:string;headcount:number;pending_leave_requests:number;currently_checked_in:number;unassigned_managers:number;employees:Staff[]};
 const currentFY=()=>{const d=new Date();return d.getMonth()<3?d.getFullYear()-1:d.getFullYear()};
@@ -17,6 +18,13 @@ export default function HRDesk({api}:{api:string}){
  const [deliveryFilter,setDeliveryFilter]=useState<"all"|"action">("all");
  const [deliveryLimit,setDeliveryLimit]=useState(5);
  const [loadingMail,setLoadingMail]=useState(false);
+ const [attendanceRefreshAt,setAttendanceRefreshAt]=useState<Date|null>(null);
+ const [attendanceRefreshError,setAttendanceRefreshError]=useState(false);
+ const [historyEmployee,setHistoryEmployee]=useState<number|null>(null);
+ const [historyRows,setHistoryRows]=useState<PunchSession[]>([]);
+ const [historyLoading,setHistoryLoading]=useState(false);
+ const [historyError,setHistoryError]=useState("");
+ const [historyLimit,setHistoryLimit]=useState(10);
  const [retrying,setRetrying]=useState<number|null>(null);
  const [search,setSearch]=useState("");
  const [selected,setSelected]=useState("");
@@ -31,11 +39,46 @@ export default function HRDesk({api}:{api:string}){
    const response=await fetch(api+"/leave/hr-overview?fy="+fy,{credentials:"include"});
    if(!response.ok)throw Error("Unable to load HR leave overview.");
    setOverview(await response.json());
+  setAttendanceRefreshAt(new Date());
    const mail=await fetch(api+"/leave/email-outbox",{credentials:"include"});
    if(mail.ok)setDeliveries(await mail.json());
   }catch(err){setError((err as Error).message)}
  }
  useEffect(()=>{void load()},[api,fy]);
+ // Fetch attendance summaries independently; do not reset search, open panels,
+ // leave override inputs or the mail queue during a background refresh.
+ useEffect(()=>{
+  let active=true;
+  let controller:AbortController|null=null;
+  async function tick(){
+   if(document.hidden)return;
+   controller?.abort();
+   controller=new AbortController();
+   try{
+    const res=await fetch(api+"/leave/hr-overview?fy="+fy,{credentials:"include",signal:controller.signal});
+    if(!res.ok)throw Error("Attendance status refresh failed");
+    const data:Overview=await res.json();
+    if(active){setOverview(data);setAttendanceRefreshAt(new Date());setAttendanceRefreshError(false)}
+   }catch(err){
+    if(active&&(err as Error).name!=="AbortError")setAttendanceRefreshError(true);
+   }
+  }
+  const timer=window.setInterval(()=>void tick(),30000);
+  const onVisible=()=>{if(!document.hidden)void tick()};
+  document.addEventListener("visibilitychange",onVisible);
+  return ()=>{active=false;controller?.abort();window.clearInterval(timer);document.removeEventListener("visibilitychange",onVisible)};
+ },[api,fy]);
+ useEffect(()=>{
+  if(historyEmployee===null){setHistoryRows([]);setHistoryError("");return}
+  const controller=new AbortController();
+  setHistoryLoading(true);setHistoryError("");setHistoryRows([]);setHistoryLimit(10);
+  fetch(api+"/attendance?employee_id="+historyEmployee,{credentials:"include",signal:controller.signal})
+   .then(async response=>{if(!response.ok)throw Error("Unable to load employee attendance history.");return response.json() as Promise<PunchSession[]>})
+   .then(records=>{if(!controller.signal.aborted)setHistoryRows(records)})
+   .catch(err=>{if(!controller.signal.aborted)setHistoryError((err as Error).message)})
+   .finally(()=>{if(!controller.signal.aborted)setHistoryLoading(false)});
+  return ()=>controller.abort();
+ },[api,historyEmployee]);
  async function save(event:React.FormEvent){
   event.preventDefault();
   if(!selected||!kind||days==="")return;
@@ -80,9 +123,17 @@ export default function HRDesk({api}:{api:string}){
   {error&&<div className="error" role="alert">{error}</div>}{notice&&<div className="employee-success" role="status"><CheckCircle2 size={17}/>{notice}</div>}
   <div className="employee-metrics"><div className="employee-metric"><Users size={20}/><span>Active employees</span><strong>{overview?.headcount??"—"}</strong></div><div className="employee-metric"><Clock3 size={20}/><span>Currently checked in</span><strong>{overview?.currently_checked_in??"—"}</strong></div><div className="employee-metric"><CalendarDays size={20}/><span>Pending leave requests</span><strong>{overview?.pending_leave_requests??"—"}</strong></div></div>
   {(overview?.unassigned_managers??0)>0&&<div className="hr-manager-warning"><strong>{overview?.unassigned_managers} active employees have no reporting manager assigned.</strong><p>Open Employees, select a highlighted employee, and assign a reporting manager to enable leave approvals.</p><div>{(overview?.employees||[]).filter(e=>e.status==="active"&&!["admin","super_admin"].includes(e.role)&&!e.manager_id).map(e=><span key={e.id}>{e.name}</span>)}</div></div>}
+  <div className="hr-attendance-refresh" role="status">
+   <span className={"hr-attendance-refresh-dot "+(attendanceRefreshError?"is-stale":"")}/>
+   {attendanceRefreshError?"Unable to refresh attendance; showing last known status":attendanceRefreshAt?"Attendance status updates automatically every 30 seconds · Last updated "+attendanceRefreshAt.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"}):"Loading attendance status…"}
+  </div>
   <div className="core-hr-controls"><div className="employee-search"><Search size={17}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search employees / department"/></div><label>FY begins <input type="number" min={2020} max={2100} value={fy} onChange={e=>setFY(Number(e.target.value))}/></label></div>
   <p className="field-help">Showing {overview?.fy_label||"financial year"} (1 April {fy}–31 March {fy+1}). Annual entitlements are automatically prorated using the employee's joining date. HR overrides are optional.</p>
-  <div className="table-wrap"><table><thead><tr><th>Employee</th><th>Joined</th><th>Department</th><th>Attendance</th><th>Leave balance for FY</th></tr></thead><tbody>{filtered.map(e=><tr key={e.id}><td><strong>{e.name}</strong><div className="muted">{e.role.replace("_"," ")}{!e.manager_id&&!["admin","super_admin"].includes(e.role)?" · Manager needed":""}</div></td><td>{e.joining_date||"—"}</td><td>{e.department||"—"}</td><td><span className={"pill "+(e.currently_checked_in?"active":"pending")}>{e.currently_checked_in?"Checked in":"Not checked in"}</span></td><td>{e.leave_balances.length?e.leave_balances.map(b=><div key={b.leave_type} className="core-balance">{b.leave_type.replace("_"," ")}: <b>{b.remaining}</b> left ({b.allocated} allocated{b.carried?" + "+b.carried+" carried":""}, {b.used} reserved/used)</div>):<span className="muted">Configure a leave policy to generate entitlements</span>}</td></tr>)}</tbody></table>{!filtered.length&&<div className="empty">No employees match this filter.</div>}</div>
+  <div className="table-wrap"><table><thead><tr><th>Employee</th><th>Joined</th><th>Department</th><th>Attendance</th><th>Attendance details</th><th>Leave balance for FY</th></tr></thead><tbody>{filtered.map(e=><tr key={e.id}><td><strong>{e.name}</strong><div className="muted">{e.role.replace("_"," ")}{!e.manager_id&&!["admin","super_admin"].includes(e.role)?" · Manager needed":""}</div></td><td>{e.joining_date||"—"}</td><td>{e.department||"—"}</td><td><span className={"pill "+(e.currently_checked_in?"active":"pending")}>{e.currently_checked_in?"Checked in":"Not checked in"}</span></td><td><button type="button" className="hr-attendance-history-button" aria-expanded={historyEmployee===e.id} onClick={()=>setHistoryEmployee(current=>current===e.id?null:e.id)}>{historyEmployee===e.id?"Hide history":"View history"}</button></td><td>{e.leave_balances.length?e.leave_balances.map(b=><div key={b.leave_type} className="core-balance">{b.leave_type.replace("_"," ")}: <b>{b.remaining}</b> left ({b.allocated} allocated{b.carried?" + "+b.carried+" carried":""}, {b.used} reserved/used)</div>):<span className="muted">Configure a leave policy to generate entitlements</span>}</td></tr>)}</tbody></table>{!filtered.length&&<div className="empty">No employees match this filter.</div>}</div>
+  {historyEmployee!==null&&<section className="hr-attendance-history" aria-label="Employee attendance history">
+   <div className="hr-attendance-history-head"><div><h3>{staffNames.get(historyEmployee)||"Employee #"+historyEmployee} · Punch history</h3><p className="field-help">Latest 100 recorded sessions. An open session means the employee has not punched out.</p></div><button className="employee-cancel" type="button" onClick={()=>setHistoryEmployee(null)}>Close</button></div>
+   {historyLoading?<p role="status">Loading punch history…</p>:historyError?<div role="alert" className="error">{historyError}</div>:historyRows.length?<><div className="hr-mail-scroll"><table className="hr-attendance-history-table"><thead><tr><th>Punch in</th><th>Punch out</th><th>Duration</th><th>Status</th></tr></thead><tbody>{historyRows.slice(0,historyLimit).map(row=><tr key={row.id}><td>{new Date(row.punch_in).toLocaleString()}</td><td>{row.punch_out?new Date(row.punch_out).toLocaleString():"—"}</td><td>{row.punch_out?Math.max(0,(new Date(row.punch_out).getTime()-new Date(row.punch_in).getTime())/3600000).toFixed(2)+" hours":"In progress"}</td><td>{row.punch_out?"Completed":"Checked in"}</td></tr>)}</tbody></table></div>{historyRows.length>historyLimit&&<button className="employee-cancel hr-mail-more" type="button" onClick={()=>setHistoryLimit(n=>n+10)}>Show 10 more sessions</button>}</>:<p className="muted">No punch sessions recorded for this employee.</p>}
+  </section>
   <div className="core-entitlement hr-mail-section">
    <button type="button" className="hr-mail-toggle" aria-expanded={deliveryExpanded} aria-controls="hr-leave-email-details" onClick={()=>setDeliveryExpanded(v=>!v)}>
     <span className="hr-mail-toggle-icon"><Mail size={19}/></span>
