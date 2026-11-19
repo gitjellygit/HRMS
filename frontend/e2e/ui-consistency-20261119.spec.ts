@@ -54,7 +54,7 @@ test('Dark-mode payroll heading and form banner text remain readable',async({pag
   return {color:css.color,background:bg.backgroundColor};
  });
  const luminance=(value:string)=>{
-  const nums=value.match(/[0-9]+(?:\\.[0-9]+)?/g)?.slice(0,3).map(Number)||[];
+  const nums=value.match(/[0-9]+(?:\.[0-9]+)?/g)?.slice(0,3).map(Number)||[];
   if(nums.length!==3)throw Error('Unrecognized computed color: '+value);
   const channels=nums.map(v=>{v/=255;return v<=0.04045?v/12.92:Math.pow((v+0.055)/1.055,2.4)});
   return channels[0]*0.2126+channels[1]*0.7152+channels[2]*0.0722;
