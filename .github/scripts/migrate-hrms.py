@@ -107,10 +107,11 @@ def manifest(sha):
 
 
 def psql(statement, *, single_transaction=False):
-    args = PSQL[:]
+    # Explicit BEGIN/COMMIT is required for commands streamed on stdin:
+    # psql --single-transaction only wraps -c/-f actions, not all stdin input.
     if single_transaction:
-        args[-1] += " -1"
-    return run(args, data=statement.encode()).stdout.decode()
+        statement = "BEGIN;\n" + statement + "\nCOMMIT;\n"
+    return run(PSQL[:], data=statement.encode()).stdout.decode()
 
 
 def ledger_entries():
