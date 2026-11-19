@@ -1320,3 +1320,52 @@ input[type="file"]:focus-visible{outline:3px solid #7a8fe2;outline-offset:2px}
 .jg-upload-filename{font-size:12px;color:var(--jg-tabs-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .jg-upload-picker:has(input:disabled){opacity:.5;cursor:not-allowed}
 [data-theme="dark"] .jg-upload-picker:hover{background:#263651}
+
+
+/* Payroll: semantic warning and summary surfaces must remain legible in either theme.
+   Generic dark-mode strong/small selectors previously overrode the text inside
+   the pale validation notice, making the notice title nearly invisible. */
+.payroll-config .payroll-validation{
+ background:#fff5f2;
+ border:1px solid #e8b1a7;
+ color:#852c22;
+}
+.payroll-config .payroll-validation strong,
+.payroll-config .payroll-validation strong svg{
+ color:#79271f!important;
+}
+.payroll-config .payroll-validation li{color:#852c22!important}
+.payroll-config .payroll-net-preview{
+ background:#f2f5ff;
+ border-color:#cfd8ec;
+ color:#263653;
+}
+.payroll-config .payroll-net-preview span{color:#425572!important}
+.payroll-config .payroll-net-preview strong{color:#283768!important}
+.payroll-config .payroll-net-preview small{color:#51617d!important}
+[data-theme="dark"] .payroll-config .payroll-validation{
+ background:#402930!important;
+ border-color:#995860!important;
+ color:#ffe5de!important;
+}
+[data-theme="dark"] .payroll-config .payroll-validation strong,
+[data-theme="dark"] .payroll-config .payroll-validation strong svg{
+ color:#fff1ec!important;
+}
+[data-theme="dark"] .payroll-config .payroll-validation li{
+ color:#ffddd5!important;
+}
+[data-theme="dark"] .payroll-config .payroll-net-preview{
+ background:#263650!important;
+ border-color:#526885!important;
+ color:#eff5ff!important;
+}
+[data-theme="dark"] .payroll-config .payroll-net-preview span{
+ color:#cbd8ed!important;
+}
+[data-theme="dark"] .payroll-config .payroll-net-preview strong{
+ color:#fff!important;
+}
+[data-theme="dark"] .payroll-config .payroll-net-preview small{
+ color:#c0d0e8!important;
+}
