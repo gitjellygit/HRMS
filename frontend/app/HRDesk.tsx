@@ -1,4 +1,5 @@
 "use client";
+import AppSelect from "./AppSelect";
 import {useTransientMessage} from "./useTransientMessage";
 import {useEffect,useState} from "react";
 import {CalendarDays,CheckCircle2,Clock3,Search,Users} from "lucide-react";
@@ -76,7 +77,7 @@ export default function HRDesk({api}:{api:string}){
    {!deliveries.some(x=>x.status!=="sent")&&<p className="muted">No undelivered leave emails in the recent outbox.</p>}
   </div>
   <div className="core-entitlement"><h3>Optional: override an employee's entitlement</h3><p className="muted">Normally no action is needed here. Configure 12 annual days in Leave requests → Policies, and new joiners receive a prorated entitlement automatically. Overrides replace the calculated allocation for the selected FY.</p>
-   <form className="core-inline-form" onSubmit={save}><select value={selected} onChange={e=>setSelected(e.target.value)} required><option value="">Choose employee</option>{overview?.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select><select value={kind} onChange={e=>setKind(e.target.value)} required><option value="">Leave type</option>{types.map(t=><option key={t} value={t}>{t.replace("_"," ")}</option>)}</select><input value={days} onChange={e=>setDays(e.target.value)} type="number" min={0} max={365} step={0.5} placeholder="Override days" required/><button className="employee-primary" disabled={saving}>Save override</button></form>
+   <form className="core-inline-form" onSubmit={save}><AppSelect value={selected} onChange={e=>setSelected(e.target.value)} required><option value="">Choose employee</option>{overview?.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</AppSelect><AppSelect value={kind} onChange={e=>setKind(e.target.value)} required><option value="">Leave type</option>{types.map(t=><option key={t} value={t}>{t.replace("_"," ")}</option>)}</AppSelect><input value={days} onChange={e=>setDays(e.target.value)} type="number" min={0} max={365} step={0.5} placeholder="Override days" required/><button className="employee-primary" disabled={saving}>Save override</button></form>
   </div>
  </section>;
 }
