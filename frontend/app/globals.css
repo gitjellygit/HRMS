@@ -1446,3 +1446,82 @@ input[type="file"]:focus-visible{outline:3px solid #7a8fe2;outline-offset:2px}
 [data-theme="dark"] .hr-attendance-history-table :is(th,td){color:#edf2ff;border-color:#4a607c}
 [data-theme="dark"] .hr-attendance-history-table th{background:#293a57}
 @media(max-width:650px){.hr-attendance-history-head{flex-direction:column}.hr-attendance-history-head button{align-self:flex-end}}
+
+/* HR leave-policy wizard: simple two-choice accrual and editable month grid. */
+.jg-leave-simple-form{display:grid;gap:16px;margin:18px 0 22px;max-width:1000px}
+.jg-leave-step{border:1px solid var(--jg-control-border,#d6dfed);background:var(--jg-control-bg,#fff);border-radius:12px;padding:16px;display:grid;gap:13px;min-width:0;color:var(--jg-control-ink,#283952)}
+.jg-leave-step>strong{font-size:14px;color:inherit}
+.jg-leave-step>small{font-size:12px;color:var(--jg-tabs-ink,#57657e)}
+.jg-leave-step label{display:grid;gap:7px;font-size:12px;font-weight:650;color:var(--jg-control-ink,#283952)}
+.jg-leave-step input[type=number],.jg-leave-step input[type=date],.jg-leave-step textarea{border:1px solid var(--jg-control-border,#ccd7e6);border-radius:9px;background:var(--jg-control-bg,#fff);color:var(--jg-control-ink,#283952);padding:10px 12px;min-height:40px;min-width:0;width:100%}
+.jg-leave-step textarea{min-height:70px;resize:vertical}
+.jg-leave-methods{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.jg-leave-method{min-height:92px;padding:14px;border:1px solid var(--jg-control-border,#d0d9e8);border-radius:11px;display:grid;gap:8px;text-align:left;background:var(--jg-tabs-bg,#f3f5fa)!important;color:var(--jg-control-ink,#283952)!important;cursor:pointer}
+.jg-leave-method strong{font-size:13px;color:inherit!important}.jg-leave-method small{font-size:12px;line-height:1.5;color:inherit!important;opacity:.85}
+.jg-leave-method[aria-pressed=true]{border-color:#7162ba!important;box-shadow:inset 0 0 0 1px #7162ba,0 0 0 2px #7463c32e}
+.jg-leave-method:focus-visible{outline:3px solid #8e9ef6;outline-offset:2px}
+.jg-leave-small-field{max-width:265px}
+.jg-leave-monthly{display:grid;gap:14px}
+.jg-leave-distribute{display:flex;align-items:end;flex-wrap:wrap;gap:9px}
+.jg-leave-distribute>label{max-width:230px}
+.jg-leave-month-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px}
+.jg-leave-total{display:grid;gap:3px;border-radius:10px;background:var(--jg-tabs-bg,#edf2fa);padding:14px;color:var(--jg-control-ink,#293850)}
+.jg-leave-total span{font-size:12px}.jg-leave-total strong{font-size:23px;color:inherit!important}.jg-leave-total small{font-size:11px;color:inherit;opacity:.8}
+.jg-leave-probation{display:flex;align-items:end;gap:20px;flex-wrap:wrap}
+.jg-leave-probation>label:first-child{width:225px}
+.jg-leave-probation>.leave-inline-check{display:flex;align-items:center;gap:8px;min-height:41px}
+.jg-leave-probation>.leave-inline-check input{width:16px;height:16px;flex:none}
+.jg-leave-preview{display:grid;gap:8px;padding:13px;background:var(--jg-tabs-bg,#edf2fa);border-radius:10px}
+.jg-leave-preview>label{max-width:225px}
+.jg-leave-preview p{margin:0;line-height:1.6;font-size:12px}
+.jg-leave-rules{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;max-width:720px}
+.jg-leave-rules>.leave-inline-check{display:flex;align-items:center;gap:7px}
+.jg-leave-rules>.leave-inline-check input{flex:none;width:16px;height:16px}
+.jg-leave-simple-form .employee-primary{justify-self:start;min-width:160px}
+[data-theme="dark"] .jg-leave-step{background:#1d2a42;border-color:#4d607e;color:#f0f5ff}
+[data-theme="dark"] .jg-leave-method{background:#273651!important;border-color:#556783;color:#f0f5ff!important}
+[data-theme="dark"] .jg-leave-total,[data-theme="dark"] .jg-leave-preview{background:#2b3d59;color:#f2f6ff}
+@media(max-width:760px){.jg-leave-month-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.jg-leave-methods{grid-template-columns:1fr}}
+@media(max-width:520px){.jg-leave-month-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.jg-leave-rules{grid-template-columns:1fr}.jg-leave-step{padding:12px}}
+
+/* HR team attendance: compact daily groups, session timelines, filtered history */
+.jg-team-attendance{display:grid;gap:15px;color:var(--jg-control-ink,#2a3954)}
+.jg-team-attendance-heading{display:flex;align-items:center;justify-content:space-between;gap:15px;flex-wrap:wrap}
+.jg-team-attendance-heading h3{font-size:16px;margin:0 0 4px;color:inherit}
+.jg-team-attendance-heading p{font-size:12px;color:var(--jg-tabs-ink,#5c6981);margin:0}
+.jg-team-attendance-heading>button{display:inline-flex;gap:8px;align-items:center}
+.jg-team-attendance-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.jg-team-attendance-stats>div{display:grid;grid-template-columns:21px auto;gap:5px 8px;align-items:center;padding:14px;background:var(--jg-tabs-bg,#eff2f8);border-radius:10px}
+.jg-team-attendance-stats svg{grid-row:1/3;color:var(--jg-control-ink,#293b5b)}
+.jg-team-attendance-stats span{font-size:11px;color:var(--jg-control-ink,#3a4a66)}
+.jg-team-attendance-stats strong{font-size:19px;color:var(--jg-control-ink,#293b5b)}
+.jg-team-attendance-filters{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+.jg-team-attendance-filters>label{display:grid;gap:5px;min-width:180px;max-width:275px;flex:1;font-size:12px;font-weight:650;color:var(--jg-control-ink,#2a3954)}
+.jg-team-attendance-filters input{height:40px;border:1px solid var(--jg-control-border,#cad5e6);border-radius:9px;background:var(--jg-control-bg,#fff);color:var(--jg-control-ink,#293b5b);padding:8px}
+.jg-team-attendance-log{display:grid;gap:8px}
+.jg-team-attendance-day{border:1px solid var(--jg-control-border,#cbd6e6);border-radius:11px;overflow:visible;background:var(--jg-control-bg,#fff)}
+.jg-team-attendance-toggle{display:flex;width:100%;min-height:66px;align-items:center;gap:12px;padding:10px 14px!important;border:0!important;border-radius:11px;background:var(--jg-control-bg,#fff)!important;color:var(--jg-control-ink,#293b5b)!important;text-align:left;cursor:pointer}
+.jg-team-attendance-toggle:hover,.jg-team-attendance-toggle:focus-visible{background:var(--jg-menu-hover,#e9efff)!important;color:var(--jg-menu-hover-ink,#233e68)!important}
+.jg-team-attendance-toggle>svg{flex:none;transition:transform .16s}
+.jg-team-attendance-toggle>svg.is-open{transform:rotate(180deg)}
+.jg-attendance-name{display:grid;gap:4px;flex:1;font-size:12px;font-weight:750;color:inherit}
+.jg-attendance-name small{font-size:11px;font-weight:500;color:inherit;opacity:.8}
+.jg-attendance-hours{font-size:12px;min-width:98px;font-weight:650;color:inherit}
+.jg-attendance-status{font-size:11px;font-weight:650;background:var(--jg-tabs-bg,#eef0f8);color:var(--jg-control-ink,#283952);padding:6px 10px;border-radius:30px;white-space:nowrap}
+.jg-attendance-status.is-active{background:#e0f3eb;color:#166b52}
+.jg-team-attendance-detail{padding:11px 15px;border-top:1px solid var(--jg-control-border,#cbd6e6)}
+.jg-attendance-timeline{height:9px;border-radius:20px;background:var(--jg-tabs-bg,#e4eafa);overflow:hidden;margin:3px 0 12px}
+.jg-attendance-timeline>span{display:block;background:#28a2b4;height:100%;border-radius:20px}
+.jg-attendance-session-scroll{overflow-x:auto}
+.jg-attendance-session-scroll table{min-width:500px;width:100%;border-collapse:collapse}
+.jg-attendance-session-scroll :is(th,td){text-align:left;padding:10px 12px;border-bottom:1px solid var(--jg-control-border,#cad5e6);font-size:12px;color:var(--jg-control-ink,#293b5b)}
+.jg-attendance-session-scroll th{background:var(--jg-tabs-bg,#eff2f8);font-weight:750}
+.jg-team-attendance-empty{padding:23px;text-align:center;background:var(--jg-tabs-bg,#eff2f8);border-radius:10px;font-size:12px;color:var(--jg-control-ink,#2c3a57)}
+.jg-team-attendance-more{justify-self:start}
+[data-theme="dark"] .jg-team-attendance{color:#eff5ff}
+[data-theme="dark"] .jg-team-attendance-stats>div,[data-theme="dark"] .jg-team-attendance-empty{background:#253753}
+[data-theme="dark"] .jg-team-attendance-stats :is(span,strong,svg){color:#f0f4ff}
+[data-theme="dark"] .jg-attendance-status.is-active{background:#245b4c;color:#effff7}
+[data-theme="dark"] .jg-attendance-session-scroll :is(th,td){color:#edf3ff;border-color:#536786}
+[data-theme="dark"] .jg-attendance-session-scroll th{background:#2a3d5c}
+@media(max-width:640px){.jg-team-attendance-stats{grid-template-columns:1fr}.jg-attendance-hours{display:none}.jg-team-attendance-toggle{gap:7px}}
