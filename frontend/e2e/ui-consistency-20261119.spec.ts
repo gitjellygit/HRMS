@@ -37,6 +37,11 @@ test('Custom selector opens an in-app listbox and changes payroll choice',async(
  const options=page.getByRole('listbox',{name:'Employee for payroll configuration'});
  await expect(options).toBeVisible();
  await expect(options.getByRole('option').first()).toBeVisible();
+ const selectable=options.getByRole('option').nth(1);
+ await expect(selectable).toBeVisible();
+ await selectable.click();
+ await expect(field).not.toHaveValue('');
+ await trigger.click();
  await page.keyboard.press('Escape');
  await expect(options).toHaveCount(0);
 });
