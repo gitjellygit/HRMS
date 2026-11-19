@@ -109,7 +109,7 @@ def manifest(sha):
 def psql(statement, *, single_transaction=False):
     args = PSQL[:]
     if single_transaction:
-        args += ["-1"]
+        args[-1] += " -1"
     return run(args, data=statement.encode()).stdout.decode()
 
 
