@@ -34,7 +34,12 @@ def test_new_joiner_entitlement_starts_after_probation_and_versions_are_recorded
             # probation should not get future annual or monthly leave credits.
             record.joining_date=date.today()
             db.commit()
-        kind="paternity"
+        with SessionLocal() as db:
+            configured={p.leave_type for p in db.query(LeavePolicy).all()}
+        kind=next((name for name in ("paternity","maternity","comp_off","sick","earned")
+                   if name not in configured),None)
+        if kind is None:
+            pytest.skip("All suitable leave types already have a policy")
         config={
             "leave_type":kind,"year_type":"financial","annual_days":24,
             "probation_months":3,"probation_allowed":False,
