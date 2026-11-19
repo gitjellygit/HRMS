@@ -21,6 +21,8 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
+      - name: Validate production release script syntax
+        run: bash -n .github/scripts/deploy-hrms.sh
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
