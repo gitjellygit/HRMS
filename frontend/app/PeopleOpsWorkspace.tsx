@@ -1,5 +1,6 @@
 "use client";
 import UploadInput from "./UploadInput";
+import DeviceMonitoringDashboard from "./DeviceMonitoringDashboard";
 import AppSelect from "./AppSelect";
 import AnnouncementTemplates,{type AnnouncementPreset} from "./AnnouncementTemplates";
 import {useTransientMessage} from "./useTransientMessage";
@@ -10,9 +11,9 @@ import {explainError} from "./formErrors";
 import PeopleOpsExtras from "./PeopleOpsExtras";
 import BrandIllustration,{WelcomeAnimation} from "./BrandIllustration";
 type Row=Record<string,any>;
-type Area="offers"|"onboarding"|"announcements"|"helpdesk"|"exit"|"analytics"|"notifications"|"audit"|"assets";
+type Area="offers"|"onboarding"|"announcements"|"helpdesk"|"exit"|"analytics"|"monitoring"|"notifications"|"audit"|"assets";
 const areas:[Area,string][]=[["offers","Offer letters"],["onboarding","Onboarding"],["announcements","Announcements"],["helpdesk","Helpdesk"],["exit","Exit management"],
- ["analytics","Analytics"],["notifications","Notifications"],["audit","Audit & security"],["assets","Assets & clearances"]];
+ ["monitoring","Monitoring"],["analytics","Analytics"],["notifications","Notifications"],["audit","Audit & security"],["assets","Assets & clearances"]];
 const today=()=>new Date().toISOString().slice(0,10);
 export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:number;name:string;role:string}}){
  const hr=["super_admin","admin","hr"].includes(user.role);
@@ -141,7 +142,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
  const submit=(path:string,data:Row,success:string)=>save(()=>call(path,"POST",data),success);
  return <div className="ops-area">
   <p className="ops-intro">Employee lifecycle workflows, approvals, announcements and HR support. Confidential workflows are available only to the employee or authorized HR staff.</p>
-  <div className="time-tabs" role="tablist">{areas.filter(([id])=>hr||!["analytics","notifications","audit"].includes(id)).map(([id,label])=>
+  <div className="time-tabs" role="tablist">{areas.filter(([id])=>hr||!["analytics","monitoring","notifications","audit"].includes(id)).map(([id,label])=>
    <button key={id} role="tab" aria-selected={tab===id} className={tab===id?"active":""} onClick={()=>{setTab(id);setError("");setInfo("");setDraft({})}}>{label}</button>)}</div>
   {error&&<div role="alert" className="time-form-error">{error}</div>}
   {info&&<FeedbackMotion type={info.includes("accepted")?"congrats":"success"} compact message={info}/>}
@@ -318,6 +319,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
      <p className="exit-case-help">Complete the assigned exit tasks and documented clearances before final settlement. Approval alone does not release payment.</p></div>}
     </div>)}</div></section>
   </div>}
+  {tab==="monitoring"&&hr&&<DeviceMonitoringDashboard api={api}/>}
   {tab==="analytics"&&hr&&<section className="employee-surface"><h3><BarChart3 size={17}/> Workforce analytics</h3>
    {metrics&&<><div className="ops-metrics">{[["Active employees",metrics.active_headcount],["Inactive",metrics.inactive_headcount],
     ["Pending leave",metrics.pending_leave],["Open helpdesk",metrics.open_tickets],["Inactive share",metrics.attrition_proxy_pct+"%"]].map(([label,value])=><div key={String(label)}><span>{label}</span><strong>{value}</strong></div>)}</div>
