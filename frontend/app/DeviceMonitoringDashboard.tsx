@@ -42,13 +42,13 @@ export default function DeviceMonitoringDashboard({api}:{api:string}){
  const online=assigned.filter(d=>d.status==="monitoring").length;
  return <section className="employee-surface jg-monitoring" aria-label="Employee activity monitoring">
   <div className="jg-monitoring-heading">
-   <div><h2><Activity size={20}/> Live device monitoring</h2><p>Latest summary from authorized company laptops, refreshed about every 15 seconds. This is not screen sharing or a productivity score.</p></div>
+   <div><h2><Activity size={20}/> Live device monitoring</h2><p>Activity summaries from authorized company laptops. Refreshes every 15 seconds; a device is offline if HRMS has not accepted a heartbeat for over 100 seconds. Internet access alone does not imply active monitoring. Not a live screen view.</p></div>
    <button type="button" className="employee-cancel" onClick={()=>void refresh()} disabled={loading}><RefreshCw size={15} aria-hidden="true"/> {loading?"Refreshing…":"Refresh"}</button>
   </div>
   <div className="jg-monitoring-summary">
    <div><span>Assigned devices</span><strong>{assigned.length}</strong></div>
    <div><span>Reporting now</span><strong>{online}</strong></div>
-   <div><span>Offline / stopped</span><strong>{assigned.length-online}</strong></div>
+   <div><span>No recent heartbeat</span><strong>{assigned.length-online}</strong></div>
    <div><span>Last refreshed</span><strong className="jg-monitoring-timestamp">{updated?updated.toLocaleTimeString():"Not yet"}</strong></div>
   </div>
   {error&&<p className="time-form-error" role="alert">{error}</p>}
@@ -58,7 +58,7 @@ export default function DeviceMonitoringDashboard({api}:{api:string}){
   </div>
   <div className="jg-monitoring-grid">
    {filtered.map(d=><button type="button" key={d.id} onClick={()=>setSelected(d.id===selected?null:d.id)} aria-pressed={selected===d.id} className={"jg-monitoring-card "+(selected===d.id?"is-selected":"")}>
-    <div className="jg-monitoring-card-heading"><div className="jg-monitoring-avatar"><Monitor size={18}/></div><span className={"jg-monitoring-state "+(d.status==="monitoring"?"online":"offline")}>{d.status==="monitoring"?"Reporting":d.status==="stopped"?"Stopped":"Offline"}</span></div>
+    <div className="jg-monitoring-card-heading"><div className="jg-monitoring-avatar"><Monitor size={18}/></div><span className={"jg-monitoring-state "+(d.status==="monitoring"?"online":"offline")}>{d.status==="monitoring"?"Reporting":d.status==="stopped"?"Stopped":"No heartbeat"}</span></div>
     <strong>{d.employee_name}</strong><small>{d.device_label}</small>
     <div className="jg-monitoring-times"><div><span>Active</span><b>{minutes(d.active_seconds)}m</b></div><div><span>Idle</span><b>{minutes(d.idle_seconds)}m</b></div></div>
     <span className="jg-monitoring-seen">Top reported app: {Object.entries(d.apps||{}).sort((a,b)=>b[1]-a[1])[0]?.[0]||"Not reported"}</span>

@@ -1609,3 +1609,11 @@ input[type="file"]:focus-visible{outline:3px solid #7a8fe2;outline-offset:2px}
 @media(max-width:1250px){.jg-monitoring-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:950px){.jg-monitoring-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.jg-monitoring-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.jg-monitoring-grid,.jg-monitoring-summary{grid-template-columns:1fr}.jg-monitoring-heading,.jg-monitoring-tools,.jg-monitoring-detail-head{flex-direction:column;align-items:stretch}}
+
+/* Compact, aligned announcement audience selector */
+.jg-audience-picker{min-width:0;gap:12px;padding:15px!important}
+.jg-audience-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px!important;overflow-y:auto;overflow-x:hidden}
+.jg-audience-list label{display:flex!important;flex-direction:row!important;align-items:center!important;gap:10px!important;min-width:0;margin:0;padding:10px 12px!important;border:1px solid var(--jg-control-border);border-radius:9px!important;background:var(--jg-control-bg);line-height:1.3!important}
+.jg-audience-list label span{min-width:0;overflow-wrap:anywhere;font-size:12px}
+.jg-audience-list input[type="checkbox"]{appearance:auto!important;display:block!important;position:static!important;flex:0 0 17px!important;width:17px!important;height:17px!important;min-height:17px!important;margin:0!important;padding:0!important}
+@media(max-width:670px){.jg-audience-list{grid-template-columns:minmax(0,1fr)}}
