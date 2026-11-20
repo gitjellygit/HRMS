@@ -1,0 +1,45 @@
+name: Windows companion build
+on:
+  pull_request:
+    paths:
+      - "windows-companion/**"
+      - ".github/workflows/windows-companion.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cross-compile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: windows-companion
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: Vet Windows source
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: go vet main.go
+      - name: Build Windows EXE
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: go build -trimpath -ldflags="-s -w -H windowsgui" -o JellyGit_Activity_Companion_Windows_v0.6.exe main.go
+      - name: SHA256 manifest
+        run: sha256sum JellyGit_Activity_Companion_Windows_v0.6.exe > SHA256SUMS.txt
+      - name: Upload unsigned pilot build
+        uses: actions/upload-artifact@v4
+        with:
+          name: JellyGit-Activity-Companion-v0.6-UNSIGNED-PILOT
+          path: |
+            windows-companion/JellyGit_Activity_Companion_Windows_v0.6.exe
+            windows-companion/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7

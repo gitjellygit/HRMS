@@ -18,6 +18,7 @@ SCRIPTS=[
     "20261117_activity_agent_app_usage.sql",
     "20261117_leave_policy_year_and_versions.sql",
     "20261119_leave_probation_months.sql",
+    "20261119_pending_activity_devices.sql",
 ]
 
 def test_peopleops_migrations_apply_twice_and_preserve_legacy_policy():
@@ -62,6 +63,10 @@ def test_peopleops_migrations_apply_twice_and_preserve_legacy_policy():
                 assert terms["carry_forward_limit"]=="5.00"
                 cursor.execute("SELECT COUNT(*) FROM people_onboarding_categories")
                 assert cursor.fetchone()[0]==5
+                cursor.execute("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=%s AND table_name=%s AND column_name=%s AND is_nullable='YES'",(schema,"activity_agent_devices","employee_id"))
+                assert cursor.fetchone()[0]==1
+                cursor.execute("SELECT 1 FROM information_schema.tables WHERE table_schema=%s AND table_name=%s",(schema,"activity_agent_invitations"))
+                assert cursor.fetchone()
                 for table,column in (
                     ("leave_policies","monthly_schedule"),
                     ("leave_policies","probation_months"),
