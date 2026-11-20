@@ -15,9 +15,14 @@ type Area="offers"|"onboarding"|"announcements"|"helpdesk"|"exit"|"analytics"|"m
 const areas:[Area,string][]=[["offers","Offer letters"],["onboarding","Onboarding"],["announcements","Announcements"],["helpdesk","Helpdesk"],["exit","Exit management"],
  ["monitoring","Monitoring"],["analytics","Analytics"],["notifications","Notifications"],["audit","Audit & security"],["assets","Assets & clearances"]];
 const today=()=>new Date().toISOString().slice(0,10);
-export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:number;name:string;role:string}}){
+export default function PeopleOpsWorkspace({api,user,initialTab="announcements"}:{api:string;user:{id:number;name:string;role:string};initialTab?:string}){
  const hr=["super_admin","admin","hr"].includes(user.role);
  const [tab,setTab]=useState<Area>("announcements");
+ useEffect(()=>{
+  const matched=areas.find(([key])=>key===initialTab)?.[0]||"announcements";
+  if(["analytics","monitoring","notifications","audit"].includes(matched)&&!hr)return;
+  setTab(matched);
+ },[initialTab,hr]);
  const [staff,setStaff]=useState<Row[]>([]);
  const [templates,setTemplates]=useState<Row[]>([]);
  const [editingOfferTemplate,setEditingOfferTemplate]=useState<number|null>(null);
@@ -169,7 +174,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
      {!hr&&<p>Review any offer shared by HR. Typed-name acceptance records an internal consent, not a third-party qualified e-signature.</p>}
     </section>
     <section className="employee-surface"><h3>Offer history</h3><div className="ops-table">{offers.map(o=><div className="ops-row" key={o.id}>
-     <strong>{o.title}</strong><span>#{o.employee_id} · {o.status}</span><a href={api+"/people/offers/"+o.id+".pdf"} target="_blank" rel="noopener noreferrer">{hr&&o.status==="draft"?"Preview PDF":"View PDF"}</a>
+     <strong>{o.title}</strong><span>{staff.find(p=>p.id===o.employee_id)?.name||(!hr?"Your offer":"Employee record unavailable")} · {o.status}</span><a href={api+"/people/offers/"+o.id+".pdf"} target="_blank" rel="noopener noreferrer">{hr&&o.status==="draft"?"Preview PDF":"View PDF"}</a>
      {hr&&o.status==="draft"&&<button className="employee-primary" onClick={()=>void save(()=>call("/offers/"+o.id+"/send","POST"),"Offer sent.")}>Send offer</button>}
      {!hr&&o.status==="sent"&&<button className="employee-primary" onClick={()=>void save(()=>call("/offers/"+o.id+"/sign","POST",
        {printed_name:user.name,consent:true}),"Offer accepted and acknowledgement recorded.")}>Accept offer</button>}
@@ -214,7 +219,7 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
       <label className="wide">Announcement image (optional, PNG/JPEG/WebP; max 3 MB)<UploadInput accept="image/png,image/jpeg,image/webp" onChange={e=>{const file=e.target.files?.[0]||null;setAnnouncementImage(file);if(file){const reader=new FileReader();reader.onload=()=>setAnnouncementPreview(String(reader.result||""));reader.readAsDataURL(file)}else setAnnouncementPreview("")}}/></label>
       <div className="wide jg-audience-picker"><div><strong>Announcement audience</strong><p className="field-help">{announcementAudience.length?`${announcementAudience.length} selected employee(s)`:"All active employees will receive this announcement."}</p></div>
   <input type="search" aria-label="Find announcement recipients" placeholder="Search employees…" value={audienceSearch} onChange={e=>setAudienceSearch(e.target.value)}/>
-  <div className="jg-preset-actions"><button type="button" className="employee-cancel" onClick={()=>setAnnouncementAudience(staff.filter(p=>p.status==="active").map(p=>p.id))}>Select all employees</button><button type="button" className="employee-cancel" onClick={()=>setAnnouncementAudience([])}>Everyone (no restriction)</button></div>
+  <div className="jg-preset-actions"><button type="button" className="employee-cancel" onClick={()=>setAnnouncementAudience(staff.filter(p=>p.status==="active").map(p=>p.id))}>Select all</button><button type="button" className="employee-cancel" onClick={()=>setAnnouncementAudience([])}>Everyone</button></div>
   <div className="jg-audience-list" role="group" aria-label="Select announcement recipients">{staff.filter(p=>p.status==="active"&&p.name.toLowerCase().includes(audienceSearch.toLowerCase())).map(p=><label key={p.id}><input type="checkbox" checked={announcementAudience.includes(p.id)} onChange={e=>setAnnouncementAudience(prev=>e.target.checked?[...prev,p.id]:prev.filter(id=>id!==p.id))}/><span>{p.name}</span></label>)}</div>
  </div>
       <div className="wide ops-announcement-preview"><strong>Preview before publishing</strong><h4>{draft.title||"Announcement title"}</h4>{announcementPreview&&<img src={announcementPreview} alt="Announcement preview" style={{maxWidth:"100%",maxHeight:240,objectFit:"contain",borderRadius:10}}/>}<p>{draft.body||"Announcement body will appear here."}</p><small>{announcementAudience.length?announcementAudience.length+" selected employees":"All active employees"}</small></div><button className="employee-primary" disabled={busy}>Publish</button></form>}
@@ -230,14 +235,14 @@ export default function PeopleOpsWorkspace({api,user}:{api:string;user:{id:numbe
     <form className="ops-form" onSubmit={e=>{e.preventDefault();void submit("/tickets",{
      category:draft.category||"other",subject:draft.subject,description:draft.description},"Helpdesk ticket opened.")}}>
      <label>Category<AppSelect value={draft.category||"other"} onChange={e=>setDraft(v=>({...v,category:e.target.value}))}>
-     {["payroll","leave","attendance","benefits","it","other"].map(c=><option key={c}>{c}</option>)}</AppSelect></label>
+     {["payroll","leave","attendance","benefits","it","other"].map(c=><option key={c} value={c}>{c==="it"?"IT":c.charAt(0).toUpperCase()+c.slice(1)}</option>)}</AppSelect></label>
      {input("subject","Subject",true)}
      <label className="wide">Question or concern<textarea minLength={12} required rows={4} value={draft.description||""}
       onChange={e=>setDraft(v=>({...v,description:e.target.value}))}/></label>
      <button className="employee-primary">Create ticket</button></form>
    </section>
    <section className="employee-surface"><h3>{hr?"HR ticket queue":"My tickets"}</h3><div className="ops-table">{(hr?allTickets:tickets).map(t=><article className="ops-row" key={t.id}>
-    <strong>{t.subject} · {t.status}</strong><small>{t.category} · Employee #{t.employee_id}</small><p>{t.description}</p>
+    <strong>{t.subject} · {t.status}</strong><small>{String(t.category).replace(/^./,s=>s.toUpperCase())} · {staff.find(p=>p.id===t.employee_id)?.name||(!hr?"Your ticket":"Employee record unavailable")}</small><p>{t.description}</p>
     {t.hr_response&&<p>HR: {t.hr_response}</p>}
     {hr&&t.status!=="closed"&&<><textarea placeholder="HR response" value={selected===String(t.id)?reply:""}
       onChange={e=>{setSelected(String(t.id));setReply(e.target.value)}}/>

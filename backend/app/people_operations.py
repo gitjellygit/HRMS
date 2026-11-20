@@ -227,8 +227,8 @@ def notify(db,employee_id,event,subject,body):
     if not rule:channels=["email"]
     from .notification_center import add_inbox
     # The in-app inbox works even when no external delivery provider is connected.
-    destination={"helpdesk":"people","approval":"leaves","offer":"people",
-                 "exit":"people"}.get(event,"dashboard")
+    destination={"helpdesk":"people:helpdesk","approval":"leaves","offer":"people:offers",
+                 "exit":"people:exit"}.get(event,"dashboard")
     add_inbox(db,employee_id,event,subject,body,destination)
     for channel in channels:
         # A queued adapter is not a claim of delivery. No background sender until configured.
@@ -503,7 +503,7 @@ def add_announcement(body:AnnouncementIn,user:Employee=Depends(current_user),db:
         if any(item not in allowed for item in body.audience_ids):raise HTTPException(422,"Audience includes an inactive or unknown employee.")
         ids=[item for item in sorted(set(body.audience_ids)) if item in allowed]
     for employee_id in ids:
-        add_inbox(db,employee_id,"announcement",row.title,row.body,"people")
+        add_inbox(db,employee_id,"announcement",row.title,row.body,"people:announcements")
     audit(db,user,"announcement",row.id,"published");db.commit()
     return {"id":row.id,"recipients":len(ids)}
 
@@ -547,7 +547,7 @@ async def publish_announcement_media(
                      audience_ids=json.dumps(sorted(set(payload.audience_ids))),media_key=media_key,created_by=user.id)
     db.add(row);db.flush()
     from .notification_center import add_inbox
-    for employee_id in recipients:add_inbox(db,employee_id,"announcement",row.title,row.body,"people")
+    for employee_id in recipients:add_inbox(db,employee_id,"announcement",row.title,row.body,"people:announcements")
     audit(db,user,"announcement",row.id,"published")
     db.commit()
     return {"id":row.id,"recipients":len(recipients),"has_media":bool(media_key)}

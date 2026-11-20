@@ -20,7 +20,7 @@ test('People Operations announcement presets and audience picker are usable',asy
  await expect(checkboxes.first()).toBeVisible();
  await checkboxes.first().check();
  await expect(page.getByText('1 selected employee(s)')).toBeVisible();
- await page.getByRole('button',{name:'Everyone (no restriction)'}).click();
+ await page.getByRole('button',{name:'Everyone'}).click();
  await expect(page.getByText('All active employees will receive this announcement.')).toBeVisible();
 });
 

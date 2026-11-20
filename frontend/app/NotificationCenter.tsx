@@ -62,8 +62,11 @@ export default function NotificationCenter({api,onNavigate,viewAll=false,onBack}
     </div>
    </div>
    {expanded===item.id&&<div className="notification-item-body"><p>{item.body}</p>
-     {["dashboard","people","leaves","finance","projects","governance","payroll"].includes(item.destination)&&
-       <button className="notification-action" onClick={()=>{setOpen(false);onNavigate(item.destination)}}>Open related section <ChevronRight size={14}/></button>}
+     {["dashboard","people","leaves","finance","projects","governance","payroll"].includes(item.destination.split(":")[0])&&
+       <button className="notification-action" onClick={()=>{setOpen(false);
+        const tabs:Record<string,string>={helpdesk:"helpdesk",announcement:"announcements",offer:"offers",exit:"exit",onboarding:"onboarding"};
+        onNavigate(item.destination==="people"?"people:"+(tabs[item.event]||"announcements"):item.destination);
+       }}>Open related section <ChevronRight size={14}/></button>}
    </div>}
   </article>
  }

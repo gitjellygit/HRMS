@@ -12,7 +12,13 @@ function flatten(children:React.ReactNode):Choice[]{
   if(!isValidElement(child))return;
   if(child.type==="option"){
    const p=child.props as React.OptionHTMLAttributes<HTMLOptionElement>;
-   const label=typeof p.children==="string"||typeof p.children==="number"?String(p.children):String(p.label||p.value||"");
+   const renderText=(node:React.ReactNode):string=>{
+    if(typeof node==="string"||typeof node==="number")return String(node);
+    if(Array.isArray(node))return node.map(renderText).join("");
+    if(isValidElement(node))return renderText((node.props as {children?:React.ReactNode}).children);
+    return "";
+   };
+   const label=renderText(p.children).trim()||String(p.label??p.value??"");
    result.push({value:String(p.value??label),label,disabled:!!p.disabled});
   }else if(child.type==="optgroup"){
    result.push(...flatten((child.props as {children?:React.ReactNode}).children));
