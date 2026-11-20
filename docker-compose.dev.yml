@@ -1,0 +1,28 @@
+# Development-only overrides. Run with:
+# docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+services:
+  api:
+    volumes:
+      - ./backend/app:/app/app
+      - hrms_uploads:/app/uploads
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/app"]
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ./frontend:/app
+      - hrms_node_modules:/app/node_modules
+      - hrms_next_cache:/app/.next
+    command: ["npm", "run", "dev", "--", "--hostname", "0.0.0.0"]
+
+volumes:
+  hrms_node_modules:
+  hrms_next_cache:

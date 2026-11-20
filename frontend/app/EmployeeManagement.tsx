@@ -1,0 +1,328 @@
+"use client";
+import UploadInput from "./UploadInput";
+import AppSelect from "./AppSelect";
+import {useTransientMessage} from "./useTransientMessage";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import FeedbackMotion from "./FeedbackMotion";
+import { ArrowLeft, BadgeCheck, BriefcaseBusiness, FileUp, IdCard, Plus, RefreshCw, Search, ShieldCheck, Users, X } from "lucide-react";
+
+type OrgUnit={id:number;kind:string;name:string;code:string};
+type Employee = {
+ id:number; employee_code:string; name:string; email:string; designation:string; department:string;
+ role:string; status:string; joining_date:string; phone:string;
+};
+type EmployeeDraft = {
+ name:string;email:string;password:string;designation:string;department:string;role:string;
+ phone:string;joining_date:string;employee_code:string;work_location:string;
+ employment_type:string;manager_name:string;emergency_contact:string;
+};
+type Field = keyof EmployeeDraft;
+type Errors=Partial<Record<Field,string>>;
+const blank:EmployeeDraft={
+ name:"",email:"",password:"",designation:"",department:"",role:"employee",phone:"",
+ joining_date:new Date().toLocaleDateString("en-CA"),employee_code:"",work_location:"",
+ employment_type:"Full time",manager_name:"",emergency_contact:""
+};
+const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const validate=(data:EmployeeDraft):Errors=>{
+ const errors:Errors={};
+ if(!/^[A-Za-z][A-Za-z .'-]*$/.test(data.name.trim())||data.name.trim().split(/\s+/).length<2)errors.name="Enter both first and last name using letters.";
+ if(!EMAIL.test(data.email.trim()))errors.email="Enter a valid work email, e.g. name@jellygit.com.";
+ if(data.password.length<12||!/[A-Z]/.test(data.password)||!/[a-z]/.test(data.password)||!/[0-9]/.test(data.password)||!/[^A-Za-z0-9]/.test(data.password))errors.password="Use 12+ characters with uppercase, lowercase, number and special character.";
+ if(data.designation.trim().length<2)errors.designation="Designation must contain at least 2 characters.";
+ if(data.department.trim().length<2)errors.department="Select or enter a department.";
+ if(!data.joining_date)errors.joining_date="Choose the date of joining.";
+ if(data.phone&&!/^(?:\+91|91)?[6-9][0-9]{9}$/.test(data.phone.replace(/[\s()-]/g,"")))errors.phone="Enter a valid 10-digit Indian mobile (starting 6–9).";
+ if(data.employee_code&&!/^JG-[0-9]{3,9}$/i.test(data.employee_code.trim()))errors.employee_code="Employee ID must be JG-001 format.";
+ return errors;
+};
+const initials=(name:string)=>name.trim().split(/\s+/).map(n=>n[0]).slice(0,2).join("").toUpperCase();
+function ApiError(detail:unknown):{field?:Field;message:string}{
+ if(typeof detail==="string")return {message:detail};
+ if(detail&&typeof detail==="object"){
+  const info=detail as {field?:Field;message?:string;detail?:unknown};
+  if(info.message)return {field:info.field,message:info.message};
+  if(Array.isArray(detail)){
+   const item=detail[0] as {loc?:string[];msg?:string};
+   if(item?.loc?.length)return {field:item.loc[item.loc.length-1] as Field,message:(item.msg||"Invalid field").replace(/^Value error, /i,"")};
+  }
+ }
+ return {message:"Unable to save employee. Please check the highlighted fields."};
+}
+export default function EmployeeManagement({api,canCreate,onOpenEmployee,currentRole}:{api:string;canCreate:boolean;onOpenEmployee?:(id:number)=>void;currentRole?:string}){
+ const [employees,setEmployees]=useState<Employee[]>([]);
+ const [loading,setLoading]=useState(true);
+ const [saving,setSaving]=useState(false);
+ const [open,setOpen]=useState(false);
+ const [draft,setDraft]=useState<EmployeeDraft>(blank);
+ const [errors,setErrors]=useState<Errors>({});
+ const [message,setMessage]=useTransientMessage();
+ const [failure,setFailure]=useState("");
+ const [search,setSearch]=useState("");
+ const [department,setDepartment]=useState("all");
+ const [showPassword,setShowPassword]=useState(false);
+ const [document,setDocument]=useState<File|null>(null);
+ const [master,setMaster]=useState<Record<string,string>>({});
+ const [units,setUnits]=useState<OrgUnit[]>([]);
+ const [addingDept,setAddingDept]=useState(false);
+ const [deptName,setDeptName]=useState("");
+ const [deptCode,setDeptCode]=useState("");
+ const [deptBusy,setDeptBusy]=useState(false);
+ const [deptError,setDeptError]=useState("");
+ const [docsFor,setDocsFor]=useState<Employee|null>(null);
+ const [documents,setDocuments]=useState<{id:number;name:string;type:string}[]>([]);
+ const [docError,setDocError]=useState("");
+ const [idBusy,setIdBusy]=useState(false);
+ const [selectedAction,setSelectedAction]=useState<Employee|null>(null);
+ const [actionKind,setActionKind]=useState<"deactivate"|"reset"|null>(null);
+ const [actionReason,setActionReason]=useState("");
+ const [resetSent,setResetSent]=useState(false);
+ const [actionBusy,setActionBusy]=useState(false);
+ const load=useCallback(async()=>{
+  setLoading(true);
+  try{
+   const response=await fetch(api+"/employees",{credentials:"include"});
+   if(!response.ok)throw Error("Could not load employees. Try refreshing.");
+   setEmployees(await response.json());
+  }catch(err){setFailure((err as Error).message)}finally{setLoading(false)}
+ },[api]);
+ const loadUnits=useCallback(async()=>{
+  const response=await fetch(api+"/core/units",{credentials:"include"});
+  if(!response.ok)throw Error("Unable to retrieve organization units.");
+  setUnits(await response.json());
+ },[api]);
+ useEffect(()=>{void load();void loadUnits().catch(e=>setFailure((e as Error).message));},[load,loadUnits]);
+ const departments=useMemo(()=>[...new Set(employees.map(e=>e.department).filter(Boolean))].sort(),[employees]);
+ const shown=useMemo(()=>employees.filter(e=>{
+  const term=search.toLowerCase().trim();
+  return (department==="all"||e.department===department)&&(!term||[e.name,e.email,e.employee_code,e.designation,e.department].some(v=>(v||"").toLowerCase().includes(term)));
+ }),[employees,department,search]);
+ function edit(field:Field,value:string){
+  setDraft(d=>({...d,[field]:value}));
+  setErrors(prev=>({...prev,[field]:undefined}));
+ }
+ async function openForm(){
+  setDraft({...blank,joining_date:new Date().toLocaleDateString("en-CA")});
+  setErrors({});setFailure("");setMessage("");setDocument(null);setMaster({});
+  setAddingDept(false);setDeptName("");setDeptCode("");setDeptError("");
+  setOpen(true);
+  void loadUnits().catch(e=>setFailure((e as Error).message));
+  void generateCode();
+ }
+ function departmentCode(name:string){
+  return name.trim().toUpperCase().replace(/[^A-Z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,35);
+ }
+ async function createDepartment(){setDeptError("");
+  const name=deptName.trim().replace(/\s+/g," ");
+  const code=deptCode.trim().toUpperCase();
+  if(name.length<2){setDeptError("Enter a department name with at least 2 characters.");return}
+  if(!/^[A-Z0-9][A-Z0-9_-]{0,34}$/.test(code)){setDeptError("Department code must use letters, numbers, hyphens or underscores.");return}
+  setDeptBusy(true);
+  try{
+   const response=await fetch(api+"/core/units",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({kind:"department",name,code})});
+   const result=await response.json().catch(()=>({}));
+   if(!response.ok){
+    const detail=result.detail;
+    throw Error(typeof detail==="string"?detail:detail?.message||"Could not create the department.");
+   }
+   await loadUnits();
+   edit("department",result.name);
+   setMaster(previous=>({...previous,department_id:String(result.id)}));
+   setAddingDept(false);setDeptName("");setDeptCode("");
+  }catch(err){setDeptError((err as Error).message)}finally{setDeptBusy(false)}
+ }
+ async function generateCode(){
+  setIdBusy(true);setFailure("");
+  try{
+   const response=await fetch(api+"/employees/generate-code",{method:"POST",credentials:"include"});
+   if(!response.ok)throw Error("Unable to generate a new employee ID");
+   const data=await response.json();edit("employee_code",data.employee_code);
+  }catch(err){setFailure((err as Error).message)}finally{setIdBusy(false)}
+ }
+ async function submit(event:React.FormEvent<HTMLFormElement>){
+  event.preventDefault();
+  const found=validate(draft);
+  const focusFirst=(field?:string)=>window.requestAnimationFrame(()=>{
+   const target=(field?window.document.getElementById(field==="manager_id"?"core-manager":field==="department"?"emp-department":"emp-"+field):null)
+     ||window.document.querySelector<HTMLElement>(".employee-editor [aria-invalid='true']");
+   target?.scrollIntoView({block:"center",behavior:"smooth"});target?.focus();
+  });
+  if(!master.department_id||!units.some(u=>u.kind==="department"&&String(u.id)===master.department_id))found.department="Select a department from the list.";
+  if(!["admin","super_admin"].includes(draft.role)&&!master.manager_id){setFailure("Select a reporting manager before saving the employee.");setErrors({...found,manager_id:"Required for leave approvals"} as Errors);focusFirst("manager_id");return;}
+  setErrors(found);setFailure("");setMessage("");
+  if(Object.keys(found).length){setFailure("Please correct the highlighted fields before saving.");focusFirst(Object.keys(found)[0]);return;}
+  setSaving(true);
+  try{
+   const payload=draft;
+   const chosen:Record<string,unknown>={};
+   for(const [key,value] of Object.entries(master)){if(!value)continue;chosen[key]=key.endsWith("_id")?Number(value):value}
+   const response=await fetch(api+"/core/employees",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({account:{...payload,employee_code:draft.employee_code,name:draft.name.trim(),email:draft.email.trim().toLowerCase(),designation:draft.designation.trim(),department:draft.department.trim()},master:chosen})});
+   const result=await response.json().catch(()=>({}));
+   if(!response.ok){
+    const detail=ApiError(result.detail);
+    if(detail.field){setErrors({[detail.field]:detail.message});focusFirst(detail.field)}
+    throw Error(detail.message);
+   }
+   let note=`${result.name} added successfully as ${result.employee_code}.`;
+   if(document){
+    const body=new FormData();body.append("document",document);
+    const uploaded=await fetch(api+"/core/employees/"+result.id+"/documents",{method:"POST",credentials:"include",body});
+    if(!uploaded.ok)note+=" Employee saved, but document upload failed; upload it separately.";
+   }
+   setOpen(false);setMessage(note);await load();
+  }catch(err){setFailure((err as Error).message)}finally{setSaving(false)}
+ }
+ function beginAction(employee:Employee,kind:"deactivate"|"reset"){
+  setSelectedAction(employee);setActionKind(kind);setActionReason("");setResetSent(false);setFailure("");
+ }
+ async function commitAction(){
+  if(!selectedAction||!actionKind)return;
+  if(actionReason.trim().length<10){setFailure("Please provide a specific reason (at least 10 characters).");return}
+  setActionBusy(true);setFailure("");
+  try{
+   const url="/core/employees/"+selectedAction.id+"/"+(actionKind==="deactivate"?"deactivate":"reset-password");
+   const response=await fetch(api+url,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({reason:actionReason.trim()})});
+   const data=await response.json().catch(()=>({}));
+   if(!response.ok)throw Error(ApiError(data.detail).message);
+   if(actionKind==="reset"){
+    if(!data.reset_email_sent)throw Error("The password reset email was not confirmed. Try again.");
+    setResetSent(true);
+    setMessage("Password reset link sent to the employee's registered work email.");
+   }else{setSelectedAction(null);setActionKind(null);setMessage("Employee deactivated with a recorded reason.");await load()}
+  }catch(e){setFailure((e as Error).message)}finally{setActionBusy(false)}
+ }
+ async function viewDocuments(employee:Employee){
+  setDocsFor(employee);setDocuments([]);setDocError("");
+  try{
+   const response=await fetch(api+"/employees/"+employee.id+"/documents",{credentials:"include"});
+   if(!response.ok)throw Error("Unable to retrieve documents.");
+   setDocuments(await response.json());
+  }catch(err){setDocError((err as Error).message)}
+ }
+ async function downloadFile(id:number,name:string){
+  try{
+   const res=await fetch(api+"/documents/"+id,{credentials:"include"});
+   if(!res.ok)throw Error("Download denied or file unavailable.");
+   const url=URL.createObjectURL(await res.blob());
+   const anchor=window.document.createElement("a");anchor.href=url;anchor.download=name;anchor.click();
+   URL.revokeObjectURL(url);
+  }catch(err){setDocError((err as Error).message)}
+ }
+ function field(key:Field,label:string,options?:{required?:boolean;type?:string;hint?:string;placeholder?:string;choices?:string[];wide?:boolean}){
+  const id="emp-"+key;
+  const invalid=Boolean(errors[key]);
+  return <div key={key} className={"employee-field "+(options?.wide?"full":"")}>
+   <label htmlFor={id}>{label}{options?.required&&<span className="required"> *</span>}</label>
+   {options?.choices?<AppSelect id={id} value={draft[key]} onChange={e=>edit(key,e.target.value)} aria-invalid={invalid} aria-describedby={invalid?id+"-error":undefined}>
+    {options.choices.map(choice=><option key={choice} value={choice}>{choice==="employee"?"Employee":choice==="hr"?"HR Admin":choice==="accountant"?"Accountant":choice==="admin"?"Admin":choice}</option>)}
+   </AppSelect>:<input id={id} value={draft[key]} type={options?.type||"text"} maxLength={key==="password"?128:key==="phone"?20:undefined}
+    placeholder={options?.placeholder} onChange={e=>edit(key,e.target.value)} aria-invalid={invalid} aria-describedby={invalid?id+"-error":undefined} autoComplete={key==="password"?"new-password":"off"}/>}
+   {invalid?<span id={id+"-error"} className="field-error">{errors[key]}</span>:options?.hint?<span className="field-help">{options.hint}</span>:null}
+  </div>;
+ }
+ return <div className="employee-page">
+  {failure&&!open&&<div className="error" role="alert">{failure}</div>}
+  {message&&<FeedbackMotion type={message.includes("added successfully")?"congrats":"success"} compact message={message}/>}
+  {!open?<><div className="employee-metrics">
+   <div className="employee-metric"><Users size={20}/><span>Total employees</span><strong>{employees.length}</strong></div>
+   <div className="employee-metric"><BadgeCheck size={20}/><span>Active employees</span><strong>{employees.filter(e=>e.status==="active").length}</strong></div>
+   <div className="employee-metric"><BriefcaseBusiness size={20}/><span>Departments</span><strong>{departments.length}</strong></div>
+  </div>
+  <section className="employee-surface">
+   <div className="employee-title-row"><div><h2>Employee directory</h2><p>All employee records, in one organized place.</p></div>{canCreate&&<button className="employee-primary" onClick={openForm}><Plus size={17}/> Add employee</button>}</div>
+   <div className="employee-filters"><div className="employee-search"><Search size={17}/><input aria-label="Search employees" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by name, ID, email or role…"/></div><AppSelect aria-label="Filter by department" value={department} onChange={e=>setDepartment(e.target.value)}><option value="all">All departments</option>{departments.map(d=><option key={d}>{d}</option>)}</AppSelect><button className="employee-icon-button" onClick={load} title="Refresh employees" aria-label="Refresh"><RefreshCw size={17}/></button></div>
+   <div className="table-wrap"><table className="employee-table"><thead><tr><th>Employee</th><th>Employee ID</th><th>Designation / Department</th><th>Access</th><th>Joined</th><th>Status</th>{canCreate&&<><th>Documents</th><th>HR actions</th></>}</tr></thead><tbody>
+    {shown.map(e=><tr key={e.id}><td><div className="employee-person"><div className="employee-avatar">{initials(e.name)}</div><div><button type="button" className="employee-name-link" onClick={()=>onOpenEmployee?.(e.id)}>{e.name}</button><small>{e.email}</small></div></div></td><td><span className="employee-id">{e.employee_code||"Legacy"}</span></td><td><strong className="employee-detail">{e.designation||"—"}</strong><small className="employee-secondary">{e.department||"—"}</small></td><td><span className="employee-role">{e.role==="hr"?"HR Admin":e.role}</span></td><td>{e.joining_date||"—"}</td><td><span className={"pill "+e.status}>{e.status}</span></td>{canCreate&&<><td><button className="employee-link" onClick={()=>viewDocuments(e)}>View files</button></td><td><div className="employee-row-actions">{onOpenEmployee&&<button type="button" className="employee-link" aria-label={"Edit details for "+e.name} onClick={()=>onOpenEmployee(e.id)}>Edit details</button>}{e.status==="active"?(currentRole==="hr"&&["admin","super_admin"].includes(e.role)?
+     <span className="employee-action-note" title="Only another authorized administrator can deactivate this account">Admin account · restricted</span>:
+     <button className="employee-link" title={"Deactivate "+e.name+" with a recorded reason"}
+      onClick={()=>beginAction(e,"deactivate")}>Deactivate</button>):
+     <span className="employee-action-note" title="Only active employees can be deactivated">Already {e.status||"inactive"}</span>}
+     {e.status==="active"&&<button className="employee-link" onClick={()=>beginAction(e,"reset")}>Reset password</button>}</div></td></>}</tr>)}
+   </tbody></table>{loading?<div className="empty">Loading employee directory…</div>:!shown.length?<div className="employee-empty">No employees match your search.</div>:null}</div>
+   <div className="employee-count">Showing {shown.length} of {employees.length} employees</div>
+  </section></>:<section className="employee-surface employee-editor">
+   <div className="employee-editor-top"><div><button className="employee-back" onClick={()=>{setOpen(false);setFailure("")}}><ArrowLeft size={16}/> Employee directory</button><h2>Add a new employee</h2><p>Create a secure account and complete the employee's profile.</p></div><button className="employee-icon-button" aria-label="Cancel" onClick={()=>setOpen(false)}><X size={20}/></button></div>
+   {failure&&<div id="employee-first-error" className="error" role="alert">{failure}</div>}
+   <form onSubmit={submit} noValidate>
+    <div className="employee-group"><div className="employee-group-head"><IdCard size={18}/><div><h3>Personal information</h3><p>Basic employee and contact details</p></div></div>
+     <div className="employee-form-grid">
+      {field("name","Full name",{required:true,placeholder:"e.g. Aarav Sharma"})}
+      {field("email","Work email",{required:true,type:"email",placeholder:"aarav@jellygit.com"})}
+      {field("phone","Indian mobile number",{placeholder:"+91 98765 43210"})}
+      {field("emergency_contact","Emergency contact",{placeholder:"Name and contact number"})}
+     </div>
+    </div>
+    <div className="employee-group"><div className="employee-group-head"><BriefcaseBusiness size={18}/><div><h3>Employment details</h3><p>Assign employee information, reporting hierarchy and access</p></div></div>
+     <div className="employee-form-grid">
+      <div className="employee-field"><label htmlFor="employee-code">Employee ID</label><div className="employee-code-row"><input id="employee-code" value={draft.employee_code} onChange={e=>edit("employee_code",e.target.value.toUpperCase())} placeholder="JG-001" aria-label="Employee ID (editable)"/><button type="button" disabled={idBusy} onClick={generateCode}><RefreshCw size={15}/> {idBusy?"Generating…":"Generate ID"}</button></div><span className="field-help">Click Generate for a fresh sequential ID, or enter JG-001 style manually. Duplicates are rejected.</span></div>
+      {field("joining_date","Date of joining",{required:true,type:"date"})}
+      {field("designation","Designation",{required:true,placeholder:"e.g. Software Engineer"})}
+      <div className="employee-field employee-department-picker">
+        <label htmlFor="emp-department">Department <span className="required">*</span></label>
+        <div className="employee-department-row">
+         <AppSelect id="emp-department" required value={master.department_id||""} aria-invalid={!!errors.department}
+          onChange={e=>{
+           const selected=units.find(u=>u.kind==="department"&&String(u.id)===e.target.value);
+           setMaster(previous=>({...previous,department_id:e.target.value}));
+           edit("department",selected?.name||"");
+          }}>
+          <option value="">Select department</option>
+          {units.filter(u=>u.kind==="department").map(u=><option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}
+         </AppSelect>
+         <button type="button" className="employee-cancel" onClick={()=>{setAddingDept(v=>!v);setDeptError("")}}>
+          <Plus size={15}/> {addingDept?"Close":"Add department"}
+         </button>
+        </div>
+        {errors.department&&<span className="field-error">{errors.department}</span>}
+        {!units.some(u=>u.kind==="department")&&<span className="field-help">No departments available. Add your first department.</span>}
+        {addingDept&&<div className="employee-add-dept-form">
+          <strong>Create department</strong>
+          <label htmlFor="new-dept-name">Department name</label>
+          <input id="new-dept-name" value={deptName} onChange={e=>{setDeptName(e.target.value);setDeptCode(departmentCode(e.target.value))}}
+           placeholder="e.g. Engineering" minLength={2} maxLength={120} required/>
+          <label htmlFor="new-dept-code">Department code</label>
+          <input id="new-dept-code" value={deptCode} onChange={e=>setDeptCode(e.target.value.toUpperCase())}
+           placeholder="e.g. ENGINEERING" maxLength={35} required/>
+          {deptError&&<span className="field-error" role="alert">{deptError}</span>}
+          <div className="employee-add-dept-actions"><button type="button" className="employee-cancel" onClick={()=>setAddingDept(false)}>Cancel</button>
+           <button type="button" onClick={()=>void createDepartment()} className="employee-primary" disabled={deptBusy}>{deptBusy?"Creating…":"Create department"}</button></div>
+        </div>}
+      </div>
+      {field("employment_type","Employment type",{choices:["Full time","Part time","Contract","Intern"]})}
+      {field("role","System access",{choices:currentRole==="admin"||currentRole==="super_admin"?["employee","manager","hr","accountant","super_admin"]:["employee","manager","hr","accountant"]})}
+      {field("work_location","Work location",{placeholder:"e.g. Noida · Hybrid"})}
+      <div className="employee-field"><label htmlFor="core-manager">Reporting manager <span className="required">*</span></label><AppSelect id="core-manager" aria-invalid={Boolean((errors as Record<string,string>).manager_id)} required={!["admin","super_admin"].includes(draft.role)} value={master.manager_id||""} onChange={e=>setMaster(v=>({...v,manager_id:e.target.value}))}><option value="">Select a reporting manager</option>{employees.filter(e=>e.status==="active"&&["admin","super_admin","hr","manager"].includes(e.role)).map(e=><option key={e.id} value={e.id}>{e.name} · {e.employee_code||e.id}</option>)}</AppSelect>{(errors as Record<string,string>).manager_id?<span className="field-error">{(errors as Record<string,string>).manager_id}</span>:<span className="field-help">Required for leave approvals and reporting hierarchy.</span>}</div>
+      <div className="employee-field"><label htmlFor="core-hod">Second-level manager / HOD</label><AppSelect id="core-hod" value={master.hod_id||""} onChange={e=>setMaster(v=>({...v,hod_id:e.target.value}))}><option value="">Optional HOD</option>{employees.filter(e=>e.status==="active").map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</AppSelect></div>
+      {(["designation","grade","branch","cost_center"] as const).map(kind=><div key={kind} className="employee-field"><label htmlFor={"org-"+kind}>{kind.replace("_"," ").replace(/^./,c=>c.toUpperCase())} unit</label><AppSelect id={"org-"+kind} value={master[kind+"_id"]||""} onChange={e=>{const selected=units.find(u=>String(u.id)===e.target.value);setMaster(v=>({...v,[kind+"_id"]:e.target.value}));if(selected&&kind==="designation")edit("designation",selected.name)}}><option value="">Not assigned</option>{units.filter(u=>u.kind===kind).map(u=><option key={u.id} value={u.id}>{u.name} ({u.code})</option>)}</AppSelect></div>)}
+     </div>
+    </div>
+    <div className="employee-group"><div className="employee-group-head"><BriefcaseBusiness size={18}/><div><h3>Project incentive policy</h3><p>Leave blank to inherit the company default on every sourced project</p></div></div><div className="employee-form-grid"><div className="employee-field"><label htmlFor="emp-project-bonus">Bonus per sourced project (INR)</label><input id="emp-project-bonus" type="number" min="0" max="100000000" step="0.01" value={master.project_bonus_inr||""} onChange={e=>setMaster(m=>({...m,project_bonus_inr:e.target.value}))} placeholder="Company policy default (₹10,000)"/><span className="field-help">HR-managed, per-project milestone bonus. Optional employee-specific amount; blank inherits Policies.</span></div></div></div>
+    <div className="employee-group"><div className="employee-group-head"><ShieldCheck size={18}/><div><h3>Account security</h3><p>Only HR/Admin can create an employee login</p></div></div>
+     <div className="employee-form-grid">
+      {field("password","Temporary password",{required:true,type:showPassword?"text":"password",placeholder:"Create a strong password",hint:"At least 12 characters, uppercase, lowercase, number and symbol."})}
+      <div className="employee-field employee-security-note"><label>Access guidelines</label><p>Only grant HR or Admin access when required. The employee will be required to change their initial password before accessing HRMS.</p><button type="button" className="employee-link" onClick={()=>setShowPassword(!showPassword)}>{showPassword?"Hide":"Show"} password</button></div>
+     </div>
+    </div>
+    <div className="employee-group"><div className="employee-group-head"><FileUp size={18}/><div><h3>Employee documents</h3><p>Optional initial document for this account</p></div></div>
+     <div className="employee-field employee-upload"><label htmlFor="employee-document">Upload a document (PDF, PNG, JPG · max 5 MB)</label><UploadInput id="employee-document" accept=".pdf,.png,.jpg,.jpeg" onChange={e=>setDocument(e.target.files?.[0]||null)}/>{document&&<span className="field-help">{document.name}</span>}</div>
+    </div>
+    <div className="employee-form-footer"><button type="button" className="employee-cancel" onClick={()=>{setOpen(false);setFailure("")}}>Cancel</button><button className="employee-primary" disabled={saving}>{saving?"Creating employee…":"Save employee"}</button></div>
+   </form>
+  </section>}
+  {selectedAction&&actionKind&&<div className="employee-modal-backdrop"><div className="employee-modal" role="dialog" aria-modal="true" aria-label={actionKind==="reset"?"Reset employee password":"Deactivate employee"}>
+   <div className="employee-title-row"><div><h2>{actionKind==="reset"?"Reset password":"Deactivate employee"}</h2><p>{selectedAction.name} · {selectedAction.employee_code||"Employee"}</p></div><button className="employee-icon-button" onClick={()=>{setSelectedAction(null);setActionKind(null);setResetSent(false)}} aria-label="Close"><X size={18}/></button></div>
+   {failure&&<p className="field-error" role="alert">{failure}</p>}
+   {resetSent?<div className="employee-temporary-password">
+    <FeedbackMotion type="success" compact message="Password reset email sent."/>
+    <p>The employee will receive a secure, time-limited link at their registered work email. No password is displayed to HR.</p>
+    <button className="employee-cancel" onClick={()=>{setSelectedAction(null);setActionKind(null);setResetSent(false)}}>Close</button>
+   </div>:<>
+    {actionKind==="reset"&&<p className="field-help">Send a 30-minute password setup link to the employee. Email delivery must be configured.</p>}
+    <label className="employee-field">Reason (required, 10+ characters)<textarea value={actionReason} maxLength={500} rows={3} onChange={e=>setActionReason(e.target.value)} placeholder={actionKind==="deactivate"?"Explain why access is being deactivated":"Reason for credential reset"}/></label>
+    <div className="employee-form-footer"><button className="employee-cancel" onClick={()=>setSelectedAction(null)}>Cancel</button><button className="employee-primary" disabled={actionBusy||actionReason.trim().length<10} onClick={commitAction}>{actionBusy?"Saving…":actionKind==="deactivate"?"Confirm deactivation":"Send password reset link"}</button></div>
+   </>}
+  </div></div>}
+  {docsFor&&<div className="employee-modal-backdrop" role="presentation"><div className="employee-modal" role="dialog" aria-modal="true" aria-label={"Documents for "+docsFor.name}><div className="employee-title-row"><div><h2>{docsFor.name}</h2><p>Employee documents</p></div><button className="employee-icon-button" onClick={()=>setDocsFor(null)} aria-label="Close"><X size={20}/></button></div>{docError&&<div className="error">{docError}</div>}{!documents.length?<p className="muted">No documents on file.</p>:documents.map(doc=><div key={doc.id} className="employee-doc"><span>{doc.name}</span><button className="employee-link" onClick={()=>downloadFile(doc.id,doc.name)}>Download</button></div>)}</div></div>}
+ </div>;
+}

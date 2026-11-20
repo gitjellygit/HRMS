@@ -1,0 +1,55 @@
+name: jellygit-hrms-e2e
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: hrms_e2e
+      POSTGRES_USER: hrms_e2e
+      POSTGRES_PASSWORD: e2e-only-postgres-password
+    volumes:
+      - e2e_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hrms_e2e -d hrms_e2e"]
+      interval: 3s
+      retries: 30
+  api:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://hrms_e2e:e2e-only-postgres-password@db:5432/hrms_e2e
+      JWT_SECRET: test-only-jwt-secret-1234567890-abcdefgh
+      ADMIN_EMAIL: qa.admin@example.org
+      ADMIN_PASSWORD: TestAdminOnly!Pass1234
+      CORS_ORIGINS: http://127.0.0.1:3100
+      COOKIE_SECURE: "false"
+      HRMS_PII_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      PROJECT_BONUS_AUTO_SYNC: "false"
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - e2e_uploads:/app/uploads
+    ports:
+      - "127.0.0.1:8100:8000"
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://127.0.0.1:8100
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ./frontend:/app
+      - e2e_node_modules:/app/node_modules
+      - e2e_next_cache:/app/.next
+    command: ["npm","run","dev","--","--hostname","0.0.0.0"]
+    ports:
+      - "127.0.0.1:3100:3000"
+volumes:
+  e2e_pgdata:
+  e2e_uploads:
+  e2e_node_modules:
+  e2e_next_cache:
