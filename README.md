@@ -41,3 +41,14 @@ If you have **shared cPanel only** without persistent FastAPI/Node processes and
 - Add change/audit logs and stricter accountant field-level access (currently accountants can view employee contact details), leave and bonus approval rules.
 - Add protected document storage, authorization on each document, encrypted backups, key rotation, retention policy, and India employee-data/privacy review.
 - Add testing/CI and verify restore procedures before production use.
+
+## Durable project handoff (start here for a new development chat)
+
+Chats are not the project's source of truth. Read these versioned documents before making changes:
+
+- [HRMS master context](docs/HRMS_MASTER_CONTEXT.md) — stack, modules, invariants and references.
+- [HRMS current state](docs/HRMS_CURRENT_STATE.md) — dated active-PR/CI/release handoff snapshot (verify GitHub live).
+- [HRMS chat handoff protocol](docs/HRMS_CHAT_HANDOFF_PROTOCOL.md) — exact start/end-of-session steps.
+- [HRMS architecture decisions](docs/HRMS_ARCHITECTURE_DECISIONS.md) — lasting decisions and release boundaries.
+
+**Authority:** current GitHub `main` and checks for implementation; actual VPS release SHA and acceptance evidence for deployment. Existing README feature descriptions above are historical and must be validated against current source.
