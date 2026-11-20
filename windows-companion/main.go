@@ -47,6 +47,7 @@ var (
 	procOpenProcess               = kernel32.NewProc("OpenProcess")
 	procQueryFullProcessImageName = kernel32.NewProc("QueryFullProcessImageNameW")
 	procCloseHandle               = kernel32.NewProc("CloseHandle")
+	procCreateMutex               = kernel32.NewProc("CreateMutexW")
 	procShellNotifyIcon           = shell32.NewProc("Shell_NotifyIconW")
 )
 
@@ -555,6 +556,16 @@ func windowProc(h uintptr, message uint32, wp, lp uintptr) uintptr {
 	return result
 }
 func main() {
+	// Prevent two double-clicked copies from enrolling the same workstation twice.
+	mutexName, _ := syscall.UTF16PtrFromString("Local\\JellyGitActivityCompanion")
+	mutex, _, mutexErr := procCreateMutex.Call(0, 0, uintptr(unsafe.Pointer(mutexName)))
+	if mutex == 0 {
+		panic(mutexErr)
+	}
+	defer procCloseHandle.Call(mutex)
+	if mutexErr == syscall.Errno(183) {
+		return
+	} // ERROR_ALREADY_EXISTS
 	instance, _, _ := procGetModuleHandle.Call(0)
 	callback := syscall.NewCallback(windowProc)
 	cls := wndClass{CbSize: uint32(unsafe.Sizeof(wndClass{})), WndProc: callback, Instance: instance, Background: 6, ClassName: ptr("JellyGitActivityCompanionWindowV2")}
