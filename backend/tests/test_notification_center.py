@@ -22,7 +22,7 @@ def test_hr_announcement_fans_out_to_employee_and_read_archive_are_private():
         assert inbox.status_code==200,inbox.text
         notice=next(n for n in inbox.json()["items"] if n["title"]=="QA employee-pilot policy news")
         assert not notice["read"] and not notice["archived"]
-        assert notice["destination"]=="people"
+        assert notice["destination"]=="people:announcements"
         assert inbox.json()["unread_count"]>=1
         nid=notice["id"]
         marked=c.post(f"/notification-center/{nid}/read",headers=ORIGIN)
@@ -62,3 +62,15 @@ def test_queue_creates_inapp_notice_and_mark_all_read_only_for_current_user():
         assert c.get("/notification-center?limit=201").status_code==422
         switch(c,"payroll.other.qa@example.org")
         assert all(x["title"]!="QA Leave request status update" for x in c.get("/notification-center").json()["items"])
+
+def test_helpdesk_notices_link_to_helpdesk_for_hr_and_employee():
+    with TestClient(app) as c:
+        admin,hr,employee,other=seed(c)
+        switch(c,"payroll.person.qa@example.org")
+        created=c.post("/people/tickets",headers=ORIGIN,json={
+            "category":"leave","subject":"QA leave question navigation",
+            "description":"How should I submit an eligible leave request?"})
+        assert created.status_code==201,created.text
+        switch(c,"payroll.hr.qa@example.org")
+        inbox=c.get("/notification-center").json()["items"]
+        assert any(n["event"]=="helpdesk" and n["destination"]=="people:helpdesk" for n in inbox)
