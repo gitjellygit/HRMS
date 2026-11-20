@@ -27,3 +27,10 @@ test("HR monitoring tab shows responsive devices, refresh and employee detail",a
  await monitor.getByRole("button",{name:"Refresh",exact:true}).click();
  await expect.poll(()=>hits).toBeGreaterThan(1);
 });
+
+test("Employees cannot see HR-only monitoring tab",async({page})=>{
+ const employee=users().find(u=>u.role==="employee")!;
+ await login(page,employee);
+ await navigate(page,"People operations");
+ await expect(page.getByRole("tab",{name:"Monitoring"})).toHaveCount(0);
+});

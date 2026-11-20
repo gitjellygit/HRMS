@@ -61,6 +61,7 @@ export default function DeviceMonitoringDashboard({api}:{api:string}){
     <div className="jg-monitoring-card-heading"><div className="jg-monitoring-avatar"><Monitor size={18}/></div><span className={"jg-monitoring-state "+(d.status==="monitoring"?"online":"offline")}>{d.status==="monitoring"?"Reporting":d.status==="stopped"?"Stopped":"Offline"}</span></div>
     <strong>{d.employee_name}</strong><small>{d.device_label}</small>
     <div className="jg-monitoring-times"><div><span>Active</span><b>{minutes(d.active_seconds)}m</b></div><div><span>Idle</span><b>{minutes(d.idle_seconds)}m</b></div></div>
+    <span className="jg-monitoring-seen">Top reported app: {Object.entries(d.apps||{}).sort((a,b)=>b[1]-a[1])[0]?.[0]||"Not reported"}</span>
     <span className="jg-monitoring-seen"><Clock3 size={13}/> Last update: {elapsed(d.last_seen)}</span>
    </button>)}
   </div>
