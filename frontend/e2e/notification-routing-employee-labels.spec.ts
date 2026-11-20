@@ -18,7 +18,7 @@ test("Helpdesk notification opens Helpdesk tab, never Announcements",async({page
  const bell=page.getByRole("button",{name:/Notifications, \d+ unread/});
  await bell.click();
  const dialog=page.getByRole("dialog",{name:"Recent notifications"});
- await dialog.getByRole("button",{name:/New HR helpdesk ticket/}).click();
+ await dialog.locator(".notification-item-title").filter({hasText:"New HR helpdesk ticket"}).first().click();
  await dialog.getByRole("button",{name:"Open related section"}).click();
  await expect(page.locator(".content h1.title")).toHaveText("People operations");
  await expect(page.getByRole("tab",{name:"Helpdesk"})).toHaveAttribute("aria-selected","true");
@@ -27,7 +27,7 @@ test("Helpdesk notification opens Helpdesk tab, never Announcements",async({page
 test("Payroll employee selector renders names rather than option IDs",async({page})=>{
  await login(page,hr());
  await navigate(page,"Payroll & expenses");
- await page.getByRole("button",{name:"Employee for payroll configuration"}).click();
+ await page.locator(".payroll-select-wrap .jg-select-trigger").click();
  await expect(page.locator('button[role="option"]').first()).toBeVisible();
  const buttons=await page.locator('button[role="option"]').allTextContents();
  expect(buttons.some(x=>/^[0-9]+$/.test(x.trim()))).toBe(false);
