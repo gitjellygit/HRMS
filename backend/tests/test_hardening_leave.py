@@ -116,6 +116,11 @@ def test_probation_and_decimal_leave_balance_are_enforced_server_side():
             "leave_type":"sick","annual_days":12,"probation_allowed":False,
             "probation_months":3,"approval_chain":["hr"],"active":True})
         assert configured.status_code==200,configured.text
+        sick_allocation=c.put("/leave/allocations",headers=ORIGIN,json={
+            "employee_id":worker,"year":fy_start_year(today),
+            "leave_type":"sick","allocated_days":"5"})
+        assert sick_allocation.status_code==200,sick_allocation.text
+        # Even a manual five-day allocation must be unusable during probation.
         # The worker's joining date is today in seed(); validate both balance
         # presentation and the authoritative backend rejection.
         b=c.get("/leave/balances").json()
