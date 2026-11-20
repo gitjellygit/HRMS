@@ -103,3 +103,51 @@ def test_exiting_manager_reassigns_reports_and_pending_leave():
         assert reviewed.status_code==200,reviewed.text
         hist=c.get(f"/leave/requests/{request_id}/history").json()
         assert any(x["action"]=="manager_reassigned" for x in hist)
+
+
+def test_probation_and_decimal_leave_balance_are_enforced_server_side():
+    """A fresh employee cannot take probation leave even with an allocation;
+    paid leave must not exceed the available 1.5 days, including pending leave."""
+    from app.main import SessionLocal, Employee
+    with TestClient(app) as c:
+        admin,hr,worker,_=seed(c)
+        today=date.today()
+        configured=c.put("/leave/policies",headers=ORIGIN,json={
+            "leave_type":"sick","annual_days":12,"probation_allowed":False,
+            "probation_months":3,"approval_chain":["hr"],"active":True})
+        assert configured.status_code==200,configured.text
+        # The worker's joining date is today in seed(); validate both balance
+        # presentation and the authoritative backend rejection.
+        b=c.get("/leave/balances").json()
+        sick=next(x for x in b if x["leave_type"]=="sick")
+        # Admin's own account may be old, so check the new employee explicitly.
+        own=c.get(f"/leave/balances?employee_id={worker}").json()
+        sick=next(x for x in own if x["leave_type"]=="sick")
+        assert sick["on_probation"] is True
+        assert sick["remaining"]==0
+        assert sick["eligible_on"]>today.isoformat()
+        switch(c,"payroll.person.qa@example.org")
+        day=today+timedelta(days=1)
+        while day.weekday()>=5: day+=timedelta(days=1)
+        denied=c.post("/leave/requests",headers=ORIGIN,json={
+            "leave_type":"sick","start_date":day.isoformat(),"end_date":day.isoformat(),
+            "reason":"Probation sick leave must be unavailable"})
+        assert denied.status_code==422
+        assert "probation" in denied.text.lower()
+        switch(c,"admin@example.com","test-admin-password-12345")
+        allowed=c.put("/leave/policies",headers=ORIGIN,json={
+            "leave_type":"casual","annual_days":"1.5","probation_allowed":True,
+            "probation_months":3,"approval_chain":["hr"],"active":True})
+        assert allowed.status_code==200,allowed.text
+        switch(c,"payroll.person.qa@example.org")
+        before=c.get("/leave/balances").json()
+        casual=next(x for x in before if x["leave_type"]=="casual")
+        assert casual["remaining"]<=1.5
+        three_days=today+timedelta(days=7)
+        while three_days.weekday()!=0: three_days+=timedelta(days=1)
+        excessive=c.post("/leave/requests",headers=ORIGIN,json={
+            "leave_type":"casual","start_date":three_days.isoformat(),
+            "end_date":(three_days+timedelta(days=2)).isoformat(),
+            "reason":"Three work days must exceed available balance"})
+        assert excessive.status_code==422,excessive.text
+        assert "balance" in excessive.text.lower()

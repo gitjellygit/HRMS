@@ -601,10 +601,18 @@ def balance(db: Session, employee_id: int, year: int,kind: str) -> dict:
     reserved=Decimal(db.scalar(select(func.coalesce(func.sum(Encashment.days),0)).where(
         Encashment.employee_id==employee_id,Encashment.year==year,
         Encashment.leave_type==kind,Encashment.status=="pending")) or 0)
-    return {"leave_type":kind,"year":year,"year_type":config.year_type,"fy_label":(f"CY {year}" if config.year_type=="calendar" else f"FY {year}-{str(year+1)[-2:]}"),
+    # An explicit HR allocation may exist during probation, but it cannot make
+    # paid leave spendable before the employee's effective eligibility date.
+    current_terms=terms_at(policy_versions(db,config),date.today()) or policy_snapshot(config)
+    eligible_on=eligibility_date(employee(db,employee_id).joining_date,current_terms)
+    on_probation=not current_terms.get("probation_allowed",True) and date.today()<eligible_on
+    spendable=Decimal("0") if on_probation else allocated+carry-used-encashed-reserved
+    return {"eligible_on":eligible_on.isoformat(),"on_probation":on_probation,
+            "available_to_request":float(max(spendable,Decimal("0"))),
+            "leave_type":kind,"year":year,"year_type":config.year_type,"fy_label":(f"CY {year}" if config.year_type=="calendar" else f"FY {year}-{str(year+1)[-2:]}"),
             "allocated":float(allocated),"carried":float(carry),
             "used":float(used),"encashed":float(encashed),"reserved_encashment":float(reserved),
-            "remaining":float(allocated+carry-used-encashed-reserved)}
+            "remaining":float(spendable)}
 
 
 
@@ -783,7 +791,7 @@ def request_leave(body: LeaveIn,user: Employee = Depends(current_user),db: Sessi
     if body.leave_type!="loss_of_pay":
         available=balance(db,user.id,policy_start_year(body.start_date,basis),body.leave_type)
         if available["remaining"]<float(days):
-            raise HTTPException(422,"Insufficient leave balance for this request")
+            raise HTTPException(422,f"Insufficient {body.leave_type} leave balance: {available['remaining']:g} day(s) available; {float(days):g} day(s) requested. Pending requests also reserve balance.")
     row=LeaveRequest(employee_id=user.id,leave_type=body.leave_type,start_date=body.start_date,
                      end_date=body.end_date,day_part=body.day_part,days=days,reason=body.reason,
                      chain=",".join(stages),manager_snapshot_id=manager_id,
