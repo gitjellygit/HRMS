@@ -36,3 +36,7 @@ Migration scripts are explicit and the existing automatic deployment script is n
 ## CI migration smoke rehearsal
 
 `backend/tests/test_peopleops_migrations_rehearsal.py` applies the new migration scripts twice to a disposable legacy PostgreSQL schema, validates the baseline snapshot and confirms idempotence. This does not replace a rehearsal against a sanitized/restored Hostinger snapshot and a backup of the uploads directory.
+
+## v0.6 zero-file self-registration (staged; not released)
+
+See [WINDOWS_COMPANION_AUTO_REGISTRATION.md](WINDOWS_COMPANION_AUTO_REGISTRATION.md). Use `HRMS_ACTIVITY_AUTO_REGISTER_ENABLED=true` only during controlled validation, with an edge rate limit and asset verification. An unassigned hostname is untrusted and receives no activity permissions.

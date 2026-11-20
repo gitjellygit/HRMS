@@ -51,3 +51,29 @@ def test_only_hr_may_issue_invites_or_assign_devices():
         assert c.post("/activity-agent/invitations",headers=ORIGIN).status_code==403
         assert c.post(f"/activity-agent/devices/{device.json()['device_id']}/assign",
            json={"employee_id":employee},headers=ORIGIN).status_code==403
+
+def test_zero_file_registration_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("HRMS_ACTIVITY_AUTO_REGISTER_ENABLED",raising=False)
+    with TestClient(app) as c:
+        assert c.post("/activity-agent/register-auto",json={"device_label":"JG-LAP-100"}).status_code==503
+
+def test_zero_file_registration_is_pending_only(monkeypatch):
+    monkeypatch.setenv("HRMS_ACTIVITY_AUTO_REGISTER_ENABLED","true")
+    with TestClient(app) as c:
+        admin,hr,employee,other=seed(c)
+        c.post("/auth/logout",headers=ORIGIN)
+        resp=c.post("/activity-agent/register-auto",json={"device_label":"JG-LAP-101"})
+        assert resp.status_code==201,resp.text
+        token=resp.json()["token"]
+        auth={"Authorization":"Bearer "+token}
+        assert c.get("/activity-agent/status",headers=auth).json()=={"status":"pending","assigned":False}
+        assert c.post("/activity-agent/heartbeat",headers={**ORIGIN,**auth},
+            json={"state":"monitoring","active_seconds":1,"idle_seconds":0,"apps":{"code":1}}).status_code==403
+        login(c,"admin@example.com","test-admin-password-12345")
+        devices=c.get("/activity-agent/devices").json()
+        pending=next(d for d in devices if d["id"]==resp.json()["device_id"])
+        assert pending["device_label"]=="JG-LAP-101" and pending["employee_id"] is None
+        assert pending["active_seconds"]==0 and pending["apps"]=={}
+        assert c.post("/activity-agent/devices/"+str(resp.json()["device_id"])+"/assign",
+           headers=ORIGIN,json={"employee_id":employee}).status_code==200
+        assert c.get("/activity-agent/status",headers=auth).json()["assigned"] is True

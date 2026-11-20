@@ -1,19 +1,25 @@
 """Transparent employee activity-agent enrollment and heartbeat status (pilot)."""
 import hashlib
 import json
+import os
+import threading
+import time
+from collections import deque
 import secrets
 from datetime import datetime, timezone, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, select
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, select, func
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .main import Base, Employee, current_user, db_session
 
 router=APIRouter(prefix="/activity-agent",tags=["Employee Activity Agent"])
 HR={"hr","admin","super_admin"}
+_auto_registration_lock=threading.Lock()
+_auto_registration_times=deque()  # process-local burst control; enforce edge rate limits at proxy, too
 
 def utcnow():return datetime.now(timezone.utc)
 
@@ -43,6 +49,9 @@ class ActivityInvite(Base):
 
 class RegisterIn(BaseModel):
     invitation_code:str=Field(min_length=20,max_length=150)
+    device_label:str=Field(min_length=3,max_length=120)
+
+class AutoRegisterIn(BaseModel):
     device_label:str=Field(min_length=3,max_length=120)
 
 class AssignIn(BaseModel):
@@ -82,6 +91,36 @@ def create_invitation(user:Employee=Depends(current_user),db:Session=Depends(db_
     return {"invitation_id":invite.id,"invitation_code":code,
             "expires_at":invite.expires_at,
             "notice":"Provision the code only on an authorized company workstation."}
+
+@router.post("/register-auto",status_code=201)
+def register_automatic_pending(data:AutoRegisterIn,db:Session=Depends(db_session)):
+    """Untrusted self-registration, pending ONLY. Disable except during controlled pilot.
+
+    Public hostname is NOT device identity. HR must verify the actual asset before
+    assignment. The returned token has no access to HRMS employee APIs.
+    """
+    if os.getenv("HRMS_ACTIVITY_AUTO_REGISTER_ENABLED","false").lower() not in {"1","true","yes"}:
+        raise HTTPException(503,"Automatic device registration is not enabled by HRMS administrator.")
+    with _auto_registration_lock:
+        now=time.monotonic()
+        while _auto_registration_times and now-_auto_registration_times[0]>3600:
+            _auto_registration_times.popleft()
+        if len(_auto_registration_times)>=10:
+            raise HTTPException(429,"Device registration limit reached. Contact HR/IT.")
+        # Cap pending records globally to prevent unlimited unapproved device rows.
+        pending=db.scalar(select(func.count()).select_from(ActivityDevice).where(
+            ActivityDevice.employee_id.is_(None),ActivityDevice.revoked.is_(False)))
+        if pending>=50:
+            raise HTTPException(429,"Pending device review queue is full. Contact HR/IT.")
+        _auto_registration_times.append(now)
+    token=secrets.token_urlsafe(40)
+    device=ActivityDevice(employee_id=None,token_hash=hashlib.sha256(token.encode()).hexdigest(),
+                          device_label=data.device_label,state="pending")
+    db.add(device)
+    db.commit()
+    db.refresh(device)
+    return {"device_id":device.id,"token":token,"status":"pending",
+            "message":"Pending HR assignment; no activity collection is authorized."}
 
 @router.post("/register",status_code=201)
 def register_pending(data:RegisterIn,db:Session=Depends(db_session)):
