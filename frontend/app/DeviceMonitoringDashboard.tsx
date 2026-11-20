@@ -75,3 +75,5 @@ export default function DeviceMonitoringDashboard({api}:{api:string}){
    <p className="jg-monitoring-disclosure"><ShieldCheck size={15}/> The companion sends aggregate foreground-application and active/idle summaries, not screenshots, keystrokes, URLs, or live screen contents.</p>
   </section>}
  </section>;
+
+}
