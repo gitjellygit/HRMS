@@ -773,7 +773,7 @@ def request_leave(body: LeaveIn,user: Employee = Depends(current_user),db: Sessi
     terms=terms_at(policy_versions(db,config),body.start_date) or policy_snapshot(config)
     if not terms.get("probation_allowed",True):
         eligible=eligibility_date(user.joining_date,terms)
-        if body.start_date<eligible:
+        if date.today()<eligible or body.start_date<eligible:
             raise HTTPException(422,f"Leave becomes available after probation on {eligible.isoformat()}. Contact HR for a policy exception.")
     manager_id=core.manager_id if core else None
     stages=chain_for(config,manager_id)

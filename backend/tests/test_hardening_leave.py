@@ -139,10 +139,14 @@ def test_probation_and_decimal_leave_balance_are_enforced_server_side():
             "leave_type":"casual","annual_days":"1.5","probation_allowed":True,
             "probation_months":3,"approval_chain":["hr"],"active":True})
         assert allowed.status_code==200,allowed.text
+        fy=fy_start_year(today)
+        allocate=c.put("/leave/allocations",headers=ORIGIN,json={
+            "employee_id":worker,"year":fy,"leave_type":"casual","allocated_days":"1.5"})
+        assert allocate.status_code==200,allocate.text
         switch(c,"payroll.person.qa@example.org")
         before=c.get("/leave/balances").json()
         casual=next(x for x in before if x["leave_type"]=="casual")
-        assert casual["remaining"]<=1.5
+        assert casual["remaining"]==1.5
         three_days=today+timedelta(days=7)
         while three_days.weekday()!=0: three_days+=timedelta(days=1)
         excessive=c.post("/leave/requests",headers=ORIGIN,json={
@@ -151,3 +155,18 @@ def test_probation_and_decimal_leave_balance_are_enforced_server_side():
             "reason":"Three work days must exceed available balance"})
         assert excessive.status_code==422,excessive.text
         assert "balance" in excessive.text.lower()
+
+        # A pending half-day also consumes the available balance.
+        first=c.post("/leave/requests",headers=ORIGIN,json={
+            "leave_type":"casual","start_date":three_days.isoformat(),
+            "end_date":three_days.isoformat(),"day_part":"half",
+            "reason":"Reserve one half day from the entitlement"})
+        assert first.status_code==201,first.text
+        updated=c.get("/leave/balances").json()
+        assert next(x for x in updated if x["leave_type"]=="casual")["remaining"]==1
+        additional=c.post("/leave/requests",headers=ORIGIN,json={
+            "leave_type":"casual","start_date":(three_days+timedelta(days=1)).isoformat(),
+            "end_date":(three_days+timedelta(days=2)).isoformat(),
+            "reason":"Pending half day must reduce remaining balance"})
+        assert additional.status_code==422,additional.text
+        assert "1 day(s) available" in additional.text
