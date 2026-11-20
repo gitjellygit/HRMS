@@ -26,9 +26,8 @@ test("Helpdesk notification opens Helpdesk tab, never Announcements",async({page
 });
 test("Payroll employee selector renders names rather than option IDs",async({page})=>{
  await login(page,hr());
- await navigate(page,"Payroll");
+ await navigate(page,"Payroll & expenses");
  await page.getByRole("button",{name:"Employee for payroll configuration"}).click();
- const option=page.locator('button[role="option"]').filter({hasText:"Payroll"});
  await expect(page.locator('button[role="option"]').first()).toBeVisible();
  const buttons=await page.locator('button[role="option"]').allTextContents();
  expect(buttons.some(x=>/^[0-9]+$/.test(x.trim()))).toBe(false);
